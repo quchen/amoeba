@@ -1,15 +1,24 @@
--- TODO: Rewrite all the NodeState parameters to Reader
 -- TODO: Make sure the node doesn't connect to itself
 -- TODO: Lots of status/logging messages
 -- TODO: The wire protocol uses Int64 length headers. Make the program robust
 --       against too long messages that exceed the size. Maybe use
 --       hGetContents after all?
+-- TODO: Maintain last signal from an upstream neighbour, and send keep-alive
+--       signals downstream every now and then
+
+-- NOT TO DO: Rewrite all the NodeState parameters to Reader.
+--       RESULT: Don't do it, the whole code is littered with liftIOs.
 
 
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE CPP #-}
+
+-- Until feature complete:
+#define errorCPP(x) error ("Error: Line " ++ show __LINE__ ++ ": " ++ x)
+
 -- {-# OPTIONS_GHC -ddump-splices #-} -- For Lens.TH debugging
 
 module Main where
@@ -185,15 +194,14 @@ data Signal =
         -- | Query to add an edge to the network. Direction specifies which way
         --   the new connection should go. The Either part is used to limit how
         --   far the request bounces through the network.
-        EdgeRequest Node EdgeData
+        EdgeRequest (Either PortNumber Node) EdgeData
 
-        -- | Sent to the new neighbour node so it can keep track of how many
-        --   times it's referenced
-      | NewNeighbour
+        -- | Sent to the new downstream neighbour node so it can keep track of
+        --   how many times it's referenced
+      | IAddedYou
 
-        -- | Check whether a node is still a neighbour of another node, again to
-        --   keep track of how many nodes
-      | AmIYourNeighbour Predicate
+        -- | Sent to the requesting node: "I have upstream neighbour space free"
+      | AddMe
 
         -- | This node is shutting down, remove it from your neighboured-by pool
       | ShuttingDown
@@ -240,7 +248,6 @@ data NodeState = NodeState {
                                         --   already been handled by this
                                         --   node, and can thus be ignored if
                                         --   they come in again.
-      , _myHostL     :: HostName        -- ^ Own hostname
       , _myPortL     :: PortNumber      -- ^ Own port
       }
 
@@ -262,10 +269,8 @@ startNode = bracket (randomSocket $ config ^. maxRandomPortsL)
                     sClose $
                     \socket -> do
 
-      ns' <- initState
-      -- Store own port. Own hostname will be determined during bootstrapping.
       ~(PortNumber myPort) <- socketPort socket
-      let ns = ns' & myPortL .~ myPort
+      ns <- initState myPort
 
       -- Start server loop
       withAsync (serverLoop socket ns) $ \server -> do
@@ -278,18 +283,16 @@ startNode = bracket (randomSocket $ config ^. maxRandomPortsL)
 
 
 -- | Initializes this node's state
-initState :: IO NodeState
-initState = NodeState
+initState :: PortNumber -> IO NodeState
+initState port = NodeState
         <$> newTVarIO Set.empty -- Known nodes
         <*> newTVarIO Map.empty -- Nodes known by plus last signal timestamps
         <*> newBroadcastTChanIO -- Channel to all clients
         <*> newTBQueueIO size   -- Channel to one client
         <*> newTBQueueIO size   -- Channel to the IO thread
         <*> newTVarIO Set.empty -- Previously handled queries
-        <*> hostErr             -- Own hostname
-        <*> portErr             -- Own port
+        <*> pure port           -- Own server's port
         where size = config ^. maxChanSizeL
-              hostErr = error "Own hostname unknown. This is a bug."
               portErr = error "Own port unknown. This is a bug."
 
 
@@ -347,7 +350,7 @@ clientLoop ns h stc st1c = untilTerminate $ do
             _otherwise  -> atomically $ writeTBQueue (ns ^. ioL) $
                   putStrLn $ "Error: The signal " ++ show signalT ++ " should"
                                         ++ " never have been sent to a client"
-                                        ++ " [TODO: Implement other signals]"
+                                        ++ errorCPP("Implement other signals")
 
 
       -- TODO: Termination
@@ -400,8 +403,6 @@ clientPool ns = forever $ do
             let notTimedOut (Timestamp t) = now - t < config ^. poolTimeoutL -- TODO: check whether the </- are right :-)
             modifyTVar (ns ^. knownByL) (Map.filter notTimedOut)
 
-      -- TODO: Send AmIStillYourNeighbour signals every now and then
-
       -- How many nodes does this node know, how many is it known by?
       (numKnownNodes, numKnownBy) <- atomically $ liftM2 (,)
             (fromIntegral . Set.size <$> readTVar (ns ^. knownNodesL))
@@ -433,13 +434,14 @@ sendEdgeRequest ns signalType = do
       let n = config ^. bouncesL
       time <- Just <$> makeTimestamp
       atomically $ writeTBQueue (ns ^. st1cL) $
-            SignalT time . EdgeRequest (thisNode ns) . EdgeData signalType $ Left n
+            SignalT time .
+            EdgeRequest (Left $ ns ^. myPortL) .
+            EdgeData signalType $
+            Left n
+
 
 -- TODO
-bootstrap = undefined
-
-thisNode :: NodeState -> Node
-thisNode ns = Node (ns ^. myHostL) (ns ^. myPortL)
+bootstrap = errorCPP("Bootstrap")
 
 
 
@@ -496,17 +498,36 @@ worker (h, host, port) ns = untilTerminate $ do
 
       -- TODO: Error handling: What to do if rubbish data comes in?
       signalT <- receive h
-      -- TODO: Check how hGet reads the handle. What could happen is that it
-      --       tries to fill the ByteString's buffer completely, which would
-      --       mean waiting for a lot of input before hGet finishes - much more
-      --       than what is needed for a single decoding
 
       case signalT ^. signalL of
             Message {}         -> floodMessage ns signalT
             ShuttingDown       -> shuttingDown ns clientNode
-            AmIYourNeighbour q -> amIYourNeighbour ns clientNode h q
-            NewNeighbour       -> newNeighbour ns clientNode
-            EdgeRequest {}     -> edgeBounce ns signalT
+            IAddedYou          -> iAddedYou ns clientNode
+            AddMe              -> error("Implement addMe")
+            EdgeRequest {}     -> edgeBounce ns (fillInHost host signalT)
+
+      -- Update "last heard of" timestamp. (Will not do anything if the node
+      -- isn't in the list.)
+      makeTimestamp >>= atomically . updateTimestamp ns clientNode
+
+      return Continue
+
+
+
+
+
+-- | A node doesn't know its own hostname (only its port) when sending off a
+--   request that must come back somehow (e.g. EdgeRequest). For this reason, it
+--   only attaches its port, and leaves entering the hostname to the node it
+--   sends the information first to.
+--
+--   If there's already a full node saved in it, it won't do anything.
+fillInHost :: HostName -> SignalT -> SignalT
+fillInHost host (SignalT timestamp (EdgeRequest (Left port) edgeData)) =
+      SignalT timestamp (EdgeRequest (Right node) edgeData)
+      where node = Node { _hostL = host, _portL = port }
+fillInHost _ signalT = signalT
+
 
 
 
@@ -521,6 +542,8 @@ receive h = do
       sLength <- decode <$> BS.hGet h (int2int int64Size)
       -- Read the previously determined amount of data
       decode <$> BS.hGet h (int2int sLength)
+
+
 
 
 
@@ -552,6 +575,15 @@ floodMessage ns signalT = do
 
 
 
+-- | Updates the timestamp in the "last heard of" database (if present).
+updateTimestamp :: NodeState -> Node -> Timestamp -> STM ()
+updateTimestamp ns node timestamp = modifyTVar (ns ^. knownByL) $
+       (Map.adjust (const timestamp) node)
+
+
+
+
+
 -- | When received, remove the issuing node from the database to ease network
 --   cleanup.
 shuttingDown :: NodeState -> Node -> IO Proceed
@@ -573,29 +605,29 @@ shuttingDown ns node = atomically $ do
 
 
 
--- | Another node wants to know whether it still is this node's neighbour, so it
---   can keep track of how many times it is referenced.
---
---   Responds to the same handle as the incoming request.
-amIYourNeighbour :: NodeState -> Node -> Handle -> Predicate -> IO Proceed
+---- | Another node wants to know whether it still is this node's neighbour, so it
+----   can keep track of how many times it is referenced.
+----
+----   Responds to the same handle as the incoming request.
+--amIYourNeighbour :: NodeState -> Node -> Handle -> Predicate -> IO Proceed
 
--- Positive answer: Update last signal entry
-amIYourNeighbour ns node _h Yes = do
-      timestamp <- makeTimestamp
-      atomically $ modifyTVar (ns ^. knownByL) (Map.insert node timestamp)
-      return Continue -- The incoming connection from a node should not be
-                      -- affected by whether it is a neighbour of this node.
+---- Positive answer: Update last signal entry
+--amIYourNeighbour ns node _h Yes = do
+--      timestamp <- makeTimestamp
+--      atomically $ modifyTVar (ns ^. knownByL) (Map.insert node timestamp)
+--      return Continue -- The incoming connection from a node should not be
+--                      -- affected by whether it is a neighbour of this node.
 
--- Negative answer: Remove node from database
-amIYourNeighbour ns node _h No = atomically $ do
-      modifyTVar (ns ^. knownByL) (Map.delete node)
-      return Continue -- Dito above.
+---- Negative answer: Remove node from database
+--amIYourNeighbour ns node _h No = atomically $ do
+--      modifyTVar (ns ^. knownByL) (Map.delete node)
+--      return Continue -- Dito above.
 
-amIYourNeighbour ns node h Question = do
-      p <- atomically $ Set.member node <$> readTVar (ns ^. knownNodesL)
-      let response = AmIYourNeighbour (if p then Yes else No)
-      BS.hPut h $ encode response
-      return Continue -- Dito above.
+--amIYourNeighbour ns node h Question = do
+--      p <- atomically $ Set.member node <$> readTVar (ns ^. knownNodesL)
+--      let response = AmIYourNeighbour (if p then Yes else No)
+--      BS.hPut h $ encode response
+--      return Continue -- Dito above.
 
 
 
@@ -606,11 +638,24 @@ amIYourNeighbour ns node h Question = do
 --
 --   This should be the first signal this node receives from another node
 --   choosing it as its new neighbour.
-newNeighbour :: NodeState -> Node -> IO Proceed
-newNeighbour ns node = do
+iAddedYou :: NodeState -> Node -> IO Proceed
+iAddedYou ns node = do
       timestamp <- makeTimestamp
-      atomically $ modifyTVar (ns ^. knownByL) (Map.insert node timestamp)
+      atomically $ do
+            modifyTVar (ns ^. knownByL) (Map.insert node timestamp)
+            writeTBQueue (ns ^. ioL) $
+                  putStrLn $ "New upstream neighbour: " ++ show node
       return Continue -- Let's not close the door in front of our new friend :-)
+
+
+
+
+
+-- | A node signals that it's ready to have another upstream neighbour added,
+--   and gives this node the permission to do so.
+addMe :: NodeState -> Node -> IO Proceed
+addMe ns node = error("Implement addMe")
+
 
 
 
@@ -643,8 +688,9 @@ edgeBounce :: NodeState -> SignalT -> IO Proceed
 
 -- Phase 1: Left value, bounce on.
 edgeBounce ns (SignalT timestamp
-              (EdgeRequest origin
-              (EdgeData dir (Left n)))) = do
+                    (EdgeRequest origin
+                          (EdgeData dir (Left n)))) = do
+
       let buildSignalT = SignalT timestamp . EdgeRequest origin . EdgeData dir
       atomically $ writeTBQueue (ns ^. st1cL) $ case n of
             0 -> buildSignalT . Right $ 1 / config ^. lambdaL
@@ -658,8 +704,8 @@ edgeBounce ns (SignalT timestamp
 -- (Note that bouncing on always decreases the denial probability, even in case
 -- the reason was not enough room.)
 edgeBounce ns (SignalT timestamp
-              (EdgeRequest origin
-              (EdgeData dir (Right p)))) = do
+                    (EdgeRequest origin
+                          (EdgeData dir (Right p)))) = do
 
       -- "Bounce on" action with denial probabillity decreased by lambda
       let buildSignalT = SignalT timestamp . EdgeRequest origin . EdgeData dir
@@ -668,9 +714,9 @@ edgeBounce ns (SignalT timestamp
 
       -- Checks whether there's still room for another entry. The TVar can
       -- either be the set of known or "known by" nodes.
-      let isRoomIn tVar sizeF = atomically $
-            let threshold = config ^. maxNeighboursL
-            in  (< threshold) . fromIntegral . sizeF <$> readTVar tVar
+      let threshold = config ^. maxNeighboursL
+          isRoomIn tVar sizeF = atomically $
+                (< threshold) . fromIntegral . sizeF <$> readTVar tVar
 
       -- Roll whether to accept the query first, then check whether there's
       -- room. In case of failure, bounce on.
@@ -680,11 +726,12 @@ edgeBounce ns (SignalT timestamp
             (True, Request) -> do
                   isRoom <- isRoomIn (ns ^. knownNodesL) Set.size
                   if isRoom then do -- TODO: Accept. Spawn client, send clientAdded message.
-                                  void . forkIO $ newClient ns undefined -- TODO
+                                  errorCPP("Accept, spawn client, send ClientAdded")
                             else bounceOn
             (True, Announce) -> do
                   isRoom <- isRoomIn (ns ^. knownByL) Map.size
-                  if isRoom then undefined -- TODO: Accept. Send addMe approval.
+                  if isRoom then do -- TODO: Accept. Send addMe approval.
+                                  errorCPP("Accept, send AddMe")
                             else bounceOn
 
       return Continue
