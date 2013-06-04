@@ -19,7 +19,6 @@
 
 
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE CPP #-}
@@ -28,35 +27,39 @@
 #define errorCPP(x) error ("Error: Line " ++ show __LINE__ ++ ": " ++ x)
 
 -- {-# OPTIONS_GHC -ddump-splices #-} -- For Lens.TH debugging
--- {-# OPTIONS_GHC -Wall #-}
+{-# OPTIONS_GHC -Wall #-}
+{-# OPTIONS_GHC -fno-warn-type-defaults #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
+
 
 module Main where
 
-import GHC.Generics (Generic)
-import Data.Word
-import Data.Int
-import Control.Monad
-import Control.Monad.Trans.Maybe
-import Control.Exception
-import Control.Concurrent
-import Control.Concurrent.Async
-import System.IO
-import System.Random
-import Control.Concurrent.STM
-import Network
-import Control.Applicative
-import Data.Functor
-import Data.Set (Set)
-import qualified Data.Set as Set
-import Data.Map (Map)
-import qualified Data.Map as Map
-import qualified Data.ByteString.Lazy as BS
-import Text.Printf
-import Data.Time.Clock (NominalDiffTime)
-import Data.Time.Clock.POSIX (getPOSIXTime)
-import Data.Maybe
 
-import Data.Binary
+
+-- Base/Platform
+import           Control.Applicative
+import           Control.Concurrent
+import           Control.Concurrent.Async
+import           Control.Concurrent.STM
+import           Control.Exception
+import           Control.Monad
+import qualified Data.ByteString.Lazy as BS
+import           Data.Int
+import           Data.Map (Map)
+import qualified Data.Map as Map
+import           Data.Set (Set)
+import qualified Data.Set as Set
+import           Data.Time.Clock.POSIX (getPOSIXTime)
+import           Data.Word
+import           GHC.Generics (Generic)
+import           Network
+import           System.IO
+import           System.Random
+import           Text.Printf
+
+-- Hackage
+import           Data.Binary
 
 
 
@@ -101,6 +104,7 @@ data Config = Config {
 
 
 -- | Node configuration. Hardcoded because it's easier for the time being.
+config :: Config
 config = Config {
         _maxNeighbours     = 10
       , _minNeighbours     = 5
@@ -255,6 +259,7 @@ data NodeEnvironment = NodeEnvironment {
 
 
 
+main :: IO ()
 main = startNode
 
 
@@ -272,8 +277,8 @@ startNode = bracket (randomSocket $ _maxRandomPorts config)
 
       -- Start server loop
       withAsync (serverLoop socket env) $ \server -> do
-            forkIO $ localIO (_io env) -- Dedicated IO thread
-            forkIO $ clientPool env -- Client pool
+            void . forkIO $ localIO (_io env) -- Dedicated IO thread
+            void . forkIO $ clientPool env -- Client pool
             wait server
 
 
@@ -289,7 +294,7 @@ keepAliveLoop env = forever $ do
 
       -- Cleanup: Remove all nodes from the knownBy pool that haven't sent a
       -- signal in some time
-      timestamp@(Timestamp now) <- makeTimestamp
+      (Timestamp now) <- makeTimestamp
       atomically $ do
             -- TODO: check whether the </- are right :-)
             let notTimedOut (Timestamp t) = now - t < _poolTimeout config
@@ -312,7 +317,6 @@ initEnvironment port = NodeEnvironment
         <*> newTVarIO Set.empty -- Previously handled queries
         <*> pure port           -- Own server's port
         where size = _maxChanSize config
-              portErr = error "Own port unknown. This is a bug."
 
 
 
@@ -469,6 +473,7 @@ sendEdgeRequest env signalype = do
 
 
 -- TODO
+bootstrap :: a
 bootstrap = errorCPP("Bootstrap")
 
 
@@ -526,6 +531,10 @@ worker (h, host, port) env = untilTerminate $ do
       -- TODO: Ignore signals sent by nodes not registered as upstream.
       --       (Do this here or in the server loop?)
 
+      -- Update "last heard of" timestamp. (Will not do anything if the node
+      -- isn't in the list.)
+      makeTimestamp >>= atomically . updateTimestamp env clientNode
+
       -- TODO: Error handling: What to do if rubbish data comes in?
       signal <- receive h
 
@@ -536,12 +545,6 @@ worker (h, host, port) env = untilTerminate $ do
             AddMe              -> error("Implement addMe")
             EdgeRequest {}     -> edgeBounce env (fillInHost host signal)
             KeepAlive          -> return Continue -- Just update timestamp
-
-      -- Update "last heard of" timestamp. (Will not do anything if the node
-      -- isn't in the list.)
-      makeTimestamp >>= atomically . updateTimestamp env clientNode
-
-      return Continue
 
 
 
@@ -721,8 +724,8 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
 
       -- Roll whether to accept the query first, then check whether there's
       -- room. In case of failure, bounce on.
-      accept <- (> p) <$> randomRIO (0,1)
-      case (accept, dir) of
+      acceptEdge <- (> p) <$> randomRIO (0,1)
+      case (acceptEdge, dir) of
             (False, _) -> bounceOn
             (True, Request) -> do
                   isRoom <- isRoomIn (_knownNodes env) Set.size
@@ -735,4 +738,10 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
                                   errorCPP("Accept, send AddMe")
                             else bounceOn
 
+      return Continue
+
+-- Bad signal received
+edgeBounce env signal = do
+      atomically $ toIO env $ printf ("Signal %s received by edgeBounce;"
+                                   ++ "this should never happen") (show signal)
       return Continue
