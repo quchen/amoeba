@@ -1,7 +1,7 @@
 Botnet
 ======
 
-Botnet is a program for setting up a decentralized network. Its purpose is being a practice problem; I am starting this without any prior knowledge of graphs or sockets. (While the name may be suggestive, it makes no attempt at doing anything illegal.)
+Botnet is a program for setting up a decentralized network, inspired by Bitcoin or BitTorrent. Its purpose is being a practice problem; I am starting this without any prior knowledge of graphs or sockets, out of a certain interest in whether I could create something similar. (While the name may be suggestive, it makes no attempt at doing anything illegal.)
 
 Planned features
 ----------------
