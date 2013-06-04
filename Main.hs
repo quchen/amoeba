@@ -1,13 +1,21 @@
+-- TODO: Refactoring :-)
+
 -- TODO: Make sure the node doesn't connect to itself
 -- TODO: Lots of status/logging messages
 -- TODO: The wire protocol uses Int64 length headers. Make the program robust
 --       against too long messages that exceed the size. Maybe use
 --       hGetContents after all?
--- TODO: Maintain last signal from an upstream neighbour, and send keep-alive
---       signals downstream every now and then
+-- TODO: Send keep-alive signals downstream every now and then
+-- TODO: Create "network snapshot" type message to generate GraphViz pictures
+--       of how everything looks like
+-- TODO: Randomly replace downstream neighbours
+-- TODO: Split into multiple modules
+-- TODO: Split tasks up more. For example, the "remove timed out upstream nodes"
+--       should become its own thread.
 
 -- NOT TO DO: Rewrite all the NodeState parameters to Reader.
---       RESULT: Don't do it, the whole code is littered with liftIOs.
+--       RESULT: Don't do it, the whole code is littered with liftIOs. The
+--               explicit "ns" every time isn't so bad compared to it.
 
 
 {-# LANGUAGE DeriveGeneric #-}
@@ -20,6 +28,7 @@
 #define errorCPP(x) error ("Error: Line " ++ show __LINE__ ++ ": " ++ x)
 
 -- {-# OPTIONS_GHC -ddump-splices #-} -- For Lens.TH debugging
+-- {-# OPTIONS_GHC -Wall #-}
 
 module Main where
 
@@ -45,7 +54,6 @@ import qualified Data.ByteString.Lazy as BS
 import Text.Printf
 import Data.Time.Clock (NominalDiffTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import Control.Lens
 import Data.Maybe
 
 import Data.Binary
@@ -59,49 +67,48 @@ import Data.Binary
 
 data Config = Config {
 
-        _maxNeighboursL  :: Word       -- ^ The maximum number of neighbours. No
-                                       --   new ones will be accepted once it's
-                                       --   full.
+        _maxNeighbours  :: Word       -- ^ The maximum number of neighbours. No
+                                      --   new ones will be accepted once it's
+                                      --   full.
 
-      , _minNeighboursL  :: Word       -- ^ The minimum number of neighbours. If
-                                       --   the current number is smaller issue
-                                       --   announce signals.
+      , _minNeighbours  :: Word       -- ^ The minimum number of neighbours. If
+                                      --   the current number is smaller issue
+                                      --   announce signals.
 
-      , _portRangeL      :: (Int, Int) -- ^ The node will open a server on a
-                                       --   randomly picked node in this range.
+      , _portRange      :: (Int, Int) -- ^ The node will open a server on a
+                                      --   randomly picked node in this range.
 
-      , _maxChanSizeL    :: Int        -- ^ How many entries the bounded
-                                       --   communication channels can hold
+      , _maxChanSize    :: Int        -- ^ How many entries the bounded
+                                      --   communication channels can hold
 
-      , _maxRandomPortsL :: Word       -- ^ Number of retries to find a random
-                                       --   open port
+      , _maxRandomPorts :: Word       -- ^ Number of retries to find a random
+                                      --   open port
 
-      , _bouncesL        :: Word       -- ^ Number of initial bounces
-      , _lambdaL         :: Double     -- ^ Parameter for exponentially
-                                       --   distributed things. Each step, the
-                                       --   probability will decrease by a
-                                       --   factor lambda. Must be >= 1.
-      , _poolTickRateL   :: Int        -- ^ Every couple of milliseconds, the
-                                       --   client pool will loop to maintain a
-                                       --   proper connection to the network.
-      , _poolTimeoutL    :: Double     -- ^ Number of seconds before a
-                                       --   non-responding node is considered
-                                       --   gone
+      , _bounces        :: Word       -- ^ Number of initial bounces
+      , _lambda         :: Double     -- ^ Parameter for exponentially
+                                      --   distributed things. Each step, the
+                                      --   probability will decrease by a
+                                      --   factor lambda. Must be >= 1.
+      , _poolTickRate   :: Int        -- ^ Every couple of milliseconds, the
+                                      --   client pool will loop to maintain a
+                                      --   proper connection to the network.
+      , _poolTimeout    :: Double     -- ^ Number of seconds before a
+                                      --   non-responding node is considered
+                                      --   gone
       }
 
-makeLenses ''Config
 
 -- | Node configuration. Hardcoded because it's easier for the time being.
 config = Config {
-        _maxNeighboursL  = 10
-      , _minNeighboursL  = 5
-      , _portRangeL      = (20000, 20100)
-      , _maxChanSizeL    = 100
-      , _maxRandomPortsL = 10
-      , _bouncesL        = 3
-      , _lambdaL         = 1.5
-      , _poolTickRateL   = 1 * 10^6
-      , _poolTimeoutL    = 10
+        _maxNeighbours  = 10
+      , _minNeighbours  = 5
+      , _portRange      = (20000, 20100)
+      , _maxChanSize    = 100
+      , _maxRandomPorts = 10
+      , _bounces        = 3
+      , _lambda         = 1.5
+      , _poolTickRate   = 1 * 10^6
+      , _poolTimeout    = 10
       }
 
 
@@ -110,8 +117,8 @@ config = Config {
 
 -- | Uniquely identifies a node in a network by providing the address of its
 --   server.
-data Node = Node { _hostL :: HostName
-                 , _portL :: PortNumber
+data Node = Node { _host :: HostName
+                 , _port :: PortNumber
                  }
                  deriving (Eq, Ord, Show, Generic)
 
@@ -120,7 +127,6 @@ instance Binary PortNumber where
       put = put . (fromEnum :: PortNumber -> Int)
 
 instance Binary Node
-makeLenses ''Node
 
 
 
@@ -175,13 +181,12 @@ untilTerminate m = go
 
 
 data EdgeData = EdgeData {
-        _directionL   :: Direction
-      , _bounceParamL :: (Either Word Double)
+        _direction   :: Direction
+      , _bounceParam :: (Either Word Double)
       }
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary EdgeData
-makeLenses ''EdgeData
 
 
 
@@ -203,30 +208,20 @@ data Signal =
         -- | Sent to the requesting node: "I have upstream neighbour space free"
       | AddMe
 
+        -- | Randomly sent to downstream nodes so the timestamps are refreshed,
+        --   and the node is kept in the books as an upstream neighbour
+      | KeepAlive
+
         -- | This node is shutting down, remove it from your neighboured-by pool
       | ShuttingDown
 
         -- | Text message. Should only be considered when it comes timestamped
-        --   in a SignalT.
-      | Message String
+        --   in a Signal.
+      | Message Timestamp String
 
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary Signal
-makePrisms ''Signal
-
-
-
-
--- | A tuple of timestamp, issuing node, signal.
-data SignalT = SignalT {
-        _timestampL :: Maybe Timestamp
-      , _signalL    :: Signal
-      }
-      deriving (Eq, Ord, Show, Generic)
-makeLenses ''SignalT
-
-instance Binary SignalT
 
 
 
@@ -234,24 +229,23 @@ instance Binary SignalT
 
 -- | State of the local node
 data NodeState = NodeState {
-        _knownNodesL :: TVar (Set Node) -- ^ Neighbours this node knows
-      , _knownByL    :: TVar (Map Node Timestamp) -- ^ Nodes this node is a
-                                                  -- neighbour of, plus the time
-                                                  -- the last signal was
-                                                  -- received from it.
-      , _stcL        :: TChan SignalT   -- ^ Send messages to all clients
-      , _st1cL       :: TBQueue SignalT -- ^ Send message to one client
-      , _ioL         :: TBQueue (IO ()) -- ^ Send action to the dedicated
-                                          -- local IO thread
-      , _handledQueriesL :: TVar (Set SignalT)
-                                        -- ^ Timestamped signals that have
-                                        --   already been handled by this
-                                        --   node, and can thus be ignored if
-                                        --   they come in again.
-      , _myPortL     :: PortNumber      -- ^ Own port
+        _knownNodes :: TVar (Set Node) -- ^ Neighbours this node knows
+      , _knownBy    :: TVar (Map Node Timestamp) -- ^ Nodes this node is a
+                                                 -- neighbour of, plus the time
+                                                 -- the last signal was
+                                                 -- received from it.
+      , _stc        :: TChan Signal    -- ^ Send messages to all clients
+      , _st1c       :: TBQueue Signal  -- ^ Send message to one client
+      , _io         :: TBQueue (IO ()) -- ^ Send action to the dedicated
+                                       --   local IO thread
+      , _handledQueries :: TVar (Set Signal)
+                                       -- ^ Timestamped signals that have
+                                       --   already been handled by this
+                                       --   node, and can thus be ignored if
+                                       --   they come in again.
+      , _myPort     :: PortNumber      -- ^ Own port
       }
 
-makeLenses ''NodeState
 
 
 
@@ -265,7 +259,7 @@ main = startNode
 
 -- | Node main function
 startNode :: IO ()
-startNode = bracket (randomSocket $ config ^. maxRandomPortsL)
+startNode = bracket (randomSocket $ _maxRandomPorts config)
                     sClose $
                     \socket -> do
 
@@ -274,7 +268,7 @@ startNode = bracket (randomSocket $ config ^. maxRandomPortsL)
 
       -- Start server loop
       withAsync (serverLoop socket ns) $ \server -> do
-            forkIO $ localIO (ns ^. ioL) -- Dedicated IO thread
+            forkIO $ localIO (_io ns) -- Dedicated IO thread
             forkIO $ clientPool ns -- Client pool
             wait server
 
@@ -292,7 +286,7 @@ initState port = NodeState
         <*> newTBQueueIO size   -- Channel to the IO thread
         <*> newTVarIO Set.empty -- Previously handled queries
         <*> pure port           -- Own server's port
-        where size = config ^. maxChanSizeL
+        where size = _maxChanSize config
               portErr = error "Own port unknown. This is a bug."
 
 
@@ -324,11 +318,11 @@ newClient :: NodeState -> Node -> IO ()
 newClient ns node = do
 
       -- Duplicate broadcast chan for the new client
-      stc <- atomically $ dupTChan (ns ^. stcL)
-      let st1c = ns ^. st1cL
+      stc <- atomically $ dupTChan (_stc ns)
+      let st1c = _st1c ns
 
       -- Open connection
-      bracket (connectTo (node ^. hostL) (node ^. portL . to PortNumber))
+      bracket (connectTo (_host node) (PortNumber $ _port node))
               hClose
               (\h -> clientLoop ns h stc st1c)
 
@@ -337,18 +331,18 @@ newClient ns node = do
 
 -- Listens to a TChan (signals broadcast to all nodes) and a TBQueue (signals
 -- meant to be handled by only one client), and executes their orders.
-clientLoop :: NodeState -> Handle -> TChan SignalT -> TBQueue SignalT -> IO ()
+clientLoop :: NodeState -> Handle -> TChan Signal -> TBQueue Signal -> IO ()
 clientLoop ns h stc st1c = untilTerminate $ do
 
       -- Receive orders from whatever channel is first available
-      signalT <- atomically $ msum [readTChan stc, readTBQueue st1c]
+      signal <- atomically $ msum [readTChan stc, readTBQueue st1c]
 
       -- Listen to the order channels and execute them
-      case signalT ^. signalL of
-            Message _   -> send h signalT
+      case signal of
+            Message {}   -> send h signal
             -- TODO: Implement other signals
-            _otherwise  -> atomically $ writeTBQueue (ns ^. ioL) $
-                  putStrLn $ "Error: The signal " ++ show signalT ++ " should"
+            _otherwise  -> atomically $ writeTBQueue (_io ns) $
+                  putStrLn $ "Error: The signal " ++ show signal ++ " should"
                                         ++ " never have been sent to a client"
                                         ++ errorCPP("Implement other signals")
 
@@ -365,11 +359,11 @@ clientLoop ns h stc st1c = untilTerminate $ do
 
 
 
--- | Sends a SignalT, encoded as Binary with a size header, to a Handle.
+-- | Sends a Signal, encoded as Binary with a size header, to a Handle.
 --   Inverse of 'receive'.
-send :: Handle -> SignalT -> IO ()
-send h signalT = do
-      let sBinary = encode signalT
+send :: Handle -> Signal -> IO ()
+send h signal = do
+      let sBinary = encode signal
           sLength = encode (BS.length sBinary :: Int64)
       BS.hPut h $ sLength
       BS.hPut h $ sBinary
@@ -380,7 +374,7 @@ send h signalT = do
 
 
 -- #############################################################################
--- ########  CLIENT POOL  ######################################################
+-- ########  CLIENT _POO  ######################################################
 -- #############################################################################
 
 
@@ -398,18 +392,18 @@ clientPool ns = forever $ do
 
       -- Cleanup: Remove all nodes from the knownBy pool that haven't sent a
       -- signal in some time
-      (Timestamp now) <- makeTimestamp
+      timestamp@(Timestamp now) <- makeTimestamp
       atomically $ do
-            let notTimedOut (Timestamp t) = now - t < config ^. poolTimeoutL -- TODO: check whether the </- are right :-)
-            modifyTVar (ns ^. knownByL) (Map.filter notTimedOut)
+            let notTimedOut (Timestamp t) = now - t < _poolTimeout config -- TODO: check whether the </- are right :-)
+            modifyTVar (_knownBy ns) (Map.filter notTimedOut)
 
       -- How many nodes does this node know, how many is it known by?
       (numKnownNodes, numKnownBy) <- atomically $ liftM2 (,)
-            (fromIntegral . Set.size <$> readTVar (ns ^. knownNodesL))
-            (fromIntegral . Map.size <$> readTVar (ns ^. knownByL   ))
+            (fromIntegral . Set.size <$> readTVar (_knownNodes ns))
+            (fromIntegral . Map.size <$> readTVar (_knownBy ns   ))
             -- ^ :: Int -> Word
 
-      let minNeighbours = config ^. minNeighboursL
+      let minNeighbours = _minNeighbours config
 
       case numKnownNodes of
             0 -> bootstrap -- TODO
@@ -423,20 +417,27 @@ clientPool ns = forever $ do
             let deficit = minNeighbours - numKnownBy
             forM_ [1..deficit] $ \_ -> sendEdgeRequest ns Announce
 
-      threadDelay $ config ^. poolTickRateL
+      -- Send KeepAlive signal to a random downstream neighbour. This will
+      -- case a little spam when there are initially very few downstream
+      -- neighbours, but later on the least busy nodes are more likely to pick
+      -- up the signal, conveniently favouring them to send KeepAlive signals.
+      atomically $ writeTBQueue (_st1c ns) KeepAlive
+
+      threadDelay $ _poolTickRate config
+
+
+
 
 
 
 -- | Sends out a request for either an incoming (announce) or outgoing (request)
 --   edge to the network.
 sendEdgeRequest :: NodeState -> Direction -> IO ()
-sendEdgeRequest ns signalType = do
-      let n = config ^. bouncesL
-      time <- Just <$> makeTimestamp
-      atomically $ writeTBQueue (ns ^. st1cL) $
-            SignalT time .
-            EdgeRequest (Left $ ns ^. myPortL) .
-            EdgeData signalType $
+sendEdgeRequest ns signalype = do
+      let n = _bounces config
+      atomically $ writeTBQueue (_st1c ns) $
+            EdgeRequest (Left $ _myPort ns) .
+            EdgeData signalype $
             Left n
 
 
@@ -469,7 +470,7 @@ randomSocket n = do
 
 -- | Generates a random PortID based on the 'portRange' config value
 randomPort :: IO PortID
-randomPort = PortNumber . fromIntegral <$> randomRIO (config ^. portRangeL)
+randomPort = PortNumber . fromIntegral <$> randomRIO (_portRange config)
 
 
 
@@ -495,16 +496,19 @@ worker :: (Handle, HostName, PortNumber) -> NodeState -> IO ()
 worker (h, host, port) ns = untilTerminate $ do
 
       let clientNode = Node host port
+      -- TODO: Ignore signals sent by nodes not registered as upstream.
+      --       (Do this here or in the server loop?)
 
       -- TODO: Error handling: What to do if rubbish data comes in?
-      signalT <- receive h
+      signal <- receive h
 
-      case signalT ^. signalL of
-            Message {}         -> floodMessage ns signalT
+      case signal of
+            Message {}         -> floodMessage ns signal
             ShuttingDown       -> shuttingDown ns clientNode
             IAddedYou          -> iAddedYou ns clientNode
             AddMe              -> error("Implement addMe")
-            EdgeRequest {}     -> edgeBounce ns (fillInHost host signalT)
+            EdgeRequest {}     -> edgeBounce ns (fillInHost host signal)
+            KeepAlive          -> return Continue -- Just update timestamp
 
       -- Update "last heard of" timestamp. (Will not do anything if the node
       -- isn't in the list.)
@@ -522,19 +526,19 @@ worker (h, host, port) ns = untilTerminate $ do
 --   sends the information first to.
 --
 --   If there's already a full node saved in it, it won't do anything.
-fillInHost :: HostName -> SignalT -> SignalT
-fillInHost host (SignalT timestamp (EdgeRequest (Left port) edgeData)) =
-      SignalT timestamp (EdgeRequest (Right node) edgeData)
-      where node = Node { _hostL = host, _portL = port }
-fillInHost _ signalT = signalT
+fillInHost :: HostName -> Signal -> Signal
+fillInHost host (EdgeRequest (Left port) edgeData) =
+      EdgeRequest (Right node) edgeData
+      where node = Node { _host = host, _port = port }
+fillInHost _ signal = signal
 
 
 
 
 
--- | Receives a SignalT, encoded as Binary with a size header, from a Handle.
+-- | Receives a Signal, encoded as Binary with a size header, from a Handle.
 --   Inverse of 'send'.
-receive :: Handle -> IO SignalT
+receive :: Handle -> IO Signal
 receive h = do
       let int2int = fromIntegral :: Int64 -> Int
           int64Size = BS.length $ encode (0 :: Int64)
@@ -548,25 +552,24 @@ receive h = do
 
 
 -- | Sends a message to the printer thread
-floodMessage :: NodeState -> SignalT -> IO Proceed
-floodMessage ns signalT = do
+floodMessage :: NodeState -> Signal -> IO Proceed
+floodMessage ns signal = do
 
-      -- Only process the message if it has a timestamp and hasn't been
-      -- processed already
-      process <- atomically $ do
-            handled <- Set.member signalT <$> readTVar (ns ^. handledQueriesL)
-            return $ not handled && isJust (signalT ^. timestampL)
+      -- Only process the message if it hasn't been processed already
+      process <- atomically $
+            Set.member signal <$> readTVar (_handledQueries ns)
 
       when process $ atomically $ do
 
             -- Add signal to the list of already handled ones
-            modifyTVar (ns ^. handledQueriesL) (Set.insert signalT)
+            modifyTVar (_handledQueries ns) (Set.insert signal)
 
             -- Print message on this node
-            writeTBQueue (ns ^. ioL) $ putStrLn (signalT ^. signalL._Message)
+            let ~(Message _timestamp message) = signal
+            writeTBQueue (_io ns) $ putStrLn message
 
             -- Propagate message on to all clients
-            writeTChan (ns ^. stcL) signalT
+            writeTChan (_stc ns) signal
 
       return Continue -- Keep the connection alive, e.g. to get more messages
                       -- from that node.
@@ -577,7 +580,7 @@ floodMessage ns signalT = do
 
 -- | Updates the timestamp in the "last heard of" database (if present).
 updateTimestamp :: NodeState -> Node -> Timestamp -> STM ()
-updateTimestamp ns node timestamp = modifyTVar (ns ^. knownByL) $
+updateTimestamp ns node timestamp = modifyTVar (_knownBy ns) $
        (Map.adjust (const timestamp) node)
 
 
@@ -591,43 +594,17 @@ shuttingDown ns node = atomically $ do
 
       -- Status message
       let action = printf "Shutdown notice from %s:%s"
-                          (node ^. hostL.to show)
-                          (node ^. portL.to show)
-      writeTBQueue (ns ^. ioL) action
+                          (show $ _host node)
+                          (show $ _port node)
+      writeTBQueue (_io ns) action
 
       -- Remove from lists of known nodes and nodes known by
-      modifyTVar (ns ^. knownByL) (Map.delete node)
+      modifyTVar (_knownBy ns) (Map.delete node)
 
       return Terminate -- The other node is shutting down, there's no need to
                        -- maintain a worker for it.
 
 
-
-
-
----- | Another node wants to know whether it still is this node's neighbour, so it
-----   can keep track of how many times it is referenced.
-----
-----   Responds to the same handle as the incoming request.
---amIYourNeighbour :: NodeState -> Node -> Handle -> Predicate -> IO Proceed
-
----- Positive answer: Update last signal entry
---amIYourNeighbour ns node _h Yes = do
---      timestamp <- makeTimestamp
---      atomically $ modifyTVar (ns ^. knownByL) (Map.insert node timestamp)
---      return Continue -- The incoming connection from a node should not be
---                      -- affected by whether it is a neighbour of this node.
-
----- Negative answer: Remove node from database
---amIYourNeighbour ns node _h No = atomically $ do
---      modifyTVar (ns ^. knownByL) (Map.delete node)
---      return Continue -- Dito above.
-
---amIYourNeighbour ns node h Question = do
---      p <- atomically $ Set.member node <$> readTVar (ns ^. knownNodesL)
---      let response = AmIYourNeighbour (if p then Yes else No)
---      BS.hPut h $ encode response
---      return Continue -- Dito above.
 
 
 
@@ -642,8 +619,8 @@ iAddedYou :: NodeState -> Node -> IO Proceed
 iAddedYou ns node = do
       timestamp <- makeTimestamp
       atomically $ do
-            modifyTVar (ns ^. knownByL) (Map.insert node timestamp)
-            writeTBQueue (ns ^. ioL) $
+            modifyTVar (_knownBy ns) (Map.insert node timestamp)
+            writeTBQueue (_io ns) $
                   putStrLn $ "New upstream neighbour: " ++ show node
       return Continue -- Let's not close the door in front of our new friend :-)
 
@@ -684,17 +661,15 @@ addMe ns node = error("Implement addMe")
 --        issue of having a long chain of nodes, where only having phase one
 --        would reach the same node every time.
 --
-edgeBounce :: NodeState -> SignalT -> IO Proceed
+edgeBounce :: NodeState -> Signal -> IO Proceed
 
 -- Phase 1: Left value, bounce on.
-edgeBounce ns (SignalT timestamp
-                    (EdgeRequest origin
-                          (EdgeData dir (Left n)))) = do
+edgeBounce ns (EdgeRequest origin (EdgeData dir (Left n))) = do
 
-      let buildSignalT = SignalT timestamp . EdgeRequest origin . EdgeData dir
-      atomically $ writeTBQueue (ns ^. st1cL) $ case n of
-            0 -> buildSignalT . Right $ 1 / config ^. lambdaL
-            k -> buildSignalT . Left  $ k - 1
+      let buildSignal = EdgeRequest origin . EdgeData dir
+      atomically $ writeTBQueue (_st1c ns) $ case n of
+            0 -> buildSignal . Right $ 1 / _lambda config
+            k -> buildSignal . Left  $ k - 1
 
       return Continue
 
@@ -703,18 +678,16 @@ edgeBounce ns (SignalT timestamp
 --
 -- (Note that bouncing on always decreases the denial probability, even in case
 -- the reason was not enough room.)
-edgeBounce ns (SignalT timestamp
-                    (EdgeRequest origin
-                          (EdgeData dir (Right p)))) = do
+edgeBounce ns (EdgeRequest origin (EdgeData dir (Right p))) = do
 
       -- "Bounce on" action with denial probabillity decreased by lambda
-      let buildSignalT = SignalT timestamp . EdgeRequest origin . EdgeData dir
-          bounceOn = atomically $ writeTBQueue (ns ^. st1cL) $
-                buildSignalT . Right $ p / config ^. lambdaL
+      let buildSignal = EdgeRequest origin . EdgeData dir
+          bounceOn = atomically $ writeTBQueue (_st1c ns) $
+                buildSignal . Right $ p / _lambda config
 
       -- Checks whether there's still room for another entry. The TVar can
       -- either be the set of known or "known by" nodes.
-      let threshold = config ^. maxNeighboursL
+      let threshold = _maxNeighbours config
           isRoomIn tVar sizeF = atomically $
                 (< threshold) . fromIntegral . sizeF <$> readTVar tVar
 
@@ -724,12 +697,12 @@ edgeBounce ns (SignalT timestamp
       case (accept, dir) of
             (False, _) -> bounceOn
             (True, Request) -> do
-                  isRoom <- isRoomIn (ns ^. knownNodesL) Set.size
+                  isRoom <- isRoomIn (_knownNodes ns) Set.size
                   if isRoom then do -- TODO: Accept. Spawn client, send clientAdded message.
                                   errorCPP("Accept, spawn client, send ClientAdded")
                             else bounceOn
             (True, Announce) -> do
-                  isRoom <- isRoomIn (ns ^. knownByL) Map.size
+                  isRoom <- isRoomIn (_knownBy ns) Map.size
                   if isRoom then do -- TODO: Accept. Send addMe approval.
                                   errorCPP("Accept, send AddMe")
                             else bounceOn
