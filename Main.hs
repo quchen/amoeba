@@ -5,13 +5,10 @@
 -- TODO: The wire protocol uses Int64 length headers. Make the program robust
 --       against too long messages that exceed the size. Maybe use
 --       hGetContents after all?
--- TODO: Send keep-alive signals downstream every now and then
 -- TODO: Create "network snapshot" type message to generate GraphViz pictures
 --       of how everything looks like
 -- TODO: Randomly replace downstream neighbours
 -- TODO: Split into multiple modules
--- TODO: Split tasks up more. For example, the "remove timed out upstream nodes"
---       should become its own thread.
 
 -- NOT TO DO: Rewrite all the NodeEnvironment parameters to Reader.
 --       RESULT: Don't do it, the whole code is littered with liftIOs. The
@@ -189,7 +186,7 @@ untilTerminate m = go
 
 data EdgeData = EdgeData {
         _direction   :: Direction
-      , _bounceParam :: (Either Word Double)
+      , _bounceParam :: Either Word Double
       }
       deriving (Eq, Ord, Show, Generic)
 
@@ -206,11 +203,24 @@ data Signal =
         -- | Query to add an edge to the network. Direction specifies which way
         --   the new connection should go. The Either part is used to limit how
         --   far the request bounces through the network.
-        EdgeRequest (Either PortNumber Node) EdgeData
+        --
+        --   The name has been chosen because when an EdgeRequest is complete,
+        --   the graph of nodes will have a new edge.
+        EdgeRequest Node EdgeData
+
+
+        -- | Special version of an EdgeRequest that is accepted by nodes even
+        --   when the sender is not an upstream node. Used to introduce a new
+        --   node to the network.
+      | Bootstrap PortNumber
+
+        -- | Sent as a response to a Bootstrap to tell the node its hostname, so
+        --   it can add it to its NodeEnvironment.
+      | YourHostIs HostName
 
         -- | Sent to the new downstream neighbour node so it can keep track of
         --   how many times it's referenced
-      | IAddedYou
+      | IAddedYou Node
 
         -- | Sent to the requesting node: "I have upstream neighbour space free"
       | AddMe
@@ -219,8 +229,14 @@ data Signal =
         --   and the node is kept in the books as an upstream neighbour
       | KeepAlive
 
-        -- | This node is shutting down, remove it from your neighboured-by pool
-      | ShuttingDown
+        -- | Current node is shutting down, remove it from your upstream
+        --   neighbour pool
+      | ShuttingDown Node
+
+        -- | Sent to node that tries to connect without being a registered
+        --   upstream neighbour, so it can remove the current node from its
+        --   database.
+      | NotYourNeighbour
 
         -- | Text message. Should only be considered when it comes timestamped
         --   in a Signal.
@@ -236,22 +252,31 @@ instance Binary Signal
 
 -- | State of the local node
 data NodeEnvironment = NodeEnvironment {
-        _knownNodes :: TVar (Set Node) -- ^ Neighbours this node knows
+        _knownNodes :: TVar (Set Node) -- ^ Neighbours the current node knows
+
       , _knownBy    :: TVar (Map Node Timestamp)
-                                       -- ^ Nodes this node is a
-                                       -- neighbour of, plus the time
-                                       -- the last signal was
-                                       -- received from it.
+                                       -- ^ Nodes the current node knows it's
+                                       --   a downstream neighbour of, or
+                                       --   equivalently the set of upstream
+                                       --   neighbours of the current node.
+                                       --   Also carries a timestamp to keep
+                                       --   track of when the last signal was
+                                       --   received.
+
       , _stc        :: TChan Signal    -- ^ Send messages to all clients
+
       , _st1c       :: TBQueue Signal  -- ^ Send message to one client
-      , _io         :: TBQueue (IO ()) -- ^ Send action to the dedicated
-                                       --   local IO thread
+
+      , _io         :: TBQueue (IO ()) -- ^ Send action to the dedicated local
+                                       --   IO thread
+
       , _handledQueries :: TVar (Set Signal)
                                        -- ^ Timestamped signals that have
-                                       --   already been handled by this
+                                       --   already been handled by the current
                                        --   node, and can thus be ignored if
                                        --   they come in again.
-      , _myPort     :: PortNumber      -- ^ Own port
+
+      , _self       :: Node            -- ^ Own hostname/port
       }
 
 
@@ -272,14 +297,19 @@ startNode = bracket (randomSocket $ _maxRandomPorts config)
                     sClose $
                     \socket -> do
 
-      ~(PortNumber myPort) <- socketPort socket
-      env <- initEnvironment myPort
+      ~(PortNumber port) <- socketPort socket
+      putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
+      host <- bootstrap port
+
+      env <- initEnvironment $ Node { _host = host, _port = port }
 
       -- Start server loop
       withAsync (serverLoop socket env) $ \server -> do
             void . forkIO $ localIO (_io env) -- Dedicated IO thread
             void . forkIO $ clientPool env -- Client pool
             wait server
+
+
 
 
 
@@ -299,6 +329,7 @@ keepAliveLoop env = forever $ do
             -- TODO: check whether the </- are right :-)
             let notTimedOut (Timestamp t) = now - t < _poolTimeout config
             modifyTVar (_knownBy env) (Map.filter notTimedOut)
+            -- TODO terminate corresponding connection
 
       threadDelay (_keepAliveTickRate config)
 
@@ -306,16 +337,20 @@ keepAliveLoop env = forever $ do
 
 
 
--- | Initializes this node's state
-initEnvironment :: PortNumber -> IO NodeEnvironment
-initEnvironment port = NodeEnvironment
+-- | Initializes node environment by setting up the communication channels etc.
+--
+--   Warning: the result is non-total in the sense that it contains nonsense
+--   data for its own address. Bootstrapping should occur immediately after
+--   the environment is created to handle this!
+initEnvironment :: Node -> IO NodeEnvironment
+initEnvironment node = NodeEnvironment
         <$> newTVarIO Set.empty -- Known nodes
         <*> newTVarIO Map.empty -- Nodes known by plus last signal timestamps
         <*> newBroadcastTChanIO -- Channel to all clients
         <*> newTBQueueIO size   -- Channel to one client
         <*> newTBQueueIO size   -- Channel to the IO thread
         <*> newTVarIO Set.empty -- Previously handled queries
-        <*> pure port           -- Own server's port
+        <*> pure node           -- Own server's port
         where size = _maxChanSize config
 
 
@@ -376,7 +411,8 @@ clientLoop env h stc st1c = untilTerminate $ do
 
       -- Listen to the order channels and execute them
       case signal of
-            Message {}   -> send h signal
+            Message {}     -> send h signal
+            EdgeRequest {} -> send h signal
             -- TODO: Implement other signals
             _otherwise  -> atomically $ toIO env $
                   putStrLn $ "Error: The signal " ++ show signal ++ " should"
@@ -402,8 +438,8 @@ send :: Handle -> Signal -> IO ()
 send h signal = do
       let sBinary = encode signal
           sLength = encode (BS.length sBinary :: Int64)
-      BS.hPut h $ sLength
-      BS.hPut h $ sBinary
+      BS.hPut h sLength
+      BS.hPut h sBinary
       hFlush h
 
 
@@ -432,7 +468,7 @@ clientPool env = forkIO (keepAliveLoop env) *> clientPoolLoop env
 clientPoolLoop :: NodeEnvironment -> IO ()
 clientPoolLoop env = forever $ do
 
-      -- How many nodes does this node know, how many is it known by?
+      -- How many nodes does the current node know, how many is it known by?
       (numKnownNodes, numKnownBy) <- atomically $ liftM2 (,)
             (fromIntegral . Set.size <$> readTVar (_knownNodes env))
             (fromIntegral . Map.size <$> readTVar (_knownBy env   ))
@@ -441,18 +477,15 @@ clientPoolLoop env = forever $ do
       let minNeighbours = _minNeighbours config
 
       -- Enough downstream neighbours?
-      case numKnownNodes of
-            0 -> bootstrap -- TODO
-            _ | numKnownNodes < minNeighbours -> do  -- Send out requests
-                  let deficit = minNeighbours - numKnownNodes
-                  forM_ [1..deficit] $ \_ -> sendEdgeRequest env Request
-            _ -> return () -- Otherwise: no deficit, do nothing
+      when (numKnownNodes < minNeighbours) $ do  -- Send out requests
+            let deficit = minNeighbours - numKnownNodes
+            forM_ [1..deficit] $ \_ -> sendEdgeRequest env (_self env) Request
 
       -- Enough upstream neighbours?
       when (numKnownBy < minNeighbours) $ do
             -- Send out announces
             let deficit = minNeighbours - numKnownBy
-            forM_ [1..deficit] $ \_ -> sendEdgeRequest env Announce
+            forM_ [1..deficit] $ \_ -> sendEdgeRequest env (_self env) Announce
 
       threadDelay $ _poolTickRate config
 
@@ -463,18 +496,37 @@ clientPoolLoop env = forever $ do
 
 -- | Sends out a request for either an incoming (announce) or outgoing (request)
 --   edge to the network.
-sendEdgeRequest :: NodeEnvironment -> Direction -> IO ()
-sendEdgeRequest env signalype = do
-      let n = _bounces config
-      atomically $ writeTBQueue (_st1c env) $
-            EdgeRequest (Left $ _myPort env) .
-            EdgeData signalype $
-            Left n
+sendEdgeRequest :: NodeEnvironment -> Node -> Direction -> IO ()
+sendEdgeRequest env node dir = atomically $
+      writeTBQueue (_st1c env) $
+            EdgeRequest node .
+            EdgeData dir .
+            Left $
+            _bounces config
 
 
--- TODO
-bootstrap :: a
-bootstrap = errorCPP("Bootstrap")
+-- Algorithm idea: Create a special Bootstrap signal. When receiving such a
+-- signal, the receiving node sends out N Request/Announce signals, with the
+-- origin set to the issuing node.
+--
+-- To combat abuse, the client should hold a timestamped version of the command,
+-- and only accept a new one after X seconds.
+bootstrap :: PortNumber -> IO HostName
+bootstrap port = do
+
+      -- Send out signal to the bootstrap node
+      -- TODO: Add a function to find a random bootstrap node
+      let bNode = error("Bootstrap node search")
+      bracket (connectTo (_host bNode) (PortNumber $ _port bNode)) hClose $ \h -> do
+            send h (Bootstrap port)
+            (YourHostIs host) <- receive h
+            -- TODO: Handle timeouts, yell if pattern mismatch
+            return host
+
+      -- TODO: Handle failing bootstrap by retrying, i.e. catch -> recurse
+
+
+
 
 
 
@@ -525,42 +577,41 @@ serverLoop socket env = forever $ do
 --   print chat messages etc.
 --   (The first parameter is the same as in the result of Network.accept.)
 worker :: (Handle, HostName, PortNumber) -> NodeEnvironment -> IO ()
-worker (h, host, port) env = untilTerminate $ do
+worker (h, host, _) env = untilTerminate $ do
 
-      let clientNode = Node host port
       -- TODO: Ignore signals sent by nodes not registered as upstream.
-      --       (Do this here or in the server loop?)
+      --       Open issues:
+      --         - Do this here or in the server loop?
+      --         - How do the ignored nodes find out they're being ignored?
+      --         - Nodes trying to connect to bootstrap over the current node
+      --           should not be ignored. Make a special Bootstrap signal that
+      --           is only sent in the very beginning?
 
       -- Update "last heard of" timestamp. (Will not do anything if the node
       -- isn't in the list.)
-      makeTimestamp >>= atomically . updateTimestamp env clientNode
+      --
+      -- -- TODO: The code below only works when the client Node is known.
+      --          It may be necessary to create a SignalT wrapper again after
+      --          all.
+      -- makeTimestamp >>= atomically . updateTimestamp env clientNode
 
       -- TODO: Error handling: What to do if rubbish data comes in?
       signal <- receive h
 
       case signal of
             Message {}         -> floodMessage env signal
-            ShuttingDown       -> shuttingDown env clientNode
-            IAddedYou          -> iAddedYou env clientNode
-            AddMe              -> error("Implement addMe")
-            EdgeRequest {}     -> edgeBounce env (fillInHost host signal)
+            ShuttingDown node  -> shuttingDown env node
+            IAddedYou node     -> iAddedYou env node
+            AddMe              -> error("Implement addMe handling")
+            EdgeRequest {}     -> edgeBounce env signal
             KeepAlive          -> return Continue -- Just update timestamp
+            Bootstrap port     -> helpBootstrap env h host port
+            YourHostIs {}      -> yourHostIsError env
+            NotYourNeighbour   -> error("Implement NotYourNeighbour handling")
 
 
 
 
-
--- | A node doesn't know its own hostname (only its port) when sending off a
---   request that must come back somehow (e.g. EdgeRequest). For this reason, it
---   only attaches its port, and leaves entering the hostname to the node it
---   sends the information first to.
---
---   If there's already a full node saved in it, it won't do anything.
-fillInHost :: HostName -> Signal -> Signal
-fillInHost host (EdgeRequest (Left port) edgeData) =
-      EdgeRequest (Right node) edgeData
-      where node = Node { _host = host, _port = port }
-fillInHost _ signal = signal
 
 
 
@@ -579,6 +630,41 @@ receive h = do
 
 
 
+-- | A node should never receive a YourHostIs signal unless it issued
+--   Bootstrap. In case it gets one anyway, this function is called.
+yourHostIsError :: NodeEnvironment -> IO Proceed
+yourHostIsError env = do
+      atomically . toIO env . print $
+            "YourHostIs signal received without bootstrap process. This is a bug."
+      return Terminate
+
+
+
+
+
+-- | Special connection handler used only as response to a Bootstrap signal.
+--   Will respond with the issuer's hostname, and send out EdgeRequests in its
+--   name.
+--
+--   Note that bootstrapping will not add the contacted node to a pool, all it
+--   does is pass on signals.
+helpBootstrap :: NodeEnvironment -> Handle -> HostName -> PortNumber -> IO Proceed
+helpBootstrap env h host port = do
+
+      -- Respond with hostname
+      send h (YourHostIs host) `finally` hClose h
+
+      -- Send out n EdgeRequests
+      let n = _minNeighbours config
+          node = Node { _host = host, _port = port }
+      forM_ [1..n] $ \_ -> sendEdgeRequest env node Request
+      forM_ [1..n] $ \_ -> sendEdgeRequest env node Announce
+
+      return Terminate
+
+
+
+
 
 
 -- | Sends a message to the printer thread
@@ -594,7 +680,7 @@ floodMessage env signal = do
             -- Add signal to the list of already handled ones
             modifyTVar (_handledQueries env) (Set.insert signal)
 
-            -- Print message on this node
+            -- Print message on the current node
             let ~(Message _timestamp message) = signal
             toIO env $ putStrLn message
 
@@ -611,7 +697,7 @@ floodMessage env signal = do
 -- | Updates the timestamp in the "last heard of" database (if present).
 updateTimestamp :: NodeEnvironment -> Node -> Timestamp -> STM ()
 updateTimestamp env node timestamp = modifyTVar (_knownBy env) $
-       (Map.adjust (const timestamp) node)
+      Map.adjust (const timestamp) node
 
 
 
@@ -643,7 +729,7 @@ shuttingDown env node = atomically $ do
 -- | A node signals that it has added the current node to its pool. This happens
 --   at the end of a neighbour search.
 --
---   This should be the first signal this node receives from another node
+--   This should be the first signal the current node receives from another node
 --   choosing it as its new neighbour.
 iAddedYou :: NodeEnvironment -> Node -> IO Proceed
 iAddedYou env node = do
@@ -658,9 +744,9 @@ iAddedYou env node = do
 
 
 -- | A node signals that it's ready to have another upstream neighbour added,
---   and gives this node the permission to do so.
+--   and gives the current node the permission to do so.
 addMe :: NodeEnvironment -> Node -> IO Proceed
-addMe env node = error("Implement addMe")
+addMe = error("Implement addMe")
 
 
 
