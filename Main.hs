@@ -111,7 +111,7 @@ config = Config {
       , _bounces           = 3
       , _lambda            = 1.5
       , _poolTickRate      = 1 * 10^6
-      , _keepAliveTickRate = 1 * 10^6
+      , _keepAliveTickRate = 3 * 10^5
       , _poolTimeout       = 10
       }
 
@@ -313,13 +313,15 @@ startNode = bracket (randomSocket $ _maxRandomPorts config)
 
 
 
+-- | Send KeepAlive signal to a random downstream neighbour, and removes
+--   upstream neighbours that haven't sent anything recently from the pool.
+--   The former will cause a little spam initially when there are very few
+--   downstream neighbours, but later on the least busy nodes are more likely to
+--   pick up the signal, conveniently favouring them to send KeepAlive signals.
 keepAliveLoop :: NodeEnvironment -> IO ()
 keepAliveLoop env = forever $ do
 
-      -- Send KeepAlive signal to a random downstream neighbour. This will
-      -- case a little spam when there are initially very few downstream
-      -- neighbours, but later on the least busy nodes are more likely to pick
-      -- up the signal, conveniently favouring them to send KeepAlive signals.
+      -- Send it
       atomically $ writeTBQueue (_st1c env) KeepAlive
 
       -- Cleanup: Remove all nodes from the knownBy pool that haven't sent a
@@ -403,7 +405,11 @@ newClient ne node = do
 
 -- Listens to a TChan (signals broadcast to all nodes) and a TBQueue (signals
 -- meant to be handled by only one client), and executes their orders.
-clientLoop :: NodeEnvironment -> Handle -> TChan Signal -> TBQueue Signal -> IO ()
+clientLoop :: NodeEnvironment
+           -> Handle
+           -> TChan Signal
+           -> TBQueue Signal
+           -> IO ()
 clientLoop env h stc st1c = untilTerminate $ do
 
       -- Receive orders from whatever channel is first available
@@ -469,7 +475,7 @@ clientPoolLoop :: NodeEnvironment -> IO ()
 clientPoolLoop env = forever $ do
 
       -- How many nodes does the current node know, how many is it known by?
-      (numKnownNodes, numKnownBy) <- atomically $ liftM2 (,)
+      ~(numKnownNodes, numKnownBy) <- atomically $ liftM2 (,)
             (fromIntegral . Set.size <$> readTVar (_knownNodes env))
             (fromIntegral . Map.size <$> readTVar (_knownBy env   ))
             -- ^ :: Int -> Word
@@ -493,16 +499,18 @@ clientPoolLoop env = forever $ do
 
 
 
-
 -- | Sends out a request for either an incoming (announce) or outgoing (request)
 --   edge to the network.
-sendEdgeRequest :: NodeEnvironment -> Node -> Direction -> IO ()
+sendEdgeRequest :: NodeEnvironment
+                -> Node
+                -> Direction
+                -> IO ()
 sendEdgeRequest env node dir = atomically $
       writeTBQueue (_st1c env) $
-            EdgeRequest node .
-            EdgeData dir .
-            Left $
-            _bounces config
+            EdgeRequest node . EdgeData dir . Left $ _bounces config
+
+
+
 
 
 -- Algorithm idea: Create a special Bootstrap signal. When receiving such a
@@ -517,7 +525,9 @@ bootstrap port = do
       -- Send out signal to the bootstrap node
       -- TODO: Add a function to find a random bootstrap node
       let bNode = error("Bootstrap node search")
-      bracket (connectTo (_host bNode) (PortNumber $ _port bNode)) hClose $ \h -> do
+          bHost = _host bNode
+          bPort = PortNumber $ _port bNode
+      bracket (connectTo bHost bPort) hClose $ \h -> do
             send h (Bootstrap port)
             (YourHostIs host) <- receive h
             -- TODO: Handle timeouts, yell if pattern mismatch
@@ -541,7 +551,7 @@ bootstrap port = do
 
 -- | Tries opening a socket on a certain amount of random ports.
 randomSocket :: Word -> IO Socket
-randomSocket 0 = error "Couldn't find free port"
+randomSocket 0 = error("Couldn't find free port")
 randomSocket n = do
       socket <- randomPort >>= try . listenOn
       case socket :: Either SomeException Socket of
@@ -576,8 +586,10 @@ serverLoop socket env = forever $ do
 -- | Handles an incoming connection: Pass incoming work orders on to clients,
 --   print chat messages etc.
 --   (The first parameter is the same as in the result of Network.accept.)
-worker :: (Handle, HostName, PortNumber) -> NodeEnvironment -> IO ()
-worker (h, host, _) env = untilTerminate $ do
+worker :: (Handle, HostName, PortNumber)
+       -> NodeEnvironment
+       -> IO ()
+worker (h, host, port) env = untilTerminate $ do
 
       -- TODO: Ignore signals sent by nodes not registered as upstream.
       --       Open issues:
@@ -587,13 +599,11 @@ worker (h, host, _) env = untilTerminate $ do
       --           should not be ignored. Make a special Bootstrap signal that
       --           is only sent in the very beginning?
 
-      -- Update "last heard of" timestamp. (Will not do anything if the node
-      -- isn't in the list.)
-      --
-      -- -- TODO: The code below only works when the client Node is known.
-      --          It may be necessary to create a SignalT wrapper again after
-      --          all.
-      -- makeTimestamp >>= atomically . updateTimestamp env clientNode
+      -- Update "last heard of" timestamp. Note that this will not add a valid
+      -- return address (but some address the incoming connection happens to
+      -- have)!
+      let fromNode = Node { _host = host, _port = port }
+      makeTimestamp >>= atomically . updateTimestamp env fromNode
 
       -- TODO: Error handling: What to do if rubbish data comes in?
       signal <- receive h
@@ -605,7 +615,7 @@ worker (h, host, _) env = untilTerminate $ do
             AddMe              -> error("Implement addMe handling")
             EdgeRequest {}     -> edgeBounce env signal
             KeepAlive          -> return Continue -- Just update timestamp
-            Bootstrap port     -> helpBootstrap env h host port
+            Bootstrap bPort    -> helpBootstrap env h host bPort
             YourHostIs {}      -> yourHostIsError env
             NotYourNeighbour   -> error("Implement NotYourNeighbour handling")
 
@@ -648,7 +658,11 @@ yourHostIsError env = do
 --
 --   Note that bootstrapping will not add the contacted node to a pool, all it
 --   does is pass on signals.
-helpBootstrap :: NodeEnvironment -> Handle -> HostName -> PortNumber -> IO Proceed
+helpBootstrap :: NodeEnvironment
+              -> Handle
+              -> HostName
+              -> PortNumber
+              -> IO Proceed
 helpBootstrap env h host port = do
 
       -- Respond with hostname
@@ -668,7 +682,9 @@ helpBootstrap env h host port = do
 
 
 -- | Sends a message to the printer thread
-floodMessage :: NodeEnvironment -> Signal -> IO Proceed
+floodMessage :: NodeEnvironment
+             -> Signal
+             -> IO Proceed
 floodMessage env signal = do
 
       -- Only process the message if it hasn't been processed already
@@ -695,7 +711,10 @@ floodMessage env signal = do
 
 
 -- | Updates the timestamp in the "last heard of" database (if present).
-updateTimestamp :: NodeEnvironment -> Node -> Timestamp -> STM ()
+updateTimestamp :: NodeEnvironment
+                -> Node
+                -> Timestamp
+                -> STM ()
 updateTimestamp env node timestamp = modifyTVar (_knownBy env) $
       Map.adjust (const timestamp) node
 
@@ -705,7 +724,9 @@ updateTimestamp env node timestamp = modifyTVar (_knownBy env) $
 
 -- | When received, remove the issuing node from the database to ease network
 --   cleanup.
-shuttingDown :: NodeEnvironment -> Node -> IO Proceed
+shuttingDown :: NodeEnvironment
+             -> Node
+             -> IO Proceed
 shuttingDown env node = atomically $ do
 
       -- Status message
@@ -731,7 +752,9 @@ shuttingDown env node = atomically $ do
 --
 --   This should be the first signal the current node receives from another node
 --   choosing it as its new neighbour.
-iAddedYou :: NodeEnvironment -> Node -> IO Proceed
+iAddedYou :: NodeEnvironment
+          -> Node
+          -> IO Proceed
 iAddedYou env node = do
       timestamp <- makeTimestamp
       atomically $ do
@@ -745,7 +768,9 @@ iAddedYou env node = do
 
 -- | A node signals that it's ready to have another upstream neighbour added,
 --   and gives the current node the permission to do so.
-addMe :: NodeEnvironment -> Node -> IO Proceed
+addMe :: NodeEnvironment
+      -> Node
+      -> IO Proceed
 addMe = error("Implement addMe")
 
 
@@ -776,7 +801,9 @@ addMe = error("Implement addMe")
 --        issue of having a long chain of nodes, where only having phase one
 --        would reach the same node every time.
 --
-edgeBounce :: NodeEnvironment -> Signal -> IO Proceed
+edgeBounce :: NodeEnvironment
+           -> Signal
+           -> IO Proceed
 
 -- Phase 1: Left value, bounce on.
 edgeBounce env (EdgeRequest origin (EdgeData dir (Left n))) = do
