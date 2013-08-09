@@ -12,7 +12,7 @@ import Control.Monad
 
 
 import Types
-import Utilities (untilTerminate)
+import Utilities (untilTerminate, send, toIO)
 
 
 
@@ -52,7 +52,7 @@ clientLoop env h stc st1c = untilTerminate $ do
             _otherwise  -> atomically $ toIO env $
                   putStrLn $ "Error: The signal " ++ show signal ++ " should"
                                         ++ " never have been sent to a client"
-                                        ++ debugError "Implement other signals"
+                                        ++ error "Implement other signals"
 
 
       -- TODO: Termination

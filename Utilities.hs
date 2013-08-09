@@ -6,7 +6,7 @@ module Utilities (
       , receive
       , send
       , toIO
-      , debugError
+      , connectToNode
 ) where
 
 import Data.Functor
@@ -15,6 +15,7 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Int
 import System.IO
 import Control.Concurrent.STM
+import Network (connectTo, PortID(PortNumber))
 
 import Data.Binary
 
@@ -35,9 +36,6 @@ untilTerminate m = go
       where go = m >>= \case Continue  -> go
                              Terminate -> return ()
 
-
--- | For debugging. This function must not appear in production code.
-debugError x = error $ "Debug error: " ++ x
 
 
 
@@ -77,3 +75,9 @@ send h signal = do
 -- | Sends an IO action to the IO thread.
 toIO :: Environment -> IO () -> STM ()
 toIO env = writeTBQueue (_io env)
+
+
+-- | Like Network.connectTo, but extracts the connection data from a @Node@
+--   object.
+connectToNode :: Node -> IO Handle
+connectToNode n = connectTo (_host n) (PortNumber (_port n))

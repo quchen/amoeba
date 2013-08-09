@@ -20,6 +20,7 @@ import           Data.Word
 import Types
 import Utilities
 import ClientPool (sendEdgeRequest)
+import Client (newClient)
 
 
 
@@ -89,11 +90,11 @@ worker (h, host, port) env = untilTerminate $ do
             Message {}         -> floodMessage env signal
             ShuttingDown node  -> shuttingDown env node
             IAddedYou node     -> iAddedYou env node
-            AddMe              -> error("Implement addMe handling")
+            AddMe              -> lonelyRequestSuccessful env fromNode
             EdgeRequest {}     -> edgeBounce env signal
-            KeepAlive          -> return Continue -- Just update timestamp
+            KeepAlive          -> return Continue -- Just update timestamp, already done above
             YourHostIs {}      -> yourHostIsError env
-            NotYourNeighbour   -> error("Implement NotYourNeighbour handling")
+            NotYourNeighbour   -> error("Implement NotYourNeighbour handling") -- TODO
             BootstrapRequest _ -> undefined -- TODO: Ignore. Bootstrap requests
                                             --       are only taken by the
                                             --       bootstrap server.
@@ -142,7 +143,7 @@ floodMessage env signal = do
             modifyTVar (_handledQueries env) (Set.insert signal)
 
             -- Print message on the current node
-            let ~(Message _timestamp message) = signal
+            let (Message _timestamp message) = signal
             toIO env $ putStrLn message
 
             -- Propagate message on to all clients
@@ -155,13 +156,13 @@ floodMessage env signal = do
 
 
 
--- | Updates the timestamp in the "last heard of" database (if present).
+-- | Inserts or updates the timestamp in the "last heard of" database.
 updateTimestamp :: Environment
                 -> Node
                 -> Timestamp
                 -> STM ()
 updateTimestamp env node timestamp = modifyTVar (_knownBy env) $
-      Map.adjust (const timestamp) node
+      Map.insert node timestamp
 
 
 
@@ -287,13 +288,12 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
             (False, _) -> bounceOn
             (True, Lonely) -> do
                   isRoom <- isRoomIn (_knownNodes env) Set.size
-                  if isRoom then do -- TODO: Accept. Spawn client, send clientAdded message.
-                                  debugError("Accept, spawn client, send ClientAdded")
+                  if isRoom then acceptLonelyRequest env origin
+                                  error("Accept, spawn client, send ClientAdded")
                             else bounceOn
             (True, Announce) -> do
                   isRoom <- isRoomIn (_knownBy env) Map.size
-                  if isRoom then acceptLonelyRequest -- TODO: Accept. Send addMe approval.
-                                  debugError("Accept, send AddMe")
+                  if isRoom then undefined -- TODO: add downstream neighbour
                             else bounceOn
 
       return Continue
@@ -302,4 +302,25 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
 edgeBounce env signal = do
       atomically $ toIO env $ printf ("Signal %s received by edgeBounce;"
                                    ++ "this should never happen") (show signal)
+      return Continue
+
+
+
+-- | Sent as a confirmation message when a Lonely request was accepted. In other
+--   words, this function is "yes, you may add me as your neighbour".
+acceptLonelyRequest :: Environment -> Node -> IO ()
+acceptLonelyRequest env origin = do
+      timestamp <- makeTimestamp
+      bracket (connectToNode origin) hClose $ \h -> do
+            send h AddMe
+            atomically $ updateTimestamp env origin timestamp
+
+
+-- | Invoked on an incoming "Lonely request successful" signal, i.e. after
+--   sending out a Lonely EdgeRequest, another node has given this node the
+--   permission to add it as a downstream neighbour.
+lonelyRequestSuccessful :: Environment -> Node -> IO Proceed
+lonelyRequestSuccessful env node = do
+      forkIO $ newClient env node
+      atomically $ modifyTVar (_knownNodes env) $ Set.insert node
       return Continue

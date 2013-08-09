@@ -17,7 +17,7 @@ import System.IO
 import Data.Functor ((<$>))
 
 import Types
-import Utilities (send, receive)
+import Utilities (send, receive, connectToNode)
 
 
 
@@ -38,13 +38,11 @@ sendBootstrapRequest config port = do
 
       -- Send out signal to the bootstrap node
       bNode <- getBootstrapServer
-      let bHost = _host bNode
-          bPort = PortNumber $ _port bNode
 
       -- Don't recurse directly in case of failure so that bracket can close
       -- the handle properly. Instead, bind the result to an identifier, and
       -- check it after the bracketing.
-      result <- bracket (connectTo bHost bPort) hClose $ \h -> do
+      result <- bracket (connectToNode  bNode) hClose $ \h -> do
             send h (BootstrapRequest port)
             (<$> receive h) $ \case
                   (YourHostIs host) -> Just host
