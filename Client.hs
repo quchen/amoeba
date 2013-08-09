@@ -8,27 +8,28 @@ import Control.Exception
 import Network
 import System.IO
 import Control.Monad
+import qualified Data.Set as Set
 
 
 
 import Types
-import Utilities (untilTerminate, send, toIO)
+import Utilities (untilTerminate, send, toIO, connectToNode)
 
 
 
 -- Initializes a new client, and then spawns the client loop.
 newClient :: Environment -> Node -> IO ()
-newClient ne node = do
+newClient env node = do
 
       -- Duplicate broadcast chan for the new client
-      stc <- atomically $ dupTChan (_stc ne)
-      let st1c = _st1c ne
+      stc <- atomically $ dupTChan (_stc env)
+      let st1c = _st1c env
 
       -- Open connection
-      bracket (connectTo (_host node) (PortNumber $ _port node))
-              hClose
-              (\h -> clientLoop ne h stc st1c)
-
+      bracket (connectToNode node) hClose $ \h -> do
+            send h IAddedYou
+            atomically $ modifyTVar (_knownNodes env) $ Set.insert node
+            clientLoop env h stc st1c
 
 
 

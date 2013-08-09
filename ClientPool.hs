@@ -46,13 +46,13 @@ clientPoolLoop env = forever $ do
       -- Enough downstream neighbours?
       when (numKnownNodes < minNeighbours) $ do  -- Send out requests
             let deficit = minNeighbours - numKnownNodes
-            forM_ [1..deficit] $ \_ -> sendEdgeRequest env (_self env) Lonely
+            forM_ [1..deficit] $ \_ -> sendEdgeRequest env (_self env) Outgoing
 
       -- Enough upstream neighbours?
       when (numKnownBy < minNeighbours) $ do
             -- Send out announces
             let deficit = minNeighbours - numKnownBy
-            forM_ [1..deficit] $ \_ -> sendEdgeRequest env (_self env) Announce
+            forM_ [1..deficit] $ \_ -> sendEdgeRequest env (_self env) Incoming
 
       threadDelay $ _poolTickRate (_config env)
 

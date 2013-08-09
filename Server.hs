@@ -89,8 +89,8 @@ worker (h, host, port) env = untilTerminate $ do
       case signal of
             Message {}         -> floodMessage env signal
             ShuttingDown node  -> shuttingDown env node
-            IAddedYou node     -> iAddedYou env node
-            AddMe              -> lonelyRequestSuccessful env fromNode
+            IAddedYou          -> iAddedYouReceived env fromNode
+            AddMe              -> addMeReceived env fromNode
             EdgeRequest {}     -> edgeBounce env signal
             KeepAlive          -> return Continue -- Just update timestamp, already done above
             YourHostIs {}      -> yourHostIsError env
@@ -212,15 +212,6 @@ iAddedYou env node = do
 
 
 
--- | A node signals that it's ready to have another upstream neighbour added,
---   and gives the current node the permission to do so.
-addMe :: Environment
-      -> Node
-      -> IO Proceed
-addMe = error("Implement addMe")
-
-
-
 
 
 -- TODO: Hardcore refactoring of this function using Lens magic
@@ -286,14 +277,13 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
       acceptEdge <- (> p) <$> randomRIO (0,1)
       case (acceptEdge, dir) of
             (False, _) -> bounceOn
-            (True, Lonely) -> do
+            (True, Outgoing) -> do
                   isRoom <- isRoomIn (_knownNodes env) Set.size
-                  if isRoom then acceptLonelyRequest env origin
-                                  error("Accept, spawn client, send ClientAdded")
+                  if isRoom then acceptOutgoingRequest env origin
                             else bounceOn
-            (True, Announce) -> do
+            (True, Incoming) -> do
                   isRoom <- isRoomIn (_knownBy env) Map.size
-                  if isRoom then undefined -- TODO: add downstream neighbour
+                  if isRoom then void . forkIO $ newClient env origin
                             else bounceOn
 
       return Continue
@@ -306,21 +296,34 @@ edgeBounce env signal = do
 
 
 
--- | Sent as a confirmation message when a Lonely request was accepted. In other
---   words, this function is "yes, you may add me as your neighbour".
-acceptLonelyRequest :: Environment -> Node -> IO ()
-acceptLonelyRequest env origin = do
+-- | Sent as a confirmation message when a Outgoing request issued by another
+--   node was accepted by this node. In other words, this function sends a "yes,
+--   you may add me as your neighbour".
+acceptOutgoingRequest :: Environment -> Node -> IO ()
+acceptOutgoingRequest env origin = do
       timestamp <- makeTimestamp
       bracket (connectToNode origin) hClose $ \h -> do
             send h AddMe
             atomically $ updateTimestamp env origin timestamp
 
 
--- | Invoked on an incoming "Lonely request successful" signal, i.e. after
---   sending out a Lonely EdgeRequest, another node has given this node the
---   permission to add it as a downstream neighbour.
-lonelyRequestSuccessful :: Environment -> Node -> IO Proceed
-lonelyRequestSuccessful env node = do
+
+-- | Invoked on an incoming "Outgoing request successful" signal, i.e. after
+--   sending out a Outgoing EdgeRequest, another node has given this node the
+--   permission to add it as a downstream neighbour. Spawns a new worker
+--   connecting to the accepting node.
+addMeReceived :: Environment -> Node -> IO Proceed
+addMeReceived env node = do
       forkIO $ newClient env node
       atomically $ modifyTVar (_knownNodes env) $ Set.insert node
+      return Continue
+
+
+-- | IAddedYou is sent to a new downstream neighbour as the result of a
+--   successful Incoming request. When received, this handler does the
+--   bookkeeping for the new incoming connection.
+iAddedYouReceived :: Environment -> Node -> IO Proceed
+iAddedYouReceived env node = do
+      timestamp <- makeTimestamp
+      atomically $ updateTimestamp env node timestamp
       return Continue

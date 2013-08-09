@@ -146,8 +146,8 @@ data Signal =
         EdgeRequest Node EdgeData
 
         -- | Sent to the new downstream neighbour node so it can keep track of
-        --   how many times it's referenced
-      | IAddedYou Node
+        --   how many times it's referenced.
+      | IAddedYou
 
         -- | Sent to the requesting node: "I have upstream neighbour space free"
       | AddMe
@@ -201,11 +201,8 @@ instance Binary EdgeData
 
 
 -- | Direction of a query that establishes a new connection
-data Direction = Lonely   -- ^ Lonely nodes would like to have new downstream
-                          --   neighbours
-               | Announce -- ^ Announce presence so the node is added as an
-                          --   upstream neighbour
-               deriving (Eq, Ord, Show, Generic)
+data Direction = Outgoing | Incoming
+      deriving (Eq, Ord, Show, Generic)
 
 instance Binary Direction
 
