@@ -1,5 +1,4 @@
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE CPP #-}
 
 module Utilities (
         makeTimestamp
@@ -29,7 +28,7 @@ makeTimestamp = Timestamp . realToFrac <$> getPOSIXTime
 --   comparable to seconds.
 
 
--- | Similar to @Control.Monad.forever@, but will abort when @False@ is
+-- | Similar to @Control.Monad.forever@, but will abort when @Terminate@ is
 --   returned.
 untilTerminate :: Monad m => m Proceed -> m ()
 untilTerminate m = go
@@ -45,12 +44,20 @@ debugError x = error $ "Debug error: " ++ x
 
 -- | Receives a Signal, encoded as Binary with a size header, from a Handle.
 --   Inverse of 'send'.
+--
+--   **Note:** receiving limits individual incoming requests with a hard cutoff,
+--   currently Int64 bytes.
 receive :: Handle -> IO Signal
 receive h = do
+
       let int2int = fromIntegral :: Int64 -> Int
+
+          -- Size of an encoded Int64 in bytes
           int64Size = BS.length $ encode (0 :: Int64)
-      -- Read length of the data first
+
+      -- Read length of the incoming signal
       sLength <- decode <$> BS.hGet h (int2int int64Size)
+
       -- Read the previously determined amount of data
       decode <$> BS.hGet h (int2int sLength)
 
@@ -68,5 +75,5 @@ send h signal = do
 
 
 -- | Sends an IO action to the IO thread.
-toIO :: NodeEnvironment -> IO () -> STM ()
+toIO :: Environment -> IO () -> STM ()
 toIO env = writeTBQueue (_io env)

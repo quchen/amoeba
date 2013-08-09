@@ -1,60 +1,54 @@
 module Server (
       randomSocket,
-      bootstrap,
       serverLoop
 ) where
 
+import           System.Random
+import           Control.Concurrent
+import           Control.Concurrent.STM
+import           Control.Monad
+import           Data.Functor
+import           Text.Printf
+import qualified Data.Set               as Set
+import qualified Data.Map               as Map
+import           Network
+import           System.IO
+import           Control.Exception
+import           Data.Word
 
 
-
--- Algorithm idea: Create a special Bootstrap signal. When receiving such a
--- signal, the receiving node sends out N Request/Announce signals, with the
--- origin set to the issuing node.
---
--- To combat abuse, the client should hold a timestamped version of the command,
--- and only accept a new one after X seconds.
-bootstrap :: PortNumber -> IO HostName
-bootstrap port = do
-
-      -- Send out signal to the bootstrap node
-      -- TODO: Add a function to find a random bootstrap node
-      let bNode = error("Bootstrap node search")
-          bHost = _host bNode
-          bPort = PortNumber $ _port bNode
-      bracket (connectTo bHost bPort) hClose $ \h -> do
-            send h (Bootstrap port)
-            (YourHostIs host) <- receive h
-            -- TODO: Handle timeouts, yell if pattern mismatch
-            return host
-
-      -- TODO: Handle failing bootstrap by retrying, i.e. catch -> recurse
+import Types
+import Utilities
+import ClientPool (sendEdgeRequest)
 
 
 
 
 -- | Tries opening a socket on a certain amount of random ports.
-randomSocket :: Word -> IO Socket
-randomSocket 0 = error("Couldn't find free port")
-randomSocket n = do
-      socket <- randomPort >>= try . listenOn
-      case socket :: Either SomeException Socket of
-            Left  _ -> randomSocket (n-1)
-            Right r -> return r
+randomSocket :: Config
+             -> IO Socket
+randomSocket config = randomSocket' config (_maxRandomPorts config)
+      where randomSocket' _ 0 = error("Couldn't find free port")
+            randomSocket' config n = do
+                  socket <- randomPort config >>= try . listenOn
+                  case socket :: Either SomeException Socket of
+                        Left  _ -> randomSocket' config (n-1)
+                        Right r -> return r
 
 
 
 
 
 -- | Generates a random PortID based on the 'portRange' config value
-randomPort :: IO PortID
-randomPort = PortNumber . fromIntegral <$> randomRIO (_portRange config)
+randomPort :: Config -> IO PortID
+randomPort config = PortNumber . fromIntegral <$> randomRIO (_portRange config)
 
 
 
 
 
 -- | Forks off a worker for each incoming connection.
-serverLoop :: Socket -> NodeEnvironment -> IO ()
+serverLoop :: Socket -> Environment -> IO ()
 serverLoop socket env = forever $ do
 
       -- Accept incoming connections
@@ -70,7 +64,7 @@ serverLoop socket env = forever $ do
 --   print chat messages etc.
 --   (The first parameter is the same as in the result of Network.accept.)
 worker :: (Handle, HostName, PortNumber)
-       -> NodeEnvironment
+       -> Environment
        -> IO ()
 worker (h, host, port) env = untilTerminate $ do
 
@@ -98,9 +92,11 @@ worker (h, host, port) env = untilTerminate $ do
             AddMe              -> error("Implement addMe handling")
             EdgeRequest {}     -> edgeBounce env signal
             KeepAlive          -> return Continue -- Just update timestamp
-            Bootstrap bPort    -> helpBootstrap env h host bPort
             YourHostIs {}      -> yourHostIsError env
             NotYourNeighbour   -> error("Implement NotYourNeighbour handling")
+            BootstrapRequest _ -> undefined -- TODO: Ignore. Bootstrap requests
+                                            --       are only taken by the
+                                            --       bootstrap server.
 
 
 
@@ -116,7 +112,7 @@ worker (h, host, port) env = untilTerminate $ do
 
 -- | A node should never receive a YourHostIs signal unless it issued
 --   Bootstrap. In case it gets one anyway, this function is called.
-yourHostIsError :: NodeEnvironment -> IO Proceed
+yourHostIsError :: Environment -> IO Proceed
 yourHostIsError env = do
       atomically . toIO env . print $
             "YourHostIs signal received without bootstrap process. This is a bug."
@@ -126,37 +122,12 @@ yourHostIsError env = do
 
 
 
--- | Special connection handler used only as response to a Bootstrap signal.
---   Will respond with the issuer's hostname, and send out EdgeRequests in its
---   name.
---
---   Note that bootstrapping will not add the contacted node to a pool, all it
---   does is pass on signals.
-helpBootstrap :: NodeEnvironment
-              -> Handle
-              -> HostName
-              -> PortNumber
-              -> IO Proceed
-helpBootstrap env h host port = do
-
-      -- Respond with hostname
-      send h (YourHostIs host) `finally` hClose h
-
-      -- Send out n EdgeRequests
-      let n = _minNeighbours config
-          node = Node { _host = host, _port = port }
-      forM_ [1..n] $ \_ -> sendEdgeRequest env node Request
-      forM_ [1..n] $ \_ -> sendEdgeRequest env node Announce
-
-      return Terminate
-
-
 
 
 
 
 -- | Sends a message to the printer thread
-floodMessage :: NodeEnvironment
+floodMessage :: Environment
              -> Signal
              -> IO Proceed
 floodMessage env signal = do
@@ -185,7 +156,7 @@ floodMessage env signal = do
 
 
 -- | Updates the timestamp in the "last heard of" database (if present).
-updateTimestamp :: NodeEnvironment
+updateTimestamp :: Environment
                 -> Node
                 -> Timestamp
                 -> STM ()
@@ -198,7 +169,7 @@ updateTimestamp env node timestamp = modifyTVar (_knownBy env) $
 
 -- | When received, remove the issuing node from the database to ease network
 --   cleanup.
-shuttingDown :: NodeEnvironment
+shuttingDown :: Environment
              -> Node
              -> IO Proceed
 shuttingDown env node = atomically $ do
@@ -226,7 +197,7 @@ shuttingDown env node = atomically $ do
 --
 --   This should be the first signal the current node receives from another node
 --   choosing it as its new neighbour.
-iAddedYou :: NodeEnvironment
+iAddedYou :: Environment
           -> Node
           -> IO Proceed
 iAddedYou env node = do
@@ -242,7 +213,7 @@ iAddedYou env node = do
 
 -- | A node signals that it's ready to have another upstream neighbour added,
 --   and gives the current node the permission to do so.
-addMe :: NodeEnvironment
+addMe :: Environment
       -> Node
       -> IO Proceed
 addMe = error("Implement addMe")
@@ -275,7 +246,7 @@ addMe = error("Implement addMe")
 --        issue of having a long chain of nodes, where only having phase one
 --        would reach the same node every time.
 --
-edgeBounce :: NodeEnvironment
+edgeBounce :: Environment
            -> Signal
            -> IO Proceed
 
@@ -285,7 +256,7 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Left n))) = do
       let buildSignal = EdgeRequest origin . EdgeData dir
       atomically $ do
             writeTBQueue (_st1c env) $ case n of
-                  0 -> buildSignal . Right $ 1 / _lambda config
+                  0 -> buildSignal . Right $ 1 / (_lambda._config) env
                   k -> buildSignal . Left  $ k - 1
             toIO env $ printf "Bounced %s (%d left)" (show origin) n
 
@@ -301,11 +272,11 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
       -- "Bounce on" action with denial probabillity decreased by lambda
       let buildSignal = EdgeRequest origin . EdgeData dir
           bounceOn = atomically $ writeTBQueue (_st1c env) $
-                buildSignal . Right $ p / _lambda config
+                buildSignal . Right $ p / (_lambda._config) env
 
       -- Checks whether there's still room for another entry. The TVar can
       -- either be the set of known or "known by" nodes.
-      let threshold = _maxNeighbours config
+      let threshold = (_maxNeighbours._config) env
           isRoomIn tVar sizeF = atomically $
                 (< threshold) . fromIntegral . sizeF <$> readTVar tVar
 
@@ -314,20 +285,20 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
       acceptEdge <- (> p) <$> randomRIO (0,1)
       case (acceptEdge, dir) of
             (False, _) -> bounceOn
-            (True, Request) -> do
+            (True, Lonely) -> do
                   isRoom <- isRoomIn (_knownNodes env) Set.size
                   if isRoom then do -- TODO: Accept. Spawn client, send clientAdded message.
-                                  errorCPP("Accept, spawn client, send ClientAdded")
+                                  debugError("Accept, spawn client, send ClientAdded")
                             else bounceOn
             (True, Announce) -> do
                   isRoom <- isRoomIn (_knownBy env) Map.size
-                  if isRoom then do -- TODO: Accept. Send addMe approval.
-                                  errorCPP("Accept, send AddMe")
+                  if isRoom then acceptLonelyRequest -- TODO: Accept. Send addMe approval.
+                                  debugError("Accept, send AddMe")
                             else bounceOn
 
       return Continue
 
--- Bad signal received
+-- Bad signal received. "Else" case of the function's pattern.
 edgeBounce env signal = do
       atomically $ toIO env $ printf ("Signal %s received by edgeBounce;"
                                    ++ "this should never happen") (show signal)

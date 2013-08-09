@@ -10,9 +10,7 @@
 -- TODO: Randomly replace downstream neighbours
 -- TODO: Split into multiple modules
 
--- NOT TO DO: Rewrite all the NodeEnvironment parameters to Reader.
---       RESULT: Don't do it, the whole code is littered with liftIOs. The
---               explicit "ns" every time isn't so bad compared to it.
+-- TO DO: Rewrite all the Environment parameters to ReaderT.
 
 
 {-# LANGUAGE CPP #-}
@@ -35,38 +33,17 @@ import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
-import qualified Data.ByteString.Lazy as BS
-import           Data.Int
-import           Data.Map (Map)
 import qualified Data.Map as Map
-import           Data.Set (Set)
 import qualified Data.Set as Set
-import           Data.Time.Clock.POSIX (getPOSIXTime)
-import           Data.Word
-import           GHC.Generics (Generic)
 import           Network
-import           System.IO
-import           System.Random
-import           Text.Printf
 
 -- Hackage
-import           Data.Binary
 
 -- Botnet
-import Server
-import Client
+import Server (serverLoop, randomSocket)
 import ClientPool
 import Types
-
-
-
-
--- | Signifies a question, or a positive/negative answer to one.
-data Predicate = Question | Yes | No
-      deriving (Eq, Ord, Show, Generic)
-
-instance Binary Predicate
-
+import Bootstrap
 
 
 
@@ -78,23 +55,27 @@ main = startNode
 
 
 
--- | Node main function
+-- | Node main function. Bootstraps, launches server loop, client pool,
+--   terminal IO thread.
 startNode :: IO ()
-startNode = bracket (randomSocket $ _maxRandomPorts config)
-                    sClose $
-                    \socket -> do
+startNode = do
 
-      ~(PortNumber port) <- socketPort socket
-      putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
-      host <- bootstrap port
+      let config = defaultConfig -- Can easily be changed to a command args parser
 
-      env <- initEnvironment $ Node { _host = host, _port = port }
+      do bracket (randomSocket config) sClose $ \socket -> do
 
-      -- Start server loop
-      withAsync (serverLoop socket env) $ \server -> do
-            void . forkIO $ localIO (_io env) -- Dedicated IO thread
-            void . forkIO $ clientPool env -- Client pool
-            wait server
+            ~(PortNumber port) <- socketPort socket
+            putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
+            host <- sendBootstrapRequest config port
+
+            -- Setup all the communication channels
+            env <- initEnvironment (Node host port) config
+
+            -- Start server loop
+            withAsync (serverLoop socket env) $ \server -> do
+                  void . forkIO $ outputThread (_io env) -- Dedicated IO thread
+                  void . forkIO $ clientPool env -- Client pool
+                  wait server
 
 
 
@@ -102,12 +83,8 @@ startNode = bracket (randomSocket $ _maxRandomPorts config)
 
 
 -- | Initializes node environment by setting up the communication channels etc.
---
---   Warning: the result is non-total in the sense that it contains nonsense
---   data for its own address. Bootstrapping should occur immediately after
---   the environment is created to handle this!
-initEnvironment :: Node -> IO NodeEnvironment
-initEnvironment node = NodeEnvironment
+initEnvironment :: Node -> Config -> IO Environment
+initEnvironment node config = Environment
 
       <$> newTVarIO Set.empty -- Known nodes
       <*> newTVarIO Map.empty -- Nodes known by plus last signal timestamps
@@ -115,39 +92,39 @@ initEnvironment node = NodeEnvironment
       <*> newTBQueueIO size   -- Channel to one client
       <*> newTBQueueIO size   -- Channel to the IO thread
       <*> newTVarIO Set.empty -- Previously handled queries
-
-      <*> pure node           -- Own server's port
-      <*> pure 10             -- Max neighbours
-      <*> pure 5              -- Min neighbours
-      <*> pure (20000, 20100) -- Port range
-      <*> pure 100            -- Maximum channel size
-      <*> pure 10             -- Maximum random ports to try
-      <*> pure 3              -- Guaranteed bounces for edge search
-      <*> pure 1.5            -- Exponential probability decay for edge search
-      <*> pure (1 * 10^6)     -- Tickrate of the client pool in us
-      <*> pure (3 * 10^5)     -- Tickrate of keep-alive signals in us
-      <*> pure 10             -- Timeout for dead upstream nodes in s
+      <*> pure node           -- Own server's address
+      <*> pure config
 
       where size = _maxChanSize config
 
 
+defaultConfig :: Config
+defaultConfig = Config {
+        _maxNeighbours     = 10
+      , _minNeighbours     = 5
+      , _portRange         = (20000, 20100)
+      , _maxChanSize       = 100
+      , _maxRandomPorts    = 10
+      , _bounces           = 3
+      , _lambda            = 1.5
+      , _poolTickRate      = 1 * 10^6
+      , _keepAliveTickRate = 3 * 10^5
+      , _poolTimeout       = 10
+}
 
 
 
--- | Used for a dedicated IO thread. Reads IO actions from a queue and executes
---   them.
---
---   > localIO q = forever $ do action <- atomically $ readTBQueue q
---   >                          action
-localIO :: TBQueue (IO ()) -> IO ()
-localIO = forever . join . atomically . readTBQueue
+
+
+-- | Dedicated (I)O thread to make sure messages aren't scrambled up. Reads
+--   IO actions from a queue and executes them.
+outputThread :: TBQueue (IO ()) -> IO ()
+outputThread = forever . join . atomically . readTBQueue
 
 
 
 
 
--- | Sends an IO action to the IO thread.
-toIO :: NodeEnvironment -> IO () -> STM ()
-toIO env = writeTBQueue (_io env)
+
 
 

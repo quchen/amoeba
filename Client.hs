@@ -12,12 +12,12 @@ import Control.Monad
 
 
 import Types
-import Utilities
+import Utilities (untilTerminate)
 
 
 
 -- Initializes a new client, and then spawns the client loop.
-newClient :: NodeEnvironment -> Node -> IO ()
+newClient :: Environment -> Node -> IO ()
 newClient ne node = do
 
       -- Duplicate broadcast chan for the new client
@@ -34,7 +34,7 @@ newClient ne node = do
 
 -- Listens to a TChan (signals broadcast to all nodes) and a TBQueue (signals
 -- meant to be handled by only one client), and executes their orders.
-clientLoop :: NodeEnvironment
+clientLoop :: Environment
            -> Handle
            -> TChan Signal
            -> TBQueue Signal

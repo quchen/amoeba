@@ -1,8 +1,12 @@
+-- TODO: Put types only needed by single modules in their respective locations
+
+
 {-# LANGUAGE DeriveGeneric #-}
 
 
 module Types (
-        NodeEnvironment(..)
+        Environment(..)
+      , Config(..)
       , Signal(..)
       , EdgeData(..)
       , Direction(..)
@@ -24,8 +28,9 @@ import Data.Binary
 
 
 
--- | State of the local node
-data NodeEnvironment = NodeEnvironment {
+-- | State of the local node. Consists of a variety of communication channels,
+--   the address of the node's server, and an initial program configuration.
+data Environment = Environment {
 
       -- Mutable environment
 
@@ -53,12 +58,17 @@ data NodeEnvironment = NodeEnvironment {
                                        --   node, and can thus be ignored if
                                        --   they come in again.
 
-
-      -- Configuration
-
       , _self       :: Node            -- ^ Own hostname/port
 
-      , _maxNeighbours  :: Word       -- ^ The maximum number of neighbours. No
+      , _config     :: Config          -- ^ Program start configuration
+
+      }
+
+
+-- | Configuration parameters accessible before anything goes online.
+data Config = Config {
+
+        _maxNeighbours  :: Word       -- ^ The maximum number of neighbours. No
                                       --   new ones will be accepted once it's
                                       --   full.
 
@@ -88,9 +98,7 @@ data NodeEnvironment = NodeEnvironment {
       , _poolTimeout    :: Double     -- ^ Number of seconds before a
                                       --   non-responding node is considered
                                       --   gone
-
-      }
-
+}
 
 
 
@@ -137,16 +145,6 @@ data Signal =
         --   the graph of nodes will have a new edge.
         EdgeRequest Node EdgeData
 
-
-        -- | Special version of an EdgeRequest that is accepted by nodes even
-        --   when the sender is not an upstream node. Used to introduce a new
-        --   node to the network.
-      | Bootstrap PortNumber
-
-        -- | Sent as a response to a Bootstrap to tell the node its hostname, so
-        --   it can add it to its NodeEnvironment.
-      | YourHostIs HostName
-
         -- | Sent to the new downstream neighbour node so it can keep track of
         --   how many times it's referenced
       | IAddedYou Node
@@ -171,6 +169,15 @@ data Signal =
         --   in a Signal.
       | Message Timestamp String
 
+              -- | Initial request sent from a future client to a bootstrap server.
+        --   While the reverse connection is provided by the request, the
+        --   hostname will be deduced by the incoming connection by the server.
+      | BootstrapRequest PortNumber
+
+        -- | Sent as a response to a Bootstrap to tell the node its hostname, so
+        --   it can add it to its Environment.
+      | YourHostIs HostName
+
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary Signal
@@ -194,9 +201,10 @@ instance Binary EdgeData
 
 
 -- | Direction of a query that establishes a new connection
-data Direction = Request  -- ^ Request new neighbours to fill the pool
-               | Announce -- ^ Announce a certain node so others add it to their
-                          --   pool
+data Direction = Lonely   -- ^ Lonely nodes would like to have new downstream
+                          --   neighbours
+               | Announce -- ^ Announce presence so the node is added as an
+                          --   upstream neighbour
                deriving (Eq, Ord, Show, Generic)
 
 instance Binary Direction
@@ -206,3 +214,11 @@ instance Binary Direction
 -- | Used in loops that may end. Continue means looping, Terminate hops out.
 data Proceed = Continue | Terminate
       deriving (Eq, Ord, Show)
+
+
+
+-- | Signifies a question, or a positive/negative answer to one.
+data Predicate = Question | Yes | No
+      deriving (Eq, Ord, Show, Generic)
+
+instance Binary Predicate
