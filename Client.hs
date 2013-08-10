@@ -8,7 +8,6 @@ module Client  (
 import Control.Concurrent.STM
 import Control.Concurrent.Async
 import Control.Exception
-import Network
 import System.IO
 import Control.Monad
 import qualified Data.Map as Map
@@ -22,11 +21,11 @@ import Utilities (untilTerminate, send, toIO, connectToNode)
 
 -- Starts a new client in a separate thread.
 forkNewClient :: Environment -> Node -> IO ()
-forkNewClient env node = do
+forkNewClient env targetNode = do
       let -- Shortcut function to add/delete nodes to the database
           updateKnownNodes = atomically . modifyTVar (_knownNodes env)
-      withAsync (newClient env node) $ \nodeAsync -> do
-            updateKnownNodes $ Map.insert node nodeAsync
+      withAsync (newClient env targetNode) $ \nodeAsync -> do
+            updateKnownNodes $ Map.insert targetNode nodeAsync
             wait nodeAsync
 
 
@@ -35,8 +34,8 @@ forkNewClient env node = do
 -- whether there is any space in the client pool; that's the job of the function
 -- that sends the newClient command (i.e. the server).
 newClient :: Environment -> Node -> IO ()
-newClient env node =
-      bracket (connectToNode node) hClose $ \h -> do
+newClient env targetNode =
+      bracket (connectToNode targetNode) hClose $ \h -> do
             send h IAddedYou
             stc <- atomically $ dupTChan (_stc env)
             clientLoop env h stc (_st1c env)

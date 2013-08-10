@@ -18,12 +18,10 @@ import qualified Data.Map               as Map
 import           Network
 import           System.IO
 import           Control.Exception
-import           Data.Word
 
 
 import Types
 import Utilities
-import ClientPool (sendEdgeRequest)
 import Client (forkNewClient)
 
 

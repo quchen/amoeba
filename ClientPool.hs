@@ -8,10 +8,8 @@ import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
 import qualified Data.Map               as Map
-import qualified Data.Set               as Set
 import           Control.Monad
 import           Data.Traversable
-import           Data.Functor
 import           Data.Maybe (isJust)
 
 import Types
@@ -119,8 +117,6 @@ removeDeadClients env = do
 
       let -- deadNodes :: [Node]
           deadNodes = Map.keys $ Map.filter isJust polledClients
-
-      let one = head deadNodes
 
       -- Finally, remove all dead nodes by their just found out keys
       atomically $ modifyTVar (_knownNodes env) $ \known ->

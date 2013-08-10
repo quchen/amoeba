@@ -4,13 +4,11 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Bootstrap (
-      sendBootstrapRequest
+      bootstrap
 ) where
 
 
 
-import Data.Binary
-import GHC.Generics (Generic)
 import Network
 import Control.Exception
 import System.IO
@@ -31,8 +29,8 @@ import Utilities (send, receive, connectToNode)
 -- and only accept a new one after X seconds.
 
 -- | Send out
-sendBootstrapRequest :: Config -> PortNumber -> IO HostName -- TODO: Make it an Either Error Hostname so the problem can be printed
-sendBootstrapRequest config port = do
+bootstrap :: Config -> PortNumber -> IO HostName -- TODO: Make it an Either Error Hostname so the problem can be printed
+bootstrap config port = do
 
       -- TODO: Add a function to find a random bootstrap nodes
 
@@ -49,9 +47,9 @@ sendBootstrapRequest config port = do
                   _                 -> Nothing -- TODO: Error message "Bootstrap reply rubbish"
                      -- TODO: Handle timeouts, yell if pattern mismatch
 
-      maybe (sendBootstrapRequest config port) return result
+      maybe (bootstrap config port) return result
 
 
 -- | Finds the address of a suitable bootstrap server.
 getBootstrapServer :: IO Node
-getBootstrapServer = undefined -- TODO: Implement bootstrap server discovery
+getBootstrapServer = error("TODO: implement bootstrap server discovery")

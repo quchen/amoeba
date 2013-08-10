@@ -26,7 +26,6 @@ module Main where
 
 
 
--- Base/Platform
 import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.Async
@@ -37,13 +36,10 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import           Network
 
--- Hackage
-
--- Botnet
 import Server (serverLoop, randomSocket)
 import ClientPool
 import Types
-import Bootstrap
+import Bootstrap (bootstrap)
 
 
 
@@ -62,11 +58,11 @@ startNode = do
 
       let config = defaultConfig -- Can easily be changed to a command args parser
 
-      do bracket (randomSocket config) sClose $ \socket -> do
+      bracket (randomSocket config) sClose $ \socket -> do
 
             ~(PortNumber port) <- socketPort socket
             putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
-            host <- sendBootstrapRequest config port
+            host <- bootstrap config port
 
             -- Setup all the communication channels
             env <- initEnvironment (Node host port) config
