@@ -1,6 +1,3 @@
--- TODO: Refactoring :-)
-
--- TODO: Make sure the node doesn't connect to itself
 -- TODO: Lots of status/logging messages
 -- TODO: The wire protocol uses Int64 length headers. Make the program robust
 --       against too long messages that exceed the size. Maybe use
@@ -8,17 +5,9 @@
 -- TODO: Create "network snapshot" type message to generate GraphViz pictures
 --       of how everything looks like
 -- TODO: Randomly replace downstream neighbours
--- TODO: Split into multiple modules
-
--- TO DO: Rewrite all the Environment parameters to ReaderT.
 
 
-{-# LANGUAGE CPP #-}
 
--- {-# OPTIONS_GHC -ddump-splices #-} -- For Lens.TH debugging
-{-# OPTIONS_GHC -Wall #-}
-{-# OPTIONS_GHC -fno-warn-type-defaults #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 
 

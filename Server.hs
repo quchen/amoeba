@@ -264,16 +264,19 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
           isRoomIn tVar = atomically $
                 (< threshold) . fromIntegral . Map.size <$> readTVar tVar
 
+      -- Make sure not to connect to itself or to already known nodes
+      allowed <- isAllowed env dir origin
+
       -- Roll whether to accept the query first, then check whether there's
       -- room. In case of failure, bounce on.
       acceptEdge <- (> p) <$> randomRIO (0,1)
-      case (acceptEdge, dir) of
+      case (allowed && acceptEdge, dir) of
             (False, _) -> bounceOn
-            (True, Outgoing) -> do
+            (_, Outgoing) -> do
                   isRoom <- isRoomIn (_knownNodes env)
                   if isRoom then acceptOutgoingRequest env origin
                             else bounceOn
-            (True, Incoming) -> do
+            (_, Incoming) -> do
                   isRoom <- isRoomIn (_knownBy env)
                   if isRoom then forkNewClient env origin
                             else bounceOn
@@ -318,3 +321,26 @@ iAddedYouReceived env node = do
       return Continue
 
       -- TODO: Check whether the previous 3 functions get all the directions right (i.e. do what they should)!
+
+
+
+
+-- | Checks whether a connection from/to origin is allowed. A node must not
+--   connect to itself or to known neighbours multiple times.
+isAllowed :: Environment -> Direction -> Node -> IO Bool
+isAllowed env dir origin = do
+
+      -- Don't connecto to yourself
+      let isSelf = origin == _self env
+
+      -- 1. The origin node requesting an incoming connection is already
+      --    downstream
+      -- 2. The origin node requesting an outgoing connection is already
+      --    upstream
+      let isInDatabase db = atomically $ Map.member origin <$> readTVar db
+      isAlreadyKnown <- case dir of
+            Incoming -> isInDatabase (_knownNodes env)
+            Outgoing -> isInDatabase (_knownBy env)
+
+      return $ isSelf || isAlreadyKnown
+
