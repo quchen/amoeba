@@ -86,7 +86,7 @@ startNode = do
 initEnvironment :: Node -> Config -> IO Environment
 initEnvironment node config = Environment
 
-      <$> newTVarIO Set.empty -- Known nodes
+      <$> newTVarIO Map.empty -- Known nodes
       <*> newTVarIO Map.empty -- Nodes known by plus last signal timestamps
       <*> newBroadcastTChanIO -- Channel to all clients
       <*> newTBQueueIO size   -- Channel to one client
@@ -106,7 +106,7 @@ defaultConfig = Config {
       , _maxChanSize       = 100
       , _maxRandomPorts    = 10
       , _bounces           = 3
-      , _lambda            = 1.5
+      , _lambda            = 1.5 -- TODO: Error on lambda <= 1
       , _poolTickRate      = 1 * 10^6
       , _keepAliveTickRate = 3 * 10^5
       , _poolTimeout       = 10

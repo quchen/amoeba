@@ -1,14 +1,17 @@
-module Client where
+module Client  (
+      forkNewClient
+) where
 
 
 
 
 import Control.Concurrent.STM
+import Control.Concurrent.Async
 import Control.Exception
 import Network
 import System.IO
 import Control.Monad
-import qualified Data.Set as Set
+import qualified Data.Map as Map
 
 
 
@@ -17,19 +20,26 @@ import Utilities (untilTerminate, send, toIO, connectToNode)
 
 
 
--- Initializes a new client, and then spawns the client loop.
+-- Starts a new client in a separate thread.
+forkNewClient :: Environment -> Node -> IO ()
+forkNewClient env node = do
+      let -- Shortcut function to add/delete nodes to the database
+          updateKnownNodes = atomically . modifyTVar (_knownNodes env)
+      withAsync (newClient env node) $ \nodeAsync -> do
+            updateKnownNodes $ Map.insert node nodeAsync
+            wait nodeAsync
+
+
+
+-- Initializes a new client, and then starts the client loop. Does not check
+-- whether there is any space in the client pool; that's the job of the function
+-- that sends the newClient command (i.e. the server).
 newClient :: Environment -> Node -> IO ()
-newClient env node = do
-
-      -- Duplicate broadcast chan for the new client
-      stc <- atomically $ dupTChan (_stc env)
-      let st1c = _st1c env
-
-      -- Open connection
+newClient env node =
       bracket (connectToNode node) hClose $ \h -> do
             send h IAddedYou
-            atomically $ modifyTVar (_knownNodes env) $ Set.insert node
-            clientLoop env h stc st1c
+            stc <- atomically $ dupTChan (_stc env)
+            clientLoop env h stc (_st1c env)
 
 
 
@@ -47,7 +57,7 @@ clientLoop env h stc st1c = untilTerminate $ do
 
       -- Listen to the order channels and execute them
       case signal of
-            Message {}     -> send h signal
+            TextMessage {} -> send h signal
             EdgeRequest {} -> send h signal
             -- TODO: Implement other signals
             _otherwise  -> atomically $ toIO env $

@@ -16,6 +16,7 @@ module Types (
 ) where
 
 import Control.Concurrent.STM
+import Control.Concurrent.Async
 import Data.Set
 import Data.Map
 import Network
@@ -34,7 +35,8 @@ data Environment = Environment {
 
       -- Mutable environment
 
-        _knownNodes :: TVar (Set Node) -- ^ Neighbours the current node knows
+        _knownNodes :: TVar (Map Node (Async ()))
+                                       -- ^ Neighbours the current node knows
 
       , _knownBy    :: TVar (Map Node Timestamp)
                                        -- ^ Nodes the current node knows it's
@@ -165,9 +167,8 @@ data Signal =
         --   database.
       | NotYourNeighbour
 
-        -- | Text message. Should only be considered when it comes timestamped
-        --   in a Signal.
-      | Message Timestamp String
+        -- | Text message.
+      | TextMessage Timestamp String
 
               -- | Initial request sent from a future client to a bootstrap server.
         --   While the reverse connection is provided by the request, the
@@ -195,6 +196,7 @@ data EdgeData = EdgeData {
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary EdgeData
+
 
 
 

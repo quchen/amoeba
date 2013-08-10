@@ -1,3 +1,7 @@
+-- TODO: Handle pattern mismatches on all of the handler functions. Those
+--       branches should never be reached, but just to be safe there should be
+--       error messages anyway.
+
 module Server (
       randomSocket,
       serverLoop
@@ -20,7 +24,7 @@ import           Data.Word
 import Types
 import Utilities
 import ClientPool (sendEdgeRequest)
-import Client (newClient)
+import Client (forkNewClient)
 
 
 
@@ -81,13 +85,13 @@ worker (h, host, port) env = untilTerminate $ do
       -- return address (but some address the incoming connection happens to
       -- have)!
       let fromNode = Node { _host = host, _port = port }
-      makeTimestamp >>= atomically . updateTimestamp env fromNode
+      makeTimestamp >>= atomically . updateKnownBy env fromNode
 
       -- TODO: Error handling: What to do if rubbish data comes in?
       signal <- receive h
 
       case signal of
-            Message {}         -> floodMessage env signal
+            TextMessage {}     -> floodMessage env signal
             ShuttingDown node  -> shuttingDown env node
             IAddedYou          -> iAddedYouReceived env fromNode
             AddMe              -> addMeReceived env fromNode
@@ -104,19 +108,12 @@ worker (h, host, port) env = untilTerminate $ do
 
 
 
-
-
-
-
-
-
-
 -- | A node should never receive a YourHostIs signal unless it issued
 --   Bootstrap. In case it gets one anyway, this function is called.
 yourHostIsError :: Environment -> IO Proceed
 yourHostIsError env = do
       atomically . toIO env . print $
-            "YourHostIs signal received without bootstrap process. This is a bug."
+            "YourHostIs signal received without bootstrap process. This is a bug, terminating server."
       return Terminate
 
 
@@ -143,7 +140,7 @@ floodMessage env signal = do
             modifyTVar (_handledQueries env) (Set.insert signal)
 
             -- Print message on the current node
-            let (Message _timestamp message) = signal
+            let (TextMessage _timestamp message) = signal -- TODO: Handle pattern mismatch
             toIO env $ putStrLn message
 
             -- Propagate message on to all clients
@@ -157,12 +154,12 @@ floodMessage env signal = do
 
 
 -- | Inserts or updates the timestamp in the "last heard of" database.
-updateTimestamp :: Environment
-                -> Node
-                -> Timestamp
-                -> STM ()
-updateTimestamp env node timestamp = modifyTVar (_knownBy env) $
-      Map.insert node timestamp
+updateKnownBy :: Environment
+              -> Node
+              -> Timestamp
+              -> STM ()
+updateKnownBy env node timestamp = modifyTVar (_knownBy env) $
+                                                       Map.insert node timestamp
 
 
 
@@ -214,14 +211,11 @@ iAddedYou env node = do
 
 
 
--- TODO: Hardcore refactoring of this function using Lens magic
 -- | This models the "bouncing" behaviour of finding neighbours. When a node
---   receives an announcement ("Hey, I'm here, please make me your neighbour")
---   or a request ("I need more neighbours"), it sends a single request to one
---   of its neighbours.
---
---   This request is then passed on - it "bounces" off that
---   node - and the process is repeated using two phases:
+--   receives an incoming ("Hey, I'm here, please make me your neighbour")
+--   or outgoing ("I need more neighbours") request, it either accepts it or
+--   bounces the request on to a downstream neighbour that repeats the process.
+--   The procedure has two phases:
 --
 --     1. In phase 1, a counter will keep track of how many bounces have
 --        occurred. For example, a signal may contain the information "bounce
@@ -237,7 +231,7 @@ iAddedYou env node = do
 --        exponentially distributed bounce-on-length in phase 2. This solves the
 --        issue of having a long chain of nodes, where only having phase one
 --        would reach the same node every time.
---
+
 edgeBounce :: Environment
            -> Signal
            -> IO Proceed
@@ -247,9 +241,9 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Left n))) = do
 
       let buildSignal = EdgeRequest origin . EdgeData dir
       atomically $ do
-            writeTBQueue (_st1c env) $ case n of
-                  0 -> buildSignal . Right $ 1 / (_lambda._config) env
-                  k -> buildSignal . Left  $ k - 1
+            writeTBQueue (_st1c env) . buildSignal $ case n of
+                  0 -> Right $ 1 / (_lambda._config) env
+                  k -> Left  $ k - 1
             toIO env $ printf "Bounced %s (%d left)" (show origin) n
 
       return Continue
@@ -269,8 +263,8 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
       -- Checks whether there's still room for another entry. The TVar can
       -- either be the set of known or "known by" nodes.
       let threshold = (_maxNeighbours._config) env
-          isRoomIn tVar sizeF = atomically $
-                (< threshold) . fromIntegral . sizeF <$> readTVar tVar
+          isRoomIn tVar = atomically $
+                (< threshold) . fromIntegral . Map.size <$> readTVar tVar
 
       -- Roll whether to accept the query first, then check whether there's
       -- room. In case of failure, bounce on.
@@ -278,12 +272,12 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
       case (acceptEdge, dir) of
             (False, _) -> bounceOn
             (True, Outgoing) -> do
-                  isRoom <- isRoomIn (_knownNodes env) Set.size
+                  isRoom <- isRoomIn (_knownNodes env)
                   if isRoom then acceptOutgoingRequest env origin
                             else bounceOn
             (True, Incoming) -> do
-                  isRoom <- isRoomIn (_knownBy env) Map.size
-                  if isRoom then void . forkIO $ newClient env origin
+                  isRoom <- isRoomIn (_knownBy env)
+                  if isRoom then forkNewClient env origin
                             else bounceOn
 
       return Continue
@@ -304,7 +298,7 @@ acceptOutgoingRequest env origin = do
       timestamp <- makeTimestamp
       bracket (connectToNode origin) hClose $ \h -> do
             send h AddMe
-            atomically $ updateTimestamp env origin timestamp
+            atomically $ updateKnownBy env origin timestamp
 
 
 
@@ -313,10 +307,7 @@ acceptOutgoingRequest env origin = do
 --   permission to add it as a downstream neighbour. Spawns a new worker
 --   connecting to the accepting node.
 addMeReceived :: Environment -> Node -> IO Proceed
-addMeReceived env node = do
-      forkIO $ newClient env node
-      atomically $ modifyTVar (_knownNodes env) $ Set.insert node
-      return Continue
+addMeReceived env node = forkNewClient env node >> return Continue
 
 
 -- | IAddedYou is sent to a new downstream neighbour as the result of a
@@ -325,5 +316,7 @@ addMeReceived env node = do
 iAddedYouReceived :: Environment -> Node -> IO Proceed
 iAddedYouReceived env node = do
       timestamp <- makeTimestamp
-      atomically $ updateTimestamp env node timestamp
+      atomically $ updateKnownBy env node timestamp
       return Continue
+
+      -- TODO: Check whether the previous 3 functions get all the directions right (i.e. do what they should)!

@@ -6,21 +6,24 @@ module ClientPool (
 import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.STM
+import           Control.Concurrent.Async
 import qualified Data.Map               as Map
 import qualified Data.Set               as Set
 import           Control.Monad
+import           Data.Traversable
 import           Data.Functor
+import           Data.Maybe (isJust)
 
 import Types
 import Utilities (makeTimestamp)
 
 
--- | Sets up the client pool by forking the KeepAlive thread, and then starts
+-- | Sets up the client pool by forking the housekeeping thread, and then starts
 --   the client pool loop.
 --
---   For further documentation, see @keepAliveLoop@ and @clientLoop@.
+--   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
-clientPool env = forkIO (keepAliveLoop env) *> clientPoolLoop env
+clientPool env = forkIO (housekeeping env) *> clientPoolLoop env
 
 
 
@@ -36,10 +39,10 @@ clientPoolLoop :: Environment -> IO ()
 clientPoolLoop env = forever $ do
 
       -- How many nodes does the current node know, how many is it known by?
-      (numKnownNodes, numKnownBy) <- atomically $ liftA2 (,)
-            (fromIntegral . Set.size <$> readTVar (_knownNodes env))
-            (fromIntegral . Map.size <$> readTVar (_knownBy env   ))
-            -- ^ fromIntegral :: Int -> Word
+      let mapSize db = fromIntegral . Map.size <$> readTVar (db env)
+                        -- ^ fromIntegral :: Int -> Word
+      (numKnownNodes, numKnownBy) <- atomically $
+            liftA2 (,) (mapSize _knownNodes) (mapSize _knownBy)
 
       let minNeighbours = _minNeighbours (_config env)
 
@@ -74,24 +77,28 @@ sendEdgeRequest env node dir = atomically $
 
 
 
+-- | Makes sure other nodes know this node is still running and has them as its
+--   neighbour, removes timed out upstream nodes and dead clients/downstream
+--   nodes.
+housekeeping :: Environment -> IO ()
+housekeeping env = forever $ do
+      sendKeepAlive env
+      removeTimedOut env
+      removeDeadClients env
+      threadDelay (_keepAliveTickRate $ _config env)
 
 
 
+-- | Sends KeepAlive signals to downstream nodes so they can update their "last
+--   heard of" timestamp
+sendKeepAlive :: Environment -> IO ()
+sendKeepAlive env = atomically $ writeTBQueue (_st1c env) KeepAlive
 
 
--- | Send KeepAlive signal to a random downstream neighbour, and removes
---   upstream neighbours that haven't sent anything recently from the pool.
---   The former will cause a little spam initially when there are very few
---   downstream neighbours, but later on the least busy nodes are more likely to
---   pick up the signal, conveniently favouring them to send KeepAlive signals.
-keepAliveLoop :: Environment -> IO ()
-keepAliveLoop env = forever $ do
 
-      -- Send it
-      atomically $ writeTBQueue (_st1c env) KeepAlive
-
-      -- Cleanup: Remove all nodes from the knownBy pool that haven't sent a
-      -- signal in some time
+-- | Remove timed out upstream nodes
+removeTimedOut :: Environment -> IO ()
+removeTimedOut env = do
       (Timestamp now) <- makeTimestamp
       atomically $ do
             -- TODO: check whether the </- are right :-)
@@ -99,4 +106,25 @@ keepAliveLoop env = forever $ do
             modifyTVar (_knownBy env) (Map.filter notTimedOut)
             -- TODO terminate corresponding connection
 
-      threadDelay (_keepAliveTickRate . _config $ env)
+
+
+-- | Polls all clients and removes those that are dead
+removeDeadClients :: Environment -> IO ()
+removeDeadClients env = do
+      -- Send a poll request to all currently running clients.
+      -- knownNodes :: Map Node (Async ())
+      knownNodes <- atomically $ readTVar (_knownNodes env)
+      -- polledClients :: Map Node (Maybe Either <...>)
+      polledClients <- sequenceA $ fmap poll knownNodes
+
+      let -- deadNodes :: [Node]
+          deadNodes = Map.keys $ Map.filter isJust polledClients
+
+      let one = head deadNodes
+
+      -- Finally, remove all dead nodes by their just found out keys
+      atomically $ modifyTVar (_knownNodes env) $ \known ->
+            foldr Map.delete known deadNodes
+
+
+
