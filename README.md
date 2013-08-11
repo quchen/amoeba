@@ -3,6 +3,8 @@ Amoeba
 
 Amoeba is a program for setting up a decentralized network. The name comes from the hope that eventually, the network will be so robust that you can poke any of its parts without endangering its overall integrity.
 
+**Amoeba is currently in the phase that comes before Alpha (coding, compiling, but not running it because it's full of placeholders).**
+
 Planned features
 ----------------
 
@@ -26,3 +28,14 @@ Research goals
     - A small number of modified nodes accept every edge request, i.e. every time a node tries to connect to the network, the malicious nodes accept it (instead of possibly relaying it). These malicious nodes will eventually gather up connections to a *lot* of nodes. For a certain (but small) number of such modified nodes, the network integrity could be endangered, e.g. when they filter new edge requests.
 
     - Rubbish data: How much is the network affected by spamming it with nonsense edge requests?
+
+
+Terminology
+-----------
+
+- _foo: Accessor functions that don't do any computation otherwise
+- DSN:  Downstream node, i.e. a neighbouring node the current sends commands do.
+- ST1C: Server to one (unspecified/arbitrary) client channel
+- STC:  Server to client channel
+- STSC: Server to specific client channel
+- USN:  Upstream node, i.e. a neighbouring node the current gets commands sent by.
