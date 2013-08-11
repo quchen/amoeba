@@ -74,10 +74,7 @@ worker (h, host, port) env = untilTerminate $ do
       -- TODO: Ignore signals sent by nodes not registered as upstream.
       --       Open issues:
       --         - Do this here or in the server loop?
-      --         - How do the ignored nodes find out they're being ignored?
-      --         - Nodes trying to connect to bootstrap over the current node
-      --           should not be ignored. Make a special Bootstrap signal that
-      --           is only sent in the very beginning?
+      --         - How do the ignored nodes find out they're being ignored? --> Solution: timeouts
 
       -- Update "last heard of" timestamp. Note that this will not add a valid
       -- return address (but some address the incoming connection happens to
@@ -85,8 +82,15 @@ worker (h, host, port) env = untilTerminate $ do
       let fromNode = Node { _host = host, _port = port }
       makeTimestamp >>= atomically . updateKnownBy env fromNode
 
+      -- TODO: Housekeeping to delete already handled messages
+
       -- TODO: Error handling: What to do if rubbish data comes in?
       signal <- receive h
+
+      -- TODO: Unified logging interface. A message should have a debug level
+      --       of sorts verbose/debug/normal/quiet, which is defined in the
+      --       environment. Messages should also state the origin and what
+      --       signal came in.
 
       case signal of
             TextMessage {}     -> floodMessage env signal
@@ -94,10 +98,11 @@ worker (h, host, port) env = untilTerminate $ do
             IAddedYou          -> iAddedYouReceived env fromNode
             AddMe              -> addMeReceived env fromNode
             EdgeRequest {}     -> edgeBounce env signal
-            KeepAlive          -> return Continue -- Just update timestamp, already done above
-            YourHostIs {}      -> yourHostIsError env
+            KeepAlive          -> keepAlive env fromNode
             NotYourNeighbour   -> error("Implement NotYourNeighbour handling") -- TODO
-            BootstrapRequest _ -> undefined -- TODO: Ignore. Bootstrap requests
+            YourHostIs {}      -> yourHostIs env
+            BootstrapRequest _ -> bootstrapRequest env
+                               -- TODO: Ignore. Bootstrap requests
                                             --       are only taken by the
                                             --       bootstrap server.
 
@@ -108,16 +113,28 @@ worker (h, host, port) env = untilTerminate $ do
 
 -- | A node should never receive a YourHostIs signal unless it issued
 --   Bootstrap. In case it gets one anyway, this function is called.
-yourHostIsError :: Environment -> IO Proceed
-yourHostIsError env = do
-      atomically . toIO env . print $
-            "YourHostIs signal received without bootstrap process. This is a bug, terminating server."
-      return Terminate
+yourHostIs :: Environment -> IO Proceed
+yourHostIs env = do
+      atomically . toIO env . putStrLn $
+            "YourHostIs signal received without bootstrap process, ignoring"
+      return Continue
 
 
+bootstrapRequest :: Environment -> IO Proceed
+bootstrapRequest env = do
+      atomically . toIO env . putStrLn $
+            "BootstrapRequest signal received without bootstrap process, ignoring"
+      return Continue
 
 
-
+-- | Acknowledges an incoming KeepAlive signal, which is effectively a no-op,
+--   apart from that it (like any other signal) refreshes the "last heard of
+--   timestamp".
+keepAlive :: Environment -> Node -> IO Proceed
+keepAlive env origin = do
+      atomically . toIO env . putStrLn $
+            "KeepAlive signal received from " ++ show origin
+      return Continue
 
 
 
@@ -208,12 +225,15 @@ iAddedYou env node = do
 
 
 
-
--- | This models the "bouncing" behaviour of finding neighbours. When a node
---   receives an incoming ("Hey, I'm here, please make me your neighbour")
---   or outgoing ("I need more neighbours") request, it either accepts it or
---   bounces the request on to a downstream neighbour that repeats the process.
---   The procedure has two phases:
+-- | Bounces EdgeRequests through the network in order to make new connections.
+--   The idea behind this behaviour is that a new connection should be as long
+--   as possible, i.e. ideally establish a link to an entirely different part of
+--   the network, which prevents clustering.
+--
+--   When a node receives an incoming ("Hey, I'm here, please make me your
+--   neighbour") or outgoing ("I need more neighbours") request, it either
+--   accepts it or bounces the request on to a downstream neighbour that repeats
+--   the process. The procedure has two phases:
 --
 --     1. In phase 1, a counter will keep track of how many bounces have
 --        occurred. For example, a signal may contain the information "bounce

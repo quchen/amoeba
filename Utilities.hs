@@ -48,6 +48,8 @@ untilTerminate m = go
 receive :: Handle -> IO Signal
 receive h = do
 
+      -- TODO: Add timeout to prevent Slowloris
+
       let int2int = fromIntegral :: Int64 -> Int
 
           -- Size of an encoded Int64 in bytes
