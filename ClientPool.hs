@@ -80,9 +80,11 @@ sendEdgeRequest env node dir = atomically $
 --   nodes.
 housekeeping :: Environment -> IO ()
 housekeeping env = forever $ do
-      sendKeepAlive env
+      -- Order matters: remove dead neighbours first, then send KeepAlive
+      -- signals
       removeTimedOut env
       removeDeadClients env
+      sendKeepAlive env
       threadDelay (_keepAliveTickRate $ _config env)
 
 
@@ -90,7 +92,24 @@ housekeeping env = forever $ do
 -- | Sends KeepAlive signals to downstream nodes so they can update their "last
 --   heard of" timestamp
 sendKeepAlive :: Environment -> IO ()
-sendKeepAlive env = atomically $ writeTBQueue (_st1c env) KeepAlive
+sendKeepAlive env = do
+
+      (Timestamp now) <- makeTimestamp
+
+      -- Get a map of all registered clients
+      clients <- atomically $ readTVar (_knownNodes env)
+
+      -- Find out which ones haven't been contacted in a while
+      let lastHeard client = let (Timestamp t) = _clientTimestamp client
+                             in  now - t
+          threshold = (_poolTimeout._config) env / 5 -- TODO: make the factor an option
+          needsRefreshing client = lastHeard client >= threshold
+          needKeepAlive = Map.filter needsRefreshing clients
+          -- Sends a KeepAlive signal to the client's dedicated channel
+          sendSignal chan = atomically $ writeTBQueue chan KeepAlive
+
+      void $ traverse (sendSignal._clientQueue) needKeepAlive
+
 
 
 
@@ -102,7 +121,9 @@ removeTimedOut env = do
             -- TODO: check whether the </- are right :-)
             let notTimedOut (Timestamp t) = now - t < (_poolTimeout._config) env
             modifyTVar (_knownBy env) (Map.filter notTimedOut)
-            -- TODO terminate corresponding connection
+            -- TODO: terminate corresponding connection (right now I *think*
+            --       timeouts will eventually do this, but explicit termination
+            --       would be a cleaner solution.
 
 
 
@@ -113,7 +134,7 @@ removeDeadClients env = do
       -- knownNodes :: Map Node (Async ())
       knownNodes <- atomically $ readTVar (_knownNodes env)
       -- polledClients :: Map Node (Maybe Either <...>)
-      polledClients <- sequenceA $ fmap poll knownNodes
+      polledClients <- sequenceA $ fmap (poll._clientAsync) knownNodes
 
       let -- deadNodes :: [Node]
           deadNodes = Map.keys $ Map.filter isJust polledClients

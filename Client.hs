@@ -15,7 +15,7 @@ import qualified Data.Map as Map
 
 
 import Types
-import Utilities (untilTerminate, send, toIO, connectToNode)
+import Utilities (untilTerminate, send, toIO, connectToNode, makeTimestamp)
 
 
 
@@ -25,10 +25,15 @@ forkNewClient env targetNode = do
       let -- Shortcut function to add/delete nodes to the database
           updateKnownNodes = atomically . modifyTVar (_knownNodes env)
 
+      -- Setup queue for talking directly to the speicif client created here
+      stsc <- newTBQueueIO (_maxChanSize $ _config env)
+
       (`finally` updateKnownNodes (Map.delete targetNode)) $
-            withAsync (newClient env targetNode) $ \nodeAsync -> do
-                  updateKnownNodes $ Map.insert targetNode nodeAsync
-                  wait nodeAsync
+            withAsync (newClient env targetNode stsc) $ \thread -> do
+                  timestamp <- makeTimestamp
+                  let dsn = Client timestamp thread stsc
+                  updateKnownNodes $ Map.insert targetNode dsn
+                  wait thread
 
 
 
@@ -37,12 +42,12 @@ forkNewClient env targetNode = do
 -- Initializes a new client, and then starts the client loop. Does not check
 -- whether there is any space in the client pool; that's the job of the function
 -- that sends the newClient command (i.e. the server).
-newClient :: Environment -> Node -> IO ()
-newClient env targetNode =
+newClient :: Environment -> Node -> TBQueue Signal -> IO ()
+newClient env targetNode stsc =
       bracket (connectToNode targetNode) hClose $ \h -> do
             send h IAddedYou
             stc <- atomically $ dupTChan (_stc env)
-            clientLoop env h stc (_st1c env)
+            clientLoop env h stc (_st1c env) stsc
 
 
 
@@ -50,13 +55,17 @@ newClient env targetNode =
 -- meant to be handled by only one client), and executes their orders.
 clientLoop :: Environment
            -> Handle
-           -> TChan Signal
-           -> TBQueue Signal
+           -> TChan Signal   -- ^ Server to all clients
+           -> TBQueue Signal -- ^ Server to arbitrary client
+           -> TBQueue Signal -- ^ Server to this specific client
            -> IO ()
-clientLoop env h stc st1c = untilTerminate $ do
+clientLoop env h stc st1c stsc = untilTerminate $ do
 
       -- Receive orders from whatever channel is first available
-      signal <- atomically $ msum [readTChan stc, readTBQueue st1c]
+      signal <- atomically $ msum [ readTChan stc
+                                  , readTBQueue st1c
+                                  , readTBQueue stsc
+                                  ]
 
       -- Listen to the order channels and execute them
       case signal of

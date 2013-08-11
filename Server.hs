@@ -156,7 +156,7 @@ notYourNeighbour env complainer = do
       -- Determine the Async of the client to kick
       kick <- atomically $ Map.lookup complainer <$> readTVar (_knownNodes env)
       -- Cancel client
-      maybe (return ()) cancel kick
+      maybe (return ()) (cancel._clientAsync) kick
       -- NB: The client will remove itself from the pool when it is kicked. If
       --     that doesn't work, the client pool will periodically clean up as
       --     well, so there's no need for de-registering the client here.

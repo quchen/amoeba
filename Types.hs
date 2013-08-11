@@ -13,6 +13,8 @@ module Types (
       , Timestamp(..)
       , Node(..)
       , Proceed(..)
+      , Client(..)
+      ,
 ) where
 
 import Control.Concurrent.STM
@@ -35,8 +37,10 @@ data Environment = Environment {
 
       -- Mutable environment
 
-        _knownNodes :: TVar (Map Node (Async ()))
-                                       -- ^ Neighbours the current node knows
+        _knownNodes :: TVar (Map Node Client)
+                                       -- ^ Neighbours the current node knows,
+                                       --   and when they have last been sent
+                                       --   a signal
 
       , _knownBy    :: TVar (Map Node Timestamp)
                                        -- ^ Nodes the current node knows it's
@@ -65,6 +69,12 @@ data Environment = Environment {
       , _config     :: Config          -- ^ Program start configuration
 
       }
+
+-- | Unifies everything the list of known nodes has to store
+data Client = Client { _clientTimestamp :: Timestamp
+                     , _clientAsync     :: Async ()
+                     , _clientQueue     :: TBQueue Signal
+                     }
 
 
 -- | Configuration parameters accessible before anything goes online.
