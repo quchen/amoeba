@@ -5,7 +5,9 @@
 -- TODO: Create "network snapshot" type message to generate GraphViz pictures
 --       of how everything looks like
 -- TODO: Randomly replace downstream neighbours
-
+-- TODO: Create a new signal that makes every node send a list of neighbours to
+--       a specific node, which then constructs a GraphViz representation of the
+--       network
 
 
 
@@ -21,14 +23,14 @@ import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
+import           Network
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import           Network
 
-import Server (serverLoop, randomSocket)
-import ClientPool
-import Types
 import Bootstrap (bootstrap)
+import ClientPool
+import Server (serverLoop, randomSocket)
+import Types
 
 
 
@@ -72,7 +74,7 @@ initEnvironment :: Node -> Config -> IO Environment
 initEnvironment node config = Environment
 
       <$> newTVarIO Map.empty -- Known nodes
-      <*> newTVarIO Map.empty -- Nodes known by plus last signal timestamps
+      <*> newTVarIO Map.empty -- Nodes known by
       <*> newBroadcastTChanIO -- Channel to all clients
       <*> newTBQueueIO size   -- Channel to one client
       <*> newTBQueueIO size   -- Channel to the IO thread

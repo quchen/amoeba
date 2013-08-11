@@ -52,13 +52,24 @@ randomPort config = PortNumber . fromIntegral <$> randomRIO (_portRange config)
 
 
 -- | Forks off a worker for each incoming connection.
-serverLoop :: Socket -> Environment -> IO ()
+serverLoop :: Socket
+           -> Environment
+           -> IO ()
 serverLoop socket env = forever $ do
 
       -- Accept incoming connections
-      connection@(h, _, _) <- accept socket
-      hSetBinaryMode h True
-      forkIO $ worker connection env
+      connection@(h, host, port) <- accept socket
+      let fromNode = Node { _host = host, _port = port }
+
+      isUpstream <- atomically $ Map.member fromNode <$> readTVar (_knownBy env)
+
+      -- Ignore connections from nodes that aren't registered upstream
+      -- TODO: Create a flag so that certain clients omit this check in order to
+      --       help new clients connect to the network easier
+      when isUpstream $ do
+            hSetBinaryMode h True
+            void . forkIO $ worker env h fromNode
+            -- TODO: close handle after the worker is done
 
 
 
@@ -67,10 +78,11 @@ serverLoop socket env = forever $ do
 -- | Handles an incoming connection: Pass incoming work orders on to clients,
 --   print chat messages etc.
 --   (The first parameter is the same as in the result of Network.accept.)
-worker :: (Handle, HostName, PortNumber)
-       -> Environment
+worker :: Environment
+       -> Handle
+       -> Node
        -> IO ()
-worker (h, host, port) env = untilTerminate $ do
+worker env h fromNode = untilTerminate $ do
 
       -- TODO: Ignore signals sent by nodes not registered as upstream.
       --       Open issues:
@@ -80,7 +92,6 @@ worker (h, host, port) env = untilTerminate $ do
       -- Update "last heard of" timestamp. Note that this will not add a valid
       -- return address (but some address the incoming connection happens to
       -- have)!
-      let fromNode = Node { _host = host, _port = port }
       makeTimestamp >>= atomically . updateKnownBy env fromNode
 
       -- TODO: Housekeeping to delete already handled messages
@@ -119,11 +130,13 @@ yourHostIs env = do
       return Continue
 
 
+
 bootstrapRequest :: Environment -> IO Proceed
 bootstrapRequest env = do
       atomically . toIO env . putStrLn $
             "BootstrapRequest signal received without bootstrap process, ignoring"
       return Continue
+
 
 
 -- | Acknowledges an incoming KeepAlive signal, which is effectively a no-op,
@@ -134,6 +147,7 @@ keepAlive env origin = do
       atomically . toIO env . putStrLn $
             "KeepAlive signal received from " ++ show origin
       return Continue
+
 
 
 -- | A downstream node has received a signal from this node without having it
@@ -208,24 +222,21 @@ updateKnownBy env node timestamp = modifyTVar (_knownBy env) $
 
 
 
--- | When received, remove the issuing node from the database to ease network
---   cleanup.
+-- | Remove the issuing node from the database
 shuttingDown :: Environment
              -> Node
              -> IO Proceed
 shuttingDown env node = atomically $ do
 
       -- Status message
-      let action = printf "Shutdown notice from %s:%s"
-                          (show $ _host node)
-                          (show $ _port node)
+      let action = printf "Shutdown notice from %s:%s" (show $ _host node)
+                                                       (show $ _port node)
       writeTBQueue (_io env) action
 
       -- Remove from lists of known nodes and nodes known by
       modifyTVar (_knownBy env) (Map.delete node)
 
-      return Terminate -- The other node is shutting down, there's no need to
-                       -- maintain a worker for it.
+      return Continue
 
 
 
@@ -330,6 +341,11 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
                             else bounceOn
 
       return Continue
+
+      -- TODO: What should happen if a client manipulates the denial probability
+      --       or the number of bounces left? There should be a maximum "bounce
+      --       on" value, and p should be constrained between .1 and .9 or so.
+
 
 -- Bad signal received. "Else" case of the function's pattern.
 edgeBounce env signal = do

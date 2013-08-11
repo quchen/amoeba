@@ -47,13 +47,13 @@ clientPoolLoop env = forever $ do
       -- Enough downstream neighbours?
       when (numKnownNodes < minNeighbours) $ do  -- Send out requests
             let deficit = minNeighbours - numKnownNodes
-            forM_ [1..deficit] $ \_ -> sendEdgeRequest env (_self env) Outgoing
+            forM_ [1..deficit] $ \_ -> sendEdgeRequest env Outgoing
 
       -- Enough upstream neighbours?
       when (numKnownBy < minNeighbours) $ do
             -- Send out announces
             let deficit = minNeighbours - numKnownBy
-            forM_ [1..deficit] $ \_ -> sendEdgeRequest env (_self env) Incoming
+            forM_ [1..deficit] $ \_ -> sendEdgeRequest env Incoming
 
       threadDelay $ _poolTickRate (_config env)
 
@@ -61,15 +61,17 @@ clientPoolLoop env = forever $ do
 
 
 
--- | Sends out a request for either an incoming (announce) or outgoing (request)
---   edge to the network.
+-- | Sends out a request for either an incoming  or outgoing edge to the
+--   network.
 sendEdgeRequest :: Environment
-                -> Node
                 -> Direction
                 -> IO ()
-sendEdgeRequest env node dir = atomically $
-      writeTBQueue (_st1c env) $
-            EdgeRequest node . EdgeData dir . Left $ (_bounces._config) env
+sendEdgeRequest env dir = atomically $
+                          writeTBQueue (_st1c env) $
+                          EdgeRequest (_self env) $
+                          EdgeData dir $
+                          Left $
+                          (_bounces._config) env
 
 
 
@@ -118,7 +120,6 @@ removeTimedOut :: Environment -> IO ()
 removeTimedOut env = do
       (Timestamp now) <- makeTimestamp
       atomically $ do
-            -- TODO: check whether the </- are right :-)
             let notTimedOut (Timestamp t) = now - t < (_poolTimeout._config) env
             modifyTVar (_knownBy env) (Map.filter notTimedOut)
             -- TODO: terminate corresponding connection (right now I *think*
