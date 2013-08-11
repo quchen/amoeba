@@ -7,17 +7,18 @@ module Server (
       serverLoop
 ) where
 
-import           System.Random
 import           Control.Concurrent
+import           Control.Concurrent.Async (cancel)
 import           Control.Concurrent.STM
+import           Control.Exception
 import           Control.Monad
 import           Data.Functor
-import           Text.Printf
-import qualified Data.Set               as Set
-import qualified Data.Map               as Map
 import           Network
 import           System.IO
-import           Control.Exception
+import           System.Random
+import           Text.Printf
+import qualified Data.Map               as Map
+import qualified Data.Set               as Set
 
 
 import Types
@@ -93,18 +94,16 @@ worker (h, host, port) env = untilTerminate $ do
       --       signal came in.
 
       case signal of
-            TextMessage {}     -> floodMessage env signal
-            ShuttingDown node  -> shuttingDown env node
+            TextMessage {}     -> floodMessage      env signal
+            ShuttingDown node  -> shuttingDown      env node
             IAddedYou          -> iAddedYouReceived env fromNode
-            AddMe              -> addMeReceived env fromNode
-            EdgeRequest {}     -> edgeBounce env signal
-            KeepAlive          -> keepAlive env fromNode
-            NotYourNeighbour   -> error("Implement NotYourNeighbour handling") -- TODO
-            YourHostIs {}      -> yourHostIs env
-            BootstrapRequest _ -> bootstrapRequest env
-                               -- TODO: Ignore. Bootstrap requests
-                                            --       are only taken by the
-                                            --       bootstrap server.
+            AddMe              -> addMeReceived     env fromNode
+            EdgeRequest {}     -> edgeBounce        env signal
+            KeepAlive          -> keepAlive         env fromNode
+            NotYourNeighbour   -> notYourNeighbour  env fromNode
+            YourHostIs {}      -> yourHostIs        env
+            BootstrapRequest _ -> bootstrapRequest  env
+
 
 
 
@@ -134,6 +133,34 @@ keepAlive :: Environment -> Node -> IO Proceed
 keepAlive env origin = do
       atomically . toIO env . putStrLn $
             "KeepAlive signal received from " ++ show origin
+      return Continue
+
+
+-- | A downstream node has received a signal from this node without having it
+--   in its list of upstream neighbours. A a result, it tells the issuing node
+--   that it will ignore its requests.
+--
+-- The purpose of this is twofold:
+--
+--   - Nodes can only be contacted by other registered nodes. A malicious
+--     network of other nodes cannot nuke a node with illegal requests, because
+--     it will just ignore all the illegally created ones.
+--
+--   - If a node doesn't send a signal for too long, it will time out. When it
+--     starts sending new signals, it will be told that it was dropped.
+notYourNeighbour :: Environment -> Node -> IO Proceed
+notYourNeighbour env complainer = do
+      atomically . toIO env . putStrLn $
+            "NotYourNeighbour signal received from " ++ show complainer
+
+      -- Determine the Async of the client to kick
+      kick <- atomically $ Map.lookup complainer <$> readTVar (_knownNodes env)
+      -- Cancel client
+      maybe (return ()) cancel kick
+      -- NB: The client will remove itself from the pool when it is kicked. If
+      --     that doesn't work, the client pool will periodically clean up as
+      --     well, so there's no need for de-registering the client here.
+
       return Continue
 
 
@@ -168,13 +195,14 @@ floodMessage env signal = do
 
 
 
--- | Inserts or updates the timestamp in the "last heard of" database.
+-- | Inserts or updates the timestamp in the "last heard of" database. Does
+--   nothing if the node isn't registered upstream.
 updateKnownBy :: Environment
               -> Node
               -> Timestamp
               -> STM ()
 updateKnownBy env node timestamp = modifyTVar (_knownBy env) $
-                                                       Map.insert node timestamp
+                                               Map.adjust (const timestamp) node
 
 
 

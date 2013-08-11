@@ -24,9 +24,13 @@ forkNewClient :: Environment -> Node -> IO ()
 forkNewClient env targetNode = do
       let -- Shortcut function to add/delete nodes to the database
           updateKnownNodes = atomically . modifyTVar (_knownNodes env)
-      withAsync (newClient env targetNode) $ \nodeAsync -> do
-            updateKnownNodes $ Map.insert targetNode nodeAsync
-            wait nodeAsync
+
+      (`finally` updateKnownNodes (Map.delete targetNode)) $
+            withAsync (newClient env targetNode) $ \nodeAsync -> do
+                  updateKnownNodes $ Map.insert targetNode nodeAsync
+                  wait nodeAsync
+
+
 
 
 
