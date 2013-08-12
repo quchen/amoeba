@@ -34,12 +34,13 @@ forkNewClient env targetNode = do
       -- Setup queue for talking directly to the speicif client created here
       stsc <- newTBQueueIO (_maxChanSize $ _config env)
 
-      (`finally` updateKnownNodes (Map.delete targetNode)) $
-            withAsync (newClient env targetNode stsc) $ \thread -> do
-                  timestamp <- makeTimestamp
-                  let dsn = Client timestamp thread stsc
-                  updateKnownNodes $ Map.insert targetNode dsn
-                  wait thread
+
+      withAsync (newClient env targetNode stsc) $ \thread -> do
+            timestamp <- makeTimestamp
+            let client = Client timestamp thread stsc
+            updateKnownNodes $ Map.insert targetNode client
+            wait thread
+                  `finally` updateKnownNodes (Map.delete targetNode)
 
 
 

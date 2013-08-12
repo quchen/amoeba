@@ -8,7 +8,7 @@ module Server (
 ) where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async (cancel)
+import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
@@ -58,8 +58,8 @@ serverLoop :: Socket
 serverLoop socket env = forever $ do
 
       -- Accept incoming connections
-      connection@(h, host, port) <- accept socket
-      let fromNode = Node { _host = host, _port = port }
+      connection@(handle, host, port) <- accept socket
+      let fromNode = Node host port
 
       -- TODO: Ignore connections from nodes that aren't registered upstream,
       --       depending on the signal
@@ -68,10 +68,15 @@ serverLoop socket env = forever $ do
 
       -- TODO: Create a flag so that certain clients omit this check in order to
       --       help new clients connect to the network easier
-      when isUpstream $ do
-            hSetBinaryMode h True
-            void . forkIO $ worker env h fromNode
-            -- TODO: close handle after the worker is done
+      if isUpstream
+            then do
+                  hSetBinaryMode handle True
+                  withAsync (worker env handle fromNode) wait
+                        `finally` hClose handle
+            else
+                  atomically . toIO env Debug . putStrLn $
+                        "Ignoring connection from non-upstream node " ++
+                        show fromNode
 
 
 

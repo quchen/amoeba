@@ -8,6 +8,7 @@
 -- TODO: Create a new signal that makes every node send a list of neighbours to
 --       a specific node, which then constructs a GraphViz representation of the
 --       network
+-- TODO: Write options parser
 
 
 
@@ -58,11 +59,12 @@ startNode = do
             -- Setup all the communication channels
             env <- initEnvironment (Node host port) config
 
-            -- Start server loop
-            withAsync (serverLoop socket env) $ \server -> do
-                  void . forkIO $ outputThread (_io env) -- Dedicated IO thread
-                  void . forkIO $ clientPool env -- Client pool
-                  wait server
+            withAsync (serverLoop socket env)  $ \server  -> do
+            withAsync (outputThread $ _io env) $ \_output -> do
+            withAsync (clientPool env)         $ \_cPool  -> do
+            wait server
+            -- NB: When the server finishes, the other asyncs are canceled by
+            --     withAsync.
 
 
 

@@ -21,7 +21,9 @@ import Utilities (makeTimestamp)
 --
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
-clientPool env = forkIO (housekeeping env) *> clientPoolLoop env
+clientPool env = withAsync (clientPoolLoop env) $ \cPool  -> do
+                 withAsync (housekeeping env)   $ \_hkeep -> do
+                 wait cPool
 
 
 
