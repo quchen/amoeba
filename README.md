@@ -5,12 +5,24 @@ Amoeba is a program for setting up a decentralized network. The name comes from 
 
 **Amoeba is currently in the phase that comes before Alpha (coding, compiling, but not running it because it's full of placeholders).**
 
+
+
 Planned features
 ----------------
 
 - Every node only knows about its immediate neighbours. Unless explicitly added, the origin of a signal sent over the network is untraceable.
-- Every subprocess has its own thread, using message passing to communicate.
-- The network should be robust against bad data input, e.g. from a client that sends nonsense (or even wrong) requests.
+
+- Highly concurrent nodes (one thread per connection) using message passing to communicate.
+
+- Robustness: Network integrity should be maintained even in case of:
+
+    - Bad/too long/too many requests
+
+    - Failure of a comparatively small amount of nodes
+
+    - Malicious minorities
+
+
 
 Research goals
 --------------
@@ -28,6 +40,26 @@ Research goals
     - A small number of modified nodes accept every edge request, i.e. every time a node tries to connect to the network, the malicious nodes accept it (instead of possibly relaying it). These malicious nodes will eventually gather up connections to a *lot* of nodes. For a certain (but small) number of such modified nodes, the network integrity could be endangered, e.g. when they filter new edge requests.
 
     - Rubbish data: How much is the network affected by spamming it with nonsense edge requests?
+
+
+
+Network description
+-------------------
+
+An outline of how the network looks like:
+
+- All nodes run identical programs.
+
+- Each node has a number of upstream and downstream neighbours, which are allowed to send data to the current node, or accept data sent by it, respectively. It has no knowledge about the network other than its neighbours.
+
+- Nodes have a minimum and maximum number of neighbours for both upstream and downstream connections (independent of each other). If there is a deficit of connections, nodes will request new neighbours from the network; if there is a surplus, no new connections will be accepted; if there is neither, no requests will be sent, but incoming requests will be processed.
+
+- If a node has a deficit in connections, it will randomly tell one of its neighbours of it. This is called an EdgeRequest, and contains its own address, and parameters determining how far the request should travel through the network. The EdgeRequest is relayed by receiving nodes a number of times, passing it on to one of their own downstream neighbours, until eventually one of them accepts the request, and establishes the desired connection with the initially issuing node.
+
+- Initial connection is made using a specialized bootstrap server, which has a known address. This server is not part of the network, it only serves to point new clients to existing nodes.
+
+- To look at the large scale structure of the network, a specialized request can be made by a specialized graph plot server. This request makes every client send a list of all its neighbours to the plot server. (This is strictly a debugging tool, since it opens the door for a truckload of attacks.)
+
 
 
 Terminology
