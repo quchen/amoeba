@@ -23,7 +23,7 @@ import Utilities (untilTerminate, send, toIO, connectToNode, makeTimestamp)
 forkNewClient :: Environment -> Node -> IO ()
 forkNewClient env targetNode = do
       let -- Shortcut function to add/delete nodes to the database
-          updateKnownNodes = atomically . modifyTVar (_knownNodes env)
+          updateKnownNodes = atomically . modifyTVar (_downstream env)
 
       -- Setup queue for talking directly to the speicif client created here
       stsc <- newTBQueueIO (_maxChanSize $ _config env)

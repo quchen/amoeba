@@ -40,7 +40,7 @@ clientPoolLoop env = forever $ do
       let mapSize db = fromIntegral . Map.size <$> readTVar (db env)
                         -- ^ fromIntegral :: Int -> Word
       (numKnownNodes, numKnownBy) <- atomically $
-            liftA2 (,) (mapSize _knownNodes) (mapSize _knownBy)
+            liftA2 (,) (mapSize _downstream) (mapSize _upstream)
 
       let minNeighbours = _minNeighbours (_config env)
 
@@ -99,7 +99,7 @@ sendKeepAlive env = do
       (Timestamp now) <- makeTimestamp
 
       -- Get a map of all registered clients
-      clients <- atomically $ readTVar (_knownNodes env)
+      clients <- atomically $ readTVar (_downstream env)
 
       -- Find out which ones haven't been contacted in a while
       let lastHeard client = let (Timestamp t) = _clientTimestamp client
@@ -121,7 +121,7 @@ removeTimedOut env = do
       (Timestamp now) <- makeTimestamp
       atomically $ do
             let notTimedOut (Timestamp t) = now - t < (_poolTimeout._config) env
-            modifyTVar (_knownBy env) (Map.filter notTimedOut)
+            modifyTVar (_upstream env) (Map.filter notTimedOut)
             -- TODO: terminate corresponding connection (right now I *think*
             --       timeouts will eventually do this, but explicit termination
             --       would be a cleaner solution.
@@ -133,7 +133,7 @@ removeDeadClients :: Environment -> IO ()
 removeDeadClients env = do
       -- Send a poll request to all currently running clients.
       -- knownNodes :: Map Node (Async ())
-      knownNodes <- atomically $ readTVar (_knownNodes env)
+      knownNodes <- atomically $ readTVar (_downstream env)
       -- polledClients :: Map Node (Maybe Either <...>)
       polledClients <- sequenceA $ fmap (poll._clientAsync) knownNodes
 
@@ -141,7 +141,7 @@ removeDeadClients env = do
           deadNodes = Map.keys $ Map.filter isJust polledClients
 
       -- Finally, remove all dead nodes by their just found out keys
-      atomically $ modifyTVar (_knownNodes env) $ \known ->
+      atomically $ modifyTVar (_downstream env) $ \known ->
             foldr Map.delete known deadNodes
 
 

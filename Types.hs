@@ -37,12 +37,12 @@ data Environment = Environment {
 
       -- Mutable environment
 
-        _knownNodes :: TVar (Map Node Client)
+        _downstream :: TVar (Map Node Client)
                                        -- ^ Neighbours the current node knows,
                                        --   and when they have last been sent
                                        --   a signal
 
-      , _knownBy    :: TVar (Map Node Timestamp)
+      , _upstream    :: TVar (Map Node Timestamp)
                                        -- ^ Nodes the current node knows it's
                                        --   a downstream neighbour of, or
                                        --   equivalently the set of upstream

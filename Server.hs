@@ -61,7 +61,7 @@ serverLoop socket env = forever $ do
       connection@(h, host, port) <- accept socket
       let fromNode = Node { _host = host, _port = port }
 
-      isUpstream <- atomically $ Map.member fromNode <$> readTVar (_knownBy env)
+      isUpstream <- atomically $ Map.member fromNode <$> readTVar (_upstream env)
 
       -- Ignore connections from nodes that aren't registered upstream
       -- TODO: Create a flag so that certain clients omit this check in order to
@@ -168,7 +168,7 @@ notYourNeighbour env complainer = do
             "NotYourNeighbour signal received from " ++ show complainer
 
       -- Determine the Async of the client to kick
-      kick <- atomically $ Map.lookup complainer <$> readTVar (_knownNodes env)
+      kick <- atomically $ Map.lookup complainer <$> readTVar (_downstream env)
       -- Cancel client
       maybe (return ()) (cancel._clientAsync) kick
       -- NB: The client will remove itself from the pool when it is kicked. If
@@ -215,7 +215,7 @@ updateKnownBy :: Environment
               -> Node
               -> Timestamp
               -> STM ()
-updateKnownBy env node timestamp = modifyTVar (_knownBy env) $
+updateKnownBy env node timestamp = modifyTVar (_upstream env) $
                                                Map.adjust (const timestamp) node
 
 
@@ -234,7 +234,7 @@ shuttingDown env node = atomically $ do
       writeTBQueue (_io env) action
 
       -- Remove from lists of known nodes and nodes known by
-      modifyTVar (_knownBy env) (Map.delete node)
+      modifyTVar (_upstream env) (Map.delete node)
 
       return Continue
 
@@ -255,7 +255,7 @@ iAddedYou :: Environment
 iAddedYou env node = do
       timestamp <- makeTimestamp
       atomically $ do
-            modifyTVar (_knownBy env) (Map.insert node timestamp)
+            modifyTVar (_upstream env) (Map.insert node timestamp)
             toIO env $ putStrLn $ "New upstream neighbour: " ++ show node
       return Continue -- Let's not close the door in front of our new friend :-)
 
@@ -332,11 +332,11 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
       case (allowed && acceptEdge, dir) of
             (False, _) -> bounceOn
             (_, Outgoing) -> do
-                  isRoom <- isRoomIn (_knownNodes env)
+                  isRoom <- isRoomIn (_downstream env)
                   if isRoom then acceptOutgoingRequest env origin
                             else bounceOn
             (_, Incoming) -> do
-                  isRoom <- isRoomIn (_knownBy env)
+                  isRoom <- isRoomIn (_upstream env)
                   if isRoom then forkNewClient env origin
                             else bounceOn
 
@@ -403,8 +403,8 @@ isAllowed env dir origin = do
       --    upstream
       let isInDatabase db = atomically $ Map.member origin <$> readTVar db
       isAlreadyKnown <- case dir of
-            Incoming -> isInDatabase (_knownNodes env)
-            Outgoing -> isInDatabase (_knownBy env)
+            Incoming -> isInDatabase (_downstream env)
+            Outgoing -> isInDatabase (_upstream env)
 
       return $ isSelf || isAlreadyKnown
 
