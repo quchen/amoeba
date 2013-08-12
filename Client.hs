@@ -19,6 +19,12 @@ import Utilities (untilTerminate, send, toIO, connectToNode, makeTimestamp)
 
 
 
+-- TODO: Make sure the client terminates properly in case something fails,
+--       i.e. it is removed from the client pool and the handle is closed
+--       if necessary
+
+
+
 -- Starts a new client in a separate thread.
 forkNewClient :: Environment -> Node -> IO ()
 forkNewClient env targetNode = do
@@ -67,15 +73,17 @@ clientLoop env h stc st1c stsc = untilTerminate $ do
                                   , readTBQueue stsc
                                   ]
 
-      -- Listen to the order channels and execute them
+      -- TODO: terminate if the handle is closed
+
+      -- Execute incoming actions
       case signal of
             TextMessage {} -> send h signal
             EdgeRequest {} -> send h signal
             -- TODO: Implement other signals
-            _otherwise  -> atomically $ toIO env $
+            _otherwise  -> atomically $ toIO env Debug $
                   putStrLn $ "Error: The signal " ++ show signal ++ " should"
                                         ++ " never have been sent to a client"
-                                        ++ error "Implement other signals"
+                                        ++ error "TODO: Implement other signals"
 
 
       -- TODO: Termination

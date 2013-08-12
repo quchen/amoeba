@@ -127,7 +127,7 @@ worker env h fromNode = untilTerminate $ do
 --   Bootstrap. In case it gets one anyway, this function is called.
 yourHostIs :: Environment -> IO Proceed
 yourHostIs env = do
-      atomically . toIO env . putStrLn $
+      atomically . toIO env Debug . putStrLn $
             "YourHostIs signal received without bootstrap process, ignoring"
       return Continue
 
@@ -135,7 +135,7 @@ yourHostIs env = do
 
 bootstrapRequest :: Environment -> IO Proceed
 bootstrapRequest env = do
-      atomically . toIO env . putStrLn $
+      atomically . toIO env Debug . putStrLn $
             "BootstrapRequest signal received without bootstrap process, ignoring"
       return Continue
 
@@ -146,7 +146,7 @@ bootstrapRequest env = do
 --   timestamp".
 keepAlive :: Environment -> Node -> IO Proceed
 keepAlive env origin = do
-      atomically . toIO env . putStrLn $
+      atomically . toIO env Chatty . putStrLn $
             "KeepAlive signal received from " ++ show origin
       return Continue
 
@@ -166,7 +166,7 @@ keepAlive env origin = do
 --     starts sending new signals, it will be told that it was dropped.
 notYourNeighbour :: Environment -> Node -> IO Proceed
 notYourNeighbour env complainer = do
-      atomically . toIO env . putStrLn $
+      atomically . toIO env Debug . putStrLn $
             "NotYourNeighbour signal received from " ++ show complainer
 
       -- Determine the Async of the client to kick
@@ -199,7 +199,7 @@ floodMessage env signal = do
 
             -- Print message on the current node
             let (TextMessage _timestamp message) = signal -- TODO: Handle pattern mismatch
-            toIO env $ putStrLn message
+            toIO env Quiet $ putStrLn message
 
             -- Propagate message on to all clients
             writeTChan (_stc env) signal
@@ -233,7 +233,8 @@ shuttingDown env node = atomically $ do
       -- Status message
       let action = printf "Shutdown notice from %s:%s" (show $ _host node)
                                                        (show $ _port node)
-      writeTBQueue (_io env) action
+
+      toIO env Debug action
 
       -- Remove from lists of known nodes and nodes known by
       modifyTVar (_upstream env) (Map.delete node)
@@ -258,7 +259,7 @@ iAddedYou env node = do
       timestamp <- makeTimestamp
       atomically $ do
             modifyTVar (_upstream env) (Map.insert node timestamp)
-            toIO env $ putStrLn $ "New upstream neighbour: " ++ show node
+            toIO env Debug $ putStrLn $ "New upstream neighbour: " ++ show node
       return Continue -- Let's not close the door in front of our new friend :-)
 
 
@@ -306,12 +307,11 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Left n))) = do
       atomically $ do
             writeTBQueue (_st1c env) . buildSignal $ case n of
                   0 -> Right (_acceptP $ _config env)
-                  k -> -- Cap the number of hard bounces with the current node's
-                       -- configuration to prevent "maxBound bounces left"
-                       -- attacks
-                       let k' = min (k - 1) (_acceptP $ _config env)
-                       in  Left k'
-            toIO env $ printf "Bounced %s (%d left)" (show origin) n
+                  k -> Left $ min (k - 1) (_bounces $ _config env)
+                       -- ^ Cap the number of hard bounces with the current
+                       -- node's configuration to prevent "maxBound bounces
+                       -- left" attacks
+            toIO env Chatty $ printf "Bounced %s (%d left)" (show origin) n
 
       return Continue
 
@@ -322,14 +322,13 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Left n))) = do
 -- the reason was not enough room.)
 edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
 
-      -- "Bounce on" action with denial probabillity decreased by lambda
-      let buildSignal = EdgeRequest origin . EdgeData dir
-          let -- The relayed acceptance probability is at least as high as the
-              -- one the relaying node uses. This prevents "small p" attacks
-              -- that bounce indefinitely.
-              p' = max p $ (_acceptP._config) env
-          bounceOn = atomically . writeTBQueue (_st1c env) $
-                buildSignal $ Right p'
+      -- Build "bounce on" action to relay signal if necessary
+      let buildSignal = EdgeRequest origin . EdgeData dir . Right
+          p' = max p $ (_acceptP._config) env
+          -- ^ The relayed acceptance probability is at least as high as the
+          -- one the relaying node uses. This prevents "small p" attacks
+          -- that bounce indefinitely.
+          bounceOn = atomically . writeTBQueue (_st1c env) $ buildSignal p'
 
       -- Checks whether there's still room for another entry. The TVar can
       -- either be the set of known or "known by" nodes.
@@ -344,26 +343,30 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
       -- room. In case of failure, bounce on.
       acceptEdge <- (> p) <$> randomRIO (0,1)
       case (allowed && acceptEdge, dir) of
-            (False, _) -> bounceOn
-            (_, Outgoing) -> do
+            (False ,_) -> do let msg = "Request denied, bouncing"
+                             atomically . toIO env Debug $ putStrLn msg
+                             bounceOn
+            (_, Outgoing) -> do -- TODO: Sub-method, running off screen here
                   isRoom <- isRoomIn (_downstream env)
                   if isRoom then acceptOutgoingRequest env origin
-                            else bounceOn
-            (_, Incoming) -> do
+                            else do let msg = "No room for incoming " ++
+                                              "connections, bouncing"
+                                    atomically . toIO env Chatty $ putStrLn msg
+                                    bounceOn
+            (_, Incoming) -> do -- TODO: Sub-method, running off screen here
                   isRoom <- isRoomIn (_upstream env)
-                  if isRoom then forkNewClient env origin
-                            else bounceOn
+                  if isRoom then forkNewClient env origin -- TODO: Message
+                            else do let msg = "No room for outgoing " ++
+                                              "connections, bouncing"
+                                    atomically . toIO env Chatty $ putStrLn msg
+                                    bounceOn
 
       return Continue
-
-      -- TODO: What should happen if a client manipulates the denial probability
-      --       or the number of bounces left? There should be a maximum "bounce
-      --       on" value, and p should be constrained between .1 and .9 or so.
 
 
 -- Bad signal received. "Else" case of the function's pattern.
 edgeBounce env signal = do
-      atomically $ toIO env $ printf ("Signal %s received by edgeBounce;"
+      atomically $ toIO env Debug $ printf ("Signal %s received by edgeBounce;"
                                     ++ "this should never happen") (show signal)
       return Continue
 

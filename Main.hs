@@ -97,6 +97,7 @@ defaultConfig = Config {
       , _poolTickRate      = 1 * 10^6
       , _keepAliveTickRate = 3 * 10^5
       , _poolTimeout       = 10
+      , _verbosity         = Chatty
 }
 
 

@@ -14,7 +14,7 @@ module Types (
       , Node(..)
       , Proceed(..)
       , Client(..)
-      ,
+      , Verbosity(..)
 ) where
 
 import Control.Concurrent.STM
@@ -108,6 +108,8 @@ data Config = Config {
       , _poolTimeout    :: Double     -- ^ Number of seconds before a
                                       --   non-responding node is considered
                                       --   gone
+      , _verbosity      :: Verbosity  -- ^ Determines quantity of messages
+                                      --   printed
 }
 
 
@@ -229,3 +231,16 @@ data Predicate = Question | Yes | No
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary Predicate
+
+
+-- | How many messages should be printed?
+data Verbosity = Chatty -- ^ *Everything*, e.g. passing bounces, keep-alive
+                        --   signals
+               | Debug  -- ^ Various status messages, e.g. gaining and losing
+                        --   neighbours
+               | Normal -- ^ Useful for normal execution, e.g. node deficit,
+                        --   chat messages
+               | Quiet  -- ^ Only messages intended for display, i.e. chat
+               | Mute   -- ^ Nothing, node just serves as a network helper
+      deriving (Eq, Ord, Show)
+      -- Note: Order matters in order to make `myVerbosity > x` work!

@@ -10,6 +10,7 @@ module Utilities (
 ) where
 
 import Data.Functor
+import Control.Monad
 import qualified Data.ByteString.Lazy as BS
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Int
@@ -75,8 +76,13 @@ send h signal = do
 
 
 -- | Sends an IO action to the IO thread.
-toIO :: Environment -> IO () -> STM ()
-toIO env = writeTBQueue (_io env)
+toIO' :: Environment -> IO () -> STM ()
+toIO' env = writeTBQueue (_io env)
+
+-- | Sends an IO action, depending on the verbosity level.
+toIO :: Environment -> Verbosity -> IO () -> STM ()
+toIO env verbosity = when p . toIO' env
+      where p = verbosity >= _verbosity (_config env)
 
 
 -- | Like Network.connectTo, but extracts the connection data from a @Node@
