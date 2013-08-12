@@ -93,7 +93,7 @@ defaultConfig = Config {
       , _maxChanSize       = 100
       , _maxRandomPorts    = 10
       , _bounces           = 3
-      , _lambda            = 1.5 -- TODO: Error on lambda <= 1
+      , _acceptP           = 0.5 -- TODO: Error if not 0 < p <= 1
       , _poolTickRate      = 1 * 10^6
       , _keepAliveTickRate = 3 * 10^5
       , _poolTimeout       = 10

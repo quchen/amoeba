@@ -98,10 +98,8 @@ data Config = Config {
                                       --   open port
 
       , _bounces        :: Word       -- ^ Number of initial bounces
-      , _lambda         :: Double     -- ^ Parameter for exponentially
-                                      --   distributed things. Each step, the
-                                      --   probability will decrease by a
-                                      --   factor lambda. Must be >= 1.
+      , _acceptP        :: Double     -- ^ Edge requesti acceptance probability
+                                      --   for the second bounce phase.
       , _poolTickRate   :: Int        -- ^ Every couple of milliseconds, the
                                       --   client pool will loop to maintain a
                                       --   proper connection to the network.

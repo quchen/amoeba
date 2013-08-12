@@ -281,6 +281,8 @@ iAddedYou env node = do
 --        me 5 times". This makes sure the signal traverses the network a
 --        certain amount, so the signal doesn't just stay in the issuing node's
 --        neighbourhood.
+--        Because of its definite "bounce on" nature, these are also referred to
+--        as "hard bounces".
 --
 --     2. Phase 2 is like phase 1, but instead of a counter, there's a denial
 --        probability. If there's room and the node rolls to keep the signal,
@@ -290,6 +292,8 @@ iAddedYou env node = do
 --        exponentially distributed bounce-on-length in phase 2. This solves the
 --        issue of having a long chain of nodes, where only having phase one
 --        would reach the same node every time.
+--        Because of the probabilistic travelling distance of these bounces,
+--        they are also referred to as "soft bounces".
 
 edgeBounce :: Environment
            -> Signal
@@ -301,8 +305,12 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Left n))) = do
       let buildSignal = EdgeRequest origin . EdgeData dir
       atomically $ do
             writeTBQueue (_st1c env) . buildSignal $ case n of
-                  0 -> Right $ 1 / (_lambda._config) env
-                  k -> Left  $ k - 1
+                  0 -> Right (_acceptP $ _config env)
+                  k -> -- Cap the number of hard bounces with the current node's
+                       -- configuration to prevent "maxBound bounces left"
+                       -- attacks
+                       let k' = min (k - 1) (_acceptP $ _config env)
+                       in  Left k'
             toIO env $ printf "Bounced %s (%d left)" (show origin) n
 
       return Continue
@@ -316,8 +324,12 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
 
       -- "Bounce on" action with denial probabillity decreased by lambda
       let buildSignal = EdgeRequest origin . EdgeData dir
-          bounceOn = atomically $ writeTBQueue (_st1c env) $
-                buildSignal . Right $ p / (_lambda._config) env
+          let -- The relayed acceptance probability is at least as high as the
+              -- one the relaying node uses. This prevents "small p" attacks
+              -- that bounce indefinitely.
+              p' = max p $ (_acceptP._config) env
+          bounceOn = atomically . writeTBQueue (_st1c env) $
+                buildSignal $ Right p'
 
       -- Checks whether there's still room for another entry. The TVar can
       -- either be the set of known or "known by" nodes.
