@@ -61,9 +61,11 @@ serverLoop socket env = forever $ do
       connection@(h, host, port) <- accept socket
       let fromNode = Node { _host = host, _port = port }
 
-      isUpstream <- atomically $ Map.member fromNode <$> readTVar (_upstream env)
+      -- TODO: Ignore connections from nodes that aren't registered upstream,
+      --       depending on the signal
+      -- isUpstream <- atomically $ Map.member fromNode <$> readTVar (_upstream env)
+      let isUpstream = True
 
-      -- Ignore connections from nodes that aren't registered upstream
       -- TODO: Create a flag so that certain clients omit this check in order to
       --       help new clients connect to the network easier
       when isUpstream $ do
@@ -350,7 +352,7 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
 -- Bad signal received. "Else" case of the function's pattern.
 edgeBounce env signal = do
       atomically $ toIO env $ printf ("Signal %s received by edgeBounce;"
-                                   ++ "this should never happen") (show signal)
+                                    ++ "this should never happen") (show signal)
       return Continue
 
 
