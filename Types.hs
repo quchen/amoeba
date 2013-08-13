@@ -8,6 +8,7 @@ module Types (
         Environment(..)
       , Config(..)
       , Signal(..)
+      , ServerResponse(..)
       , EdgeData(..)
       , Direction(..)
       , Timestamp(..)
@@ -172,11 +173,6 @@ data Signal =
         --   neighbour pool
       | ShuttingDown Node
 
-        -- | Sent to node that tries to connect without being a registered
-        --   upstream neighbour, so it can remove the current node from its
-        --   database.
-      | NotYourNeighbour
-
         -- | Text message.
       | TextMessage Timestamp String
 
@@ -192,6 +188,26 @@ data Signal =
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary Signal
+
+
+
+-- | Sent back to the client in response to an icoming signal
+data ServerResponse =
+
+        -- | Server response if the command received will be processed
+        OK
+
+        -- | Unspecified error
+      | Error
+
+        -- | Sent to node that tries to connect without being a registered
+        --   upstream neighbour
+      | NotYourNeighbour
+
+      deriving (Eq, Ord, Show, Generic)
+
+instance Binary ServerResponse
+
 
 
 

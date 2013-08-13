@@ -32,7 +32,7 @@ import Client (forkNewClient)
 randomSocket :: Config
              -> IO Socket
 randomSocket config = randomSocket' config (_maxRandomPorts config)
-      where randomSocket' _ 0 = error("Couldn't find free port")
+      where randomSocket' _ 0 = error("Couldn't find free port") -- TODO: Proper exception
             randomSocket' config n = do
                   socket <- randomPort config >>= try . listenOn
                   case socket :: Either SomeException Socket of
@@ -57,8 +57,12 @@ serverLoop :: Socket
            -> IO ()
 serverLoop socket env = forever $ do
 
+      bracket (accept socket)
+              (\(h,_,_) -> hClose h) $
+              \(handle, host, port) -> do
+
       -- Accept incoming connections
-      connection@(handle, host, port) <- accept socket
+      hSetBinaryMode handle True
       let fromNode = Node host port
 
       -- TODO: Ignore connections from nodes that aren't registered upstream,
@@ -69,14 +73,11 @@ serverLoop socket env = forever $ do
       -- TODO: Create a flag so that certain clients omit this check in order to
       --       help new clients connect to the network easier
       if isUpstream
-            then do
-                  hSetBinaryMode handle True
-                  withAsync (worker env handle fromNode) wait
-                        `finally` hClose handle
-            else
-                  atomically . toIO env Debug . putStrLn $
-                        "Ignoring connection from non-upstream node " ++
-                        show fromNode
+            then void.async $ worker env handle fromNode
+            else do void.async $ send handle NotYourNeighbour
+                    atomically . toIO env Debug . putStrLn $
+                          "Ignoring connection from non-upstream node " ++
+                          show fromNode
 
 
 
@@ -112,16 +113,14 @@ worker env h fromNode = untilTerminate $ do
       --       signal came in.
 
       case signal of
-            TextMessage {}     -> floodMessage      env signal
-            ShuttingDown node  -> shuttingDown      env node
-            IAddedYou          -> iAddedYouReceived env fromNode
-            AddMe              -> addMeReceived     env fromNode
-            EdgeRequest {}     -> edgeBounce        env signal
-            KeepAlive          -> keepAlive         env fromNode
-            NotYourNeighbour   -> notYourNeighbour  env fromNode
-            YourHostIs {}      -> yourHostIs        env
-            BootstrapRequest _ -> bootstrapRequest  env
-
+            TextMessage {}     -> send h OK    >> floodMessage      env signal
+            ShuttingDown node  -> send h OK    >> shuttingDown      env node
+            IAddedYou          -> send h OK    >> iAddedYouReceived env fromNode
+            AddMe              -> send h OK    >> addMeReceived     env fromNode
+            EdgeRequest {}     -> send h OK    >> edgeBounce        env signal
+            KeepAlive          -> send h OK    >> keepAlive         env fromNode
+            YourHostIs {}      -> send h OK    >> yourHostIs        env
+            BootstrapRequest _ -> send h Error >> bootstrapRequest  env
 
 
 
@@ -157,32 +156,7 @@ keepAlive env origin = do
 
 
 
--- | A downstream node has received a signal from this node without having it
---   in its list of upstream neighbours. A a result, it tells the issuing node
---   that it will ignore its requests.
---
--- The purpose of this is twofold:
---
---   - Nodes can only be contacted by other registered nodes. A malicious
---     network of other nodes cannot nuke a node with illegal requests, because
---     it will just ignore all the illegally created ones.
---
---   - If a node doesn't send a signal for too long, it will time out. When it
---     starts sending new signals, it will be told that it was dropped.
-notYourNeighbour :: Environment -> Node -> IO Proceed
-notYourNeighbour env complainer = do
-      atomically . toIO env Debug . putStrLn $
-            "NotYourNeighbour signal received from " ++ show complainer
 
-      -- Determine the Async of the client to kick
-      kick <- atomically $ Map.lookup complainer <$> readTVar (_downstream env)
-      -- Cancel client
-      maybe (return ()) (cancel._clientAsync) kick
-      -- NB: The client will remove itself from the pool when it is kicked. If
-      --     that doesn't work, the client pool will periodically clean up as
-      --     well, so there's no need for de-registering the client here.
-
-      return Continue
 
 
 

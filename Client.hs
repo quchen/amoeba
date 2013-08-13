@@ -9,6 +9,7 @@ import Control.Concurrent.STM
 import Control.Concurrent.Async
 import Control.Exception
 import System.IO
+import Data.Functor
 import Control.Monad
 import qualified Data.Map as Map
 
@@ -28,19 +29,16 @@ import Utilities (untilTerminate, send, toIO, connectToNode, makeTimestamp)
 -- Starts a new client in a separate thread.
 forkNewClient :: Environment -> Node -> IO ()
 forkNewClient env targetNode = do
-      let -- Shortcut function to add/delete nodes to the database
-          updateKnownNodes = atomically . modifyTVar (_downstream env)
 
-      -- Setup queue for talking directly to the speicif client created here
+      -- Setup queue for talking directly to the speicif client created here.
+      -- STSC = Server to Single Client
       stsc <- newTBQueueIO (_maxChanSize $ _config env)
-
 
       withAsync (newClient env targetNode stsc) $ \thread -> do
             timestamp <- makeTimestamp
             let client = Client timestamp thread stsc
-            updateKnownNodes $ Map.insert targetNode client
-            wait thread
-                  `finally` updateKnownNodes (Map.delete targetNode)
+            atomically . modifyTVar (_downstream env) $
+                                                    Map.insert targetNode client
 
 
 
@@ -51,10 +49,14 @@ forkNewClient env targetNode = do
 -- that sends the newClient command (i.e. the server).
 newClient :: Environment -> Node -> TBQueue Signal -> IO ()
 newClient env targetNode stsc =
-      bracket (connectToNode targetNode) hClose $ \h -> do
-            send h IAddedYou
-            stc <- atomically $ dupTChan (_stc env)
-            clientLoop env h stc (_st1c env) stsc
+      let release h = do
+               atomically . modifyTVar (_downstream env) $ Map.delete targetNode
+               hClose h
+
+      in bracket (connectToNode targetNode) release $ \h -> do
+               send h IAddedYou
+               stc <- atomically $ dupTChan (_stc env)
+               clientLoop env h stc (_st1c env) stsc
 
 
 
@@ -86,6 +88,8 @@ clientLoop env h stc st1c stsc = untilTerminate $ do
                                         ++ " never have been sent to a client"
                                         ++ error "TODO: Implement other signals"
 
+      -- TODO: Listen for response
+
 
       -- TODO: Termination
       --   - If the handle is closed, remove the client from the client pool and
@@ -93,8 +97,34 @@ clientLoop env h stc st1c stsc = untilTerminate $ do
       --   - If the client is not in the pool, close the connection. Send a
       --     termination signal to the targeted node so it can adjust its
       --     knownBy set accordingly
+      --   - If the response is an error
       return Continue
 
 
+-- | A downstream node has received a signal from this node without having it
+--   in its list of upstream neighbours. A a result, it tells the issuing node
+--   that it will ignore its requests.
+--
+-- The purpose of this is twofold:
+--
+--   - Nodes can only be contacted by other registered nodes. A malicious
+--     network of other nodes cannot nuke a node with illegal requests, because
+--     it will just ignore all the illegally created ones.
+--
+--   - If a node doesn't send a signal for too long, it will time out. When it
+--     starts sending new signals, it will be told that it was dropped.
+notYourNeighbour :: Environment -> Node -> IO Proceed
+notYourNeighbour env complainer = do
+      atomically . toIO env Debug . putStrLn $
+            "NotYourNeighbour signal received from " ++ show complainer
 
+      -- Determine the Async of the client to terminate
+      kick <- atomically $ Map.lookup complainer <$> readTVar (_downstream env)
+      -- Cancel client
+      maybe (return ()) (cancel._clientAsync) kick
+      -- NB: The client will remove itself from the pool when it is kicked. If
+      --     that doesn't work, the client pool will periodically clean up as
+      --     well, so there's no need for de-registering the client here.
+
+      return Continue
 

@@ -46,42 +46,44 @@ untilTerminate m = go
 --
 --   **Note:** receiving limits individual incoming requests with a hard cutoff,
 --   currently Int64 bytes.
-receive :: Handle -> IO Signal
+receive :: Binary a => Handle -> IO a
 receive h = do
 
       -- TODO: Add timeout to prevent Slowloris
 
-      let int2int = fromIntegral :: Int64 -> Int
-
+      let -- Convert Int64 to Int. Since the messages are (hopefully) shorter
+          -- than maxBound::Int, this should not be a problem.
+          -- TODO: Ensure the above
+          int64toInt = fromIntegral :: Int64 -> Int
           -- Size of an encoded Int64 in bytes
-          int64Size = BS.length $ encode (0 :: Int64)
+          int64Size :: Int
+          int64Size = int64toInt . BS.length $ encode (maxBound :: Int64)
 
-      -- Read length of the incoming signal
-      sLength <- decode <$> BS.hGet h (int2int int64Size)
+      -- Read message header = length of the incoming signal
+      mLength <- int64toInt . decode <$> BS.hGet h int64Size
 
       -- Read the previously determined amount of data
-      decode <$> BS.hGet h (int2int sLength)
+      decode <$> BS.hGet h mLength
+
+      -- TODO: Handle decoding errors (Maybe?)
 
 
 
--- | Sends a Signal, encoded as Binary with a size header, to a Handle.
---   Inverse of 'receive'.
-send :: Handle -> Signal -> IO ()
-send h signal = do
-      let sBinary = encode signal
-          sLength = encode (BS.length sBinary :: Int64)
-      BS.hPut h sLength
-      BS.hPut h sBinary
+-- | Sends a Signal/ServerResponse, encoded as Binary with a size header, to a
+--   Handle. Inverse of 'receive'.
+send :: Binary a => Handle -> a -> IO ()
+send h message = do
+      let mSerialized = encode message
+          mLength = encode (BS.length mSerialized :: Int64)
+      BS.hPut h mLength
+      BS.hPut h mSerialized
       hFlush h
 
 
--- | Sends an IO action to the IO thread.
-toIO' :: Environment -> IO () -> STM ()
-toIO' env = writeTBQueue (_io env)
 
 -- | Sends an IO action, depending on the verbosity level.
 toIO :: Environment -> Verbosity -> IO () -> STM ()
-toIO env verbosity = when p . toIO' env
+toIO env verbosity = when p . writeTBQueue (_io env)
       where p = verbosity >= _verbosity (_config env)
 
 
