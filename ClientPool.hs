@@ -86,6 +86,7 @@ housekeeping :: Environment -> IO ()
 housekeeping env = forever $ do
       -- Order matters: remove dead neighbours first, then send KeepAlive
       -- signals
+      -- TODO: Update timestamps of running clients
       removeTimedOut env
       removeDeadClients env
       sendKeepAlive env
@@ -130,7 +131,7 @@ removeTimedOut env = do
 
 
 
--- | Polls all clients and removes those that are dead
+-- | Poll all clients and removes those that are not running anymore
 removeDeadClients :: Environment -> IO ()
 removeDeadClients env = do
       -- Send a poll request to all currently running clients.
@@ -141,6 +142,7 @@ removeDeadClients env = do
 
       let -- deadNodes :: [Node]
           deadNodes = Map.keys $ Map.filter isJust polledClients
+          -- TODO: Emit reason the client died if it was because of an exception
 
       -- Finally, remove all dead nodes by their just found out keys
       atomically $ modifyTVar (_downstream env) $ \known ->

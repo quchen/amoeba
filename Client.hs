@@ -1,3 +1,6 @@
+{-# LANGUAGE LambdaCase #-}
+
+
 module Client  (
       forkNewClient
 ) where
@@ -16,7 +19,7 @@ import qualified Data.Map as Map
 
 
 import Types
-import Utilities (untilTerminate, send, toIO, connectToNode, makeTimestamp)
+import Utilities
 
 
 
@@ -56,7 +59,10 @@ newClient env targetNode stsc =
       in bracket (connectToNode targetNode) release $ \h -> do
                send h IAddedYou
                stc <- atomically $ dupTChan (_stc env)
-               clientLoop env h stc (_st1c env) stsc
+               clientLoop env h [ readTChan stc
+                                , readTBQueue (_st1c env)
+                                , readTBQueue stsc
+                                ]
 
 
 
@@ -64,45 +70,23 @@ newClient env targetNode stsc =
 -- meant to be handled by only one client), and executes their orders.
 clientLoop :: Environment
            -> Handle
-           -> TChan Signal   -- ^ Server to all clients
-           -> TBQueue Signal -- ^ Server to arbitrary client
-           -> TBQueue Signal -- ^ Server to this specific client
+           -> [STM Signal] -- ^ Actions that read all the incoming channels
            -> IO ()
-clientLoop env h stc st1c stsc = untilTerminate $ do
+clientLoop env h chans = untilTerminate $ do
 
       -- Receive orders from whatever channel is first available
-      signal <- atomically $ msum [ readTChan stc
-                                  , readTBQueue st1c
-                                  , readTBQueue stsc
-                                  ]
+      send h =<< atomically (msum chans)
 
-      -- TODO: terminate if the handle is closed
-
-      -- Execute incoming actions
-      case signal of
-            TextMessage {} -> send h signal
-            EdgeRequest {} -> send h signal
-            -- TODO: Implement other signals
-            _otherwise  -> atomically $ toIO env Debug $
-                  putStrLn $ "Error: The signal " ++ show signal ++ " should"
-                                        ++ " never have been sent to a client"
-                                        ++ error "TODO: Implement other signals"
-
-      -- TODO: Listen for response
+      receive h >>= \case
+            OK     -> return Continue
+            Error  -> genericError env
+            Ignore -> ignore env
 
 
-      -- TODO: Termination
-      --   - If the handle is closed, remove the client from the client pool and
-      --     terminate.
-      --   - If the client is not in the pool, close the connection. Send a
-      --     termination signal to the targeted node so it can adjust its
-      --     knownBy set accordingly
-      --   - If the response is an error
-      return Continue
 
 
 -- | A downstream node has received a signal from this node without having it
---   in its list of upstream neighbours. A a result, it tells the issuing node
+--   in its list of upstream neighbours. A a result, it tells the issuing client
 --   that it will ignore its requests.
 --
 -- The purpose of this is twofold:
@@ -113,18 +97,16 @@ clientLoop env h stc st1c stsc = untilTerminate $ do
 --
 --   - If a node doesn't send a signal for too long, it will time out. When it
 --     starts sending new signals, it will be told that it was dropped.
-notYourNeighbour :: Environment -> Node -> IO Proceed
-notYourNeighbour env complainer = do
-      atomically . toIO env Debug . putStrLn $
-            "NotYourNeighbour signal received from " ++ show complainer
+ignore :: Environment -> IO Proceed
+ignore env = do
+      atomically . toIO env Debug $
+            putStrLn "Server ignores this node, terminating client"
+      return Terminate
 
-      -- Determine the Async of the client to terminate
-      kick <- atomically $ Map.lookup complainer <$> readTVar (_downstream env)
-      -- Cancel client
-      maybe (return ()) (cancel._clientAsync) kick
-      -- NB: The client will remove itself from the pool when it is kicked. If
-      --     that doesn't work, the client pool will periodically clean up as
-      --     well, so there's no need for de-registering the client here.
 
-      return Continue
-
+-- | Server sent back a generic error
+genericError :: Environment -> IO Proceed
+genericError env = do
+      atomically . toIO env Debug $
+            putStrLn "Generic server error, terminating client"
+      return Terminate

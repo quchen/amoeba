@@ -74,7 +74,7 @@ serverLoop socket env = forever $ do
       --       help new clients connect to the network easier
       if isUpstream
             then void.async $ worker env handle fromNode
-            else do void.async $ send handle NotYourNeighbour
+            else do void.async $ send handle Ignore
                     atomically . toIO env Debug . putStrLn $
                           "Ignoring connection from non-upstream node " ++
                           show fromNode
@@ -90,7 +90,7 @@ worker :: Environment
        -> Handle
        -> Node
        -> IO ()
-worker env h fromNode = untilTerminate $ do
+worker env h from = untilTerminate $ do
 
       -- TODO: Ignore signals sent by nodes not registered as upstream.
       --       Open issues:
@@ -100,7 +100,7 @@ worker env h fromNode = untilTerminate $ do
       -- Update "last heard of" timestamp. Note that this will not add a valid
       -- return address (but some address the incoming connection happens to
       -- have)!
-      makeTimestamp >>= atomically . updateKnownBy env fromNode
+      makeTimestamp >>= atomically . updateKnownBy env from
 
       -- TODO: Housekeeping to delete already handled messages
 
@@ -113,14 +113,14 @@ worker env h fromNode = untilTerminate $ do
       --       signal came in.
 
       case signal of
-            TextMessage {}     -> send h OK    >> floodMessage      env signal
-            ShuttingDown node  -> send h OK    >> shuttingDown      env node
-            IAddedYou          -> send h OK    >> iAddedYouReceived env fromNode
-            AddMe              -> send h OK    >> addMeReceived     env fromNode
-            EdgeRequest {}     -> send h OK    >> edgeBounce        env signal
-            KeepAlive          -> send h OK    >> keepAlive         env fromNode
-            YourHostIs {}      -> send h OK    >> yourHostIs        env
-            BootstrapRequest _ -> send h Error >> bootstrapRequest  env
+            TextMessage {}      -> send h OK    >> floodMessage      env signal
+            ShuttingDown node   -> send h OK    >> shuttingDown      env node
+            IAddedYou           -> send h OK    >> iAddedYouReceived env from
+            AddMe               -> send h OK    >> addMeReceived     env from
+            EdgeRequest {}      -> send h OK    >> edgeBounce        env signal
+            KeepAlive           -> send h OK    >> keepAlive         env from
+            YourHostIs {}       -> send h OK    >> yourHostIs        env
+            BootstrapRequest {} -> send h Error >> bootstrapRequest  env
 
 
 

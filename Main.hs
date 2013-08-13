@@ -9,6 +9,7 @@
 --       a specific node, which then constructs a GraphViz representation of the
 --       network
 -- TODO: Write options parser
+-- TODO: Make clients update their timestamps in the DB regularly
 
 
 

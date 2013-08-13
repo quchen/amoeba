@@ -202,7 +202,7 @@ data ServerResponse =
 
         -- | Sent to node that tries to connect without being a registered
         --   upstream neighbour
-      | NotYourNeighbour
+      | Ignore
 
       deriving (Eq, Ord, Show, Generic)
 
