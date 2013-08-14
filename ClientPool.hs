@@ -1,6 +1,8 @@
+-- | The client pool keeps track of running clients, requests new connections
+--   when there's a deficit, and cleans up terminated ones.
+
 module ClientPool (
         clientPool
-      , sendEdgeRequest
 ) where
 
 import           Control.Applicative

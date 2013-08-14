@@ -1,3 +1,6 @@
+-- | A client represents one connection to a downstream node.
+--
+
 {-# LANGUAGE LambdaCase #-}
 
 

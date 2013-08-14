@@ -37,7 +37,7 @@ Research goals
 
 - How can certain attacks on the network be prevented?
 
-    - A small number of modified nodes accept every edge request, i.e. every time a node tries to connect to the network, the malicious nodes accept it (instead of possibly relaying it). These malicious nodes will eventually gather up connections to a *lot* of nodes. For a certain (but small) number of such modified nodes, the network integrity could be endangered, e.g. when they filter new edge requests.
+    - A small number of modified nodes accepts all edge requests it receives (instead of maybe relaying it), and additionally share the collected addresses among each other, connecting to as many nodes as possible, leading to a very central role in the network. For a certain (but small) number of such modified nodes, the network integrity could be endangered, for example by shutting down all of a sudden, or filtering large parts of the network traffic.
 
     - Rubbish data: How much is the network affected by spamming it with nonsense edge requests?
 

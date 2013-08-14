@@ -81,7 +81,9 @@ data Client = Client { _clientTimestamp :: Timestamp
 -- | Configuration parameters accessible before anything goes online.
 data Config = Config {
 
-        _maxNeighbours  :: Word       -- ^ The maximum number of neighbours. No
+        _serverPort     :: PortNumber -- ^ Port to open the server socket on
+
+      , _maxNeighbours  :: Word       -- ^ The maximum number of neighbours. No
                                       --   new ones will be accepted once it's
                                       --   full.
 

@@ -10,6 +10,7 @@
 --       network
 -- TODO: Write options parser
 -- TODO: Make clients update their timestamps in the DB regularly
+-- TODO: Replace all >> with *>
 
 
 
@@ -50,8 +51,9 @@ startNode :: IO ()
 startNode = do
 
       let config = defaultConfig -- Can easily be changed to a command args parser
+          port = PortNumber $ _serverPort config
 
-      bracket (randomSocket config) sClose $ \socket -> do
+      bracket (listenOn port) sClose $ \socket -> do
 
             ~(PortNumber port) <- socketPort socket
             putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
@@ -90,7 +92,8 @@ initEnvironment node config = Environment
 
 defaultConfig :: Config
 defaultConfig = Config {
-        _maxNeighbours     = 10
+        _serverPort        = 20000
+      , _maxNeighbours     = 10
       , _minNeighbours     = 5
       , _portRange         = (20000, 20100)
       , _maxChanSize       = 100

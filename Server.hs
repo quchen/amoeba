@@ -1,3 +1,6 @@
+-- | The server is the main part of a node. It accepts incoming requests, and
+--   distributes the responses to the clients.
+
 -- TODO: Handle pattern mismatches on all of the handler functions. Those
 --       branches should never be reached, but just to be safe there should be
 --       error messages anyway.
