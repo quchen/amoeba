@@ -89,7 +89,8 @@ housekeeping env = forever $ do
       -- Order matters: remove dead neighbours first, then send KeepAlive
       -- signals
       -- TODO: Update timestamps of running clients
-      removeTimedOut env
+      removeTimedOutUpstream env
+      removeTimedOutDownstream env
       removeDeadClients env
       sendKeepAlive env
       threadDelay (_keepAliveTickRate $ _config env)
@@ -120,9 +121,10 @@ sendKeepAlive env = do
 
 
 
--- | Remove timed out upstream nodes
-removeTimedOut :: Environment -> IO ()
-removeTimedOut env = do
+-- | Remove timed out upstream nodes. Timestamps are updated by the server every
+--   time a signal is received and accepted.
+removeTimedOutUpstream :: Environment -> IO ()
+removeTimedOutUpstream env = do
       (Timestamp now) <- makeTimestamp
       atomically $ do
             let notTimedOut (Timestamp t) = now - t < (_poolTimeout._config) env
@@ -133,9 +135,25 @@ removeTimedOut env = do
 
 
 
--- | Poll all clients and removes those that are not running anymore
+removeTimedOutDownstream :: Environment -> IO ()
+removeTimedOutDownstream env = do
+      tsNow@(Timestamp now) <- makeTimestamp
+      kill' <- atomically $ do
+            let notTimedOut (Client { _clientTimestamp = Timestamp t }) =
+                      now - t < (_poolTimeout._config) env
+                ds = _downstream env
+            (keep, kill) <- Map.partition notTimedOut <$> readTVar ds
+            writeTVar ds $ Map.map (\c -> c { _clientTimestamp = tsNow }) keep
+            return kill
+      void $ traverse (cancel._clientAsync) kill'
+
+
+
+-- | Poll all clients and removes those that are not running anymore or have
+--   timed out
 removeDeadClients :: Environment -> IO ()
 removeDeadClients env = do
+
       -- Send a poll request to all currently running clients.
       -- knownNodes :: Map Node (Async ())
       knownNodes <- atomically $ readTVar (_downstream env)

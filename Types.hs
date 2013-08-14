@@ -79,14 +79,8 @@ data Config = Config {
                                       --   the current number is smaller issue
                                       --   announce signals.
 
-      , _portRange      :: (Int, Int) -- ^ The node will open a server on a
-                                      --   randomly picked node in this range.
-
       , _maxChanSize    :: Int        -- ^ How many entries the bounded
                                       --   communication channels can hold
-
-      , _maxRandomPorts :: Word       -- ^ Number of retries to find a random
-                                      --   open port
 
       , _bounces        :: Word       -- ^ Number of initial bounces
       , _acceptP        :: Double     -- ^ Edge requesti acceptance probability

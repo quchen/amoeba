@@ -10,11 +10,7 @@
 --       network
 -- TODO: Write options parser
 -- TODO: Make clients update their timestamps in the DB regularly
--- TODO: Replace all >> with *>
--- TODO: Unified logging interface. A message should have a debug level
---       of sorts verbose/debug/normal/quiet, which is defined in the
---       environment. Messages should also state the origin and what
---       signal came in.
+-- TODO: Decent logging
 -- TODO: Error handling. Right now any exception kills everything because it's
 --       rethrown in the parent thread (thanks to Async).
 
@@ -99,9 +95,7 @@ defaultConfig = Config {
         _serverPort        = 20000
       , _maxNeighbours     = 10
       , _minNeighbours     = 5
-      , _portRange         = (20000, 20100)
       , _maxChanSize       = 100
-      , _maxRandomPorts    = 10
       , _bounces           = 3
       , _acceptP           = 0.5 -- TODO: Error if not 0 < p <= 1
       , _poolTickRate      = 1 * 10^6

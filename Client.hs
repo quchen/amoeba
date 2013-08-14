@@ -52,38 +52,55 @@ forkNewClient env targetNode = do
 -- Initializes a new client, and then starts the client loop. Does not check
 -- whether there is any space in the client pool; that's the job of the function
 -- that sends the newClient command (i.e. the server).
-newClient :: Environment -> Node -> TBQueue NormalSignal -> IO ()
-newClient env targetNode stsc =
+newClient :: Environment
+          -> Node                 -- ^ Target downstream neighbour
+          -> TBQueue NormalSignal -- ^ This client's private signal channel
+          -> IO ()
+newClient env node stsc =
       let release h = do
-               atomically . modifyTVar (_downstream env) $ Map.delete targetNode
+               atomically . modifyTVar (_downstream env) $ Map.delete node
                hClose h
 
-      in bracket (connectToNode targetNode) release $ \h -> do
+      in bracket (connectToNode node) release $ \h -> do
                send h (Normal IAddedYou)
                stc <- atomically $ dupTChan (_stc env)
-               clientLoop env h [ readTChan stc
-                                , readTBQueue (_st1c env)
-                                , readTBQueue stsc
-                                ]
+               clientLoop env h node [ readTChan stc
+                                     , readTBQueue (_st1c env)
+                                     , readTBQueue stsc
+                                     ]
 
 
 
 -- Listens to a TChan (signals broadcast to all nodes) and a TBQueue (signals
 -- meant to be handled by only one client), and executes their orders.
 clientLoop :: Environment
-           -> Handle
+           -> Handle             -- ^ Network connection
+           -> Node               -- ^ Target downstream neighbour
            -> [STM NormalSignal] -- ^ Actions that read incoming channels
            -> IO ()
-clientLoop env h chans = untilTerminate $ do
+clientLoop env h node chans = untilTerminate $ do
 
       -- Receive orders from whatever channel is first available
       send h =<< atomically (msum chans)
 
       receive h >>= \case
-            OK     -> return Continue
+            OK     -> ok env node
             Error  -> genericError env
             Ignore -> ignore env
 
+
+
+-- | Response to sending a signal to a server successfully. (Updates the "last
+--   successfully sent signal to" timestamp)
+ok :: Environment
+   -> Node        -- ^ Target downstream neighbour
+   -> IO Proceed
+ok env downstream = do
+      timestamp <- makeTimestamp
+      let updateTimestamp client = client { _clientTimestamp = timestamp }
+      atomically $ modifyTVar (_downstream env) $
+            Map.adjust updateTimestamp downstream
+      return Continue
 
 
 
@@ -104,6 +121,7 @@ ignore env = do
       atomically . toIO env Debug $
             putStrLn "Server ignores this node, terminating client"
       return Terminate
+
 
 
 -- | Server sent back a generic error

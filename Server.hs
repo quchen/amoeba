@@ -237,9 +237,7 @@ shuttingDown env node = do
       -- Just in case there is also a downstream connection to the same node,
       -- kill that one as well
       downstream <- atomically $ Map.lookup node <$> readTVar (_downstream env)
-      case downstream of
-            Just (Client _tStamp cAsync _chan) -> cancel cAsync
-            _otherwise -> return ()
+      maybe (return ()) (cancel._clientAsync) downstream
       atomically $ modifyTVar (_downstream env) (Map.delete node)
 
 
