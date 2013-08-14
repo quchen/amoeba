@@ -15,7 +15,6 @@ import Control.Concurrent.STM
 import Control.Concurrent.Async
 import Control.Exception
 import System.IO
-import Data.Functor
 import Control.Monad
 import qualified Data.Map as Map
 

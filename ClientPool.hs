@@ -23,8 +23,8 @@ import Utilities (makeTimestamp)
 --
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
-clientPool env = withAsync (clientPoolLoop env) $ \cPool  -> do
-                 withAsync (housekeeping env)   $ \_hkeep -> do
+clientPool env = withAsync (clientPoolLoop env) $ \cPool  ->
+                 withAsync (housekeeping env)   $ \_hkeep ->
                  wait cPool
 
 

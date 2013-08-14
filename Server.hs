@@ -6,14 +6,12 @@
 --       error messages anyway.
 
 module Server (
-      randomSocket,
       serverLoop
 ) where
 
-import           Control.Concurrent
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
-import           Control.Exception
+import           Control.Exception (bracket)
 import           Control.Monad
 import           Data.Functor
 import           Network
@@ -31,25 +29,6 @@ import Client (forkNewClient)
 
 
 
--- | Tries opening a socket on a certain amount of random ports.
-randomSocket :: Config
-             -> IO Socket
-randomSocket config = randomSocket' config (_maxRandomPorts config)
-      where randomSocket' _ 0 = error("Couldn't find free port") -- TODO: Proper exception
-            randomSocket' config n = do
-                  socket <- randomPort config >>= try . listenOn
-                  case socket :: Either SomeException Socket of
-                        Left  _ -> randomSocket' config (n-1)
-                        Right r -> return r
-
-
-
-
-
--- | Generates a random PortID based on the 'portRange' config value
-randomPort :: Config -> IO PortID
-randomPort config = PortNumber . fromIntegral <$> randomRIO (_portRange config)
-
 
 
 
@@ -58,7 +37,7 @@ randomPort config = PortNumber . fromIntegral <$> randomRIO (_portRange config)
 serverLoop :: Socket
            -> Environment
            -> IO ()
-serverLoop socket env = forever $ do
+serverLoop socket env = forever $
 
       bracket (accept socket)
               (\(h,_,_) -> hClose h) $

@@ -21,7 +21,6 @@ module Main where
 
 
 import           Control.Applicative
-import           Control.Concurrent
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Exception
@@ -30,9 +29,9 @@ import           Network
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-import Bootstrap (bootstrap)
+import Bootstrap
 import ClientPool
-import Server (serverLoop, randomSocket)
+import Server
 import Types
 
 
@@ -51,21 +50,20 @@ startNode :: IO ()
 startNode = do
 
       let config = defaultConfig -- Can easily be changed to a command args parser
-          port = PortNumber $ _serverPort config
+          port = _serverPort config
 
-      bracket (listenOn port) sClose $ \socket -> do
+      bracket (listenOn $ PortNumber port) sClose $ \socket -> do
 
-            ~(PortNumber port) <- socketPort socket
             putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
             host <- bootstrap config port
 
             -- Setup all the communication channels
             env <- initEnvironment (Node host port) config
 
-            withAsync (serverLoop socket env)  $ \server  -> do
-            withAsync (outputThread $ _io env) $ \_output -> do
-            withAsync (clientPool env)         $ \_cPool  -> do
-            wait server
+            withAsync (serverLoop socket env)   $ \server  ->
+             withAsync (outputThread $ _io env) $ \_output ->
+             withAsync (clientPool env)         $ \_cPool  ->
+             wait server
             -- NB: When the server finishes, the other asyncs are canceled by
             --     withAsync.
 
