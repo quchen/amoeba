@@ -11,6 +11,12 @@
 -- TODO: Write options parser
 -- TODO: Make clients update their timestamps in the DB regularly
 -- TODO: Replace all >> with *>
+-- TODO: Unified logging interface. A message should have a debug level
+--       of sorts verbose/debug/normal/quiet, which is defined in the
+--       environment. Messages should also state the origin and what
+--       signal came in.
+-- TODO: Error handling. Right now any exception kills everything because it's
+--       rethrown in the parent thread (thanks to Async).
 
 
 

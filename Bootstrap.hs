@@ -21,14 +21,7 @@ import Utilities (send, receive, connectToNode)
 
 
 
--- Algorithm idea: Create a special Bootstrap signal. When receiving such a
--- signal, the receiving node sends out N Request/Announce signals, with the
--- origin set to the issuing node.
---
--- To combat abuse, the client should hold a timestamped version of the command,
--- and only accept a new one after X seconds.
-
--- | Send out
+-- | Send out a BootstrapRequest to a bootstrap server and handle the response.
 bootstrap :: Config -> PortNumber -> IO HostName -- TODO: Make it an Either Error Hostname so the problem can be printed
 bootstrap config port = do
 
@@ -41,13 +34,20 @@ bootstrap config port = do
       -- the handle properly. Instead, bind the result to an identifier, and
       -- check it after the bracketing.
       result <- bracket (connectToNode  bNode) hClose $ \h -> do
-            send h (BootstrapRequest port)
+            send h (BootstrapRequest port) -- See note [Why send port?]
             (<$> receive h) $ \case
                   (YourHostIs host) -> Just host
                   _                 -> Nothing -- TODO: Error message "Bootstrap reply rubbish"
                      -- TODO: Handle timeouts, yell if pattern mismatch
 
       maybe (bootstrap config port) return result
+
+-- [Why send port?]
+--
+-- To issue EdgeRequests in the name of the node to be bootstrapped, the server
+-- has to be aware of a return address. While it can deduce the hostname from
+-- the incoming connection, the port of the new node's server is unknown.
+-- for that reason, the node has to provide it explicitly.
 
 
 -- | Finds the address of a suitable bootstrap server.

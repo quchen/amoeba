@@ -52,14 +52,14 @@ forkNewClient env targetNode = do
 -- Initializes a new client, and then starts the client loop. Does not check
 -- whether there is any space in the client pool; that's the job of the function
 -- that sends the newClient command (i.e. the server).
-newClient :: Environment -> Node -> TBQueue Signal -> IO ()
+newClient :: Environment -> Node -> TBQueue NormalSignal -> IO ()
 newClient env targetNode stsc =
       let release h = do
                atomically . modifyTVar (_downstream env) $ Map.delete targetNode
                hClose h
 
       in bracket (connectToNode targetNode) release $ \h -> do
-               send h IAddedYou
+               send h (Normal IAddedYou)
                stc <- atomically $ dupTChan (_stc env)
                clientLoop env h [ readTChan stc
                                 , readTBQueue (_st1c env)
@@ -72,7 +72,7 @@ newClient env targetNode stsc =
 -- meant to be handled by only one client), and executes their orders.
 clientLoop :: Environment
            -> Handle
-           -> [STM Signal] -- ^ Actions that read all the incoming channels
+           -> [STM NormalSignal] -- ^ Actions that read incoming channels
            -> IO ()
 clientLoop env h chans = untilTerminate $ do
 

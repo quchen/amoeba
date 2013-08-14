@@ -4,19 +4,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 
 
-module Types (
-        Environment(..)
-      , Config(..)
-      , Signal(..)
-      , ServerResponse(..)
-      , EdgeData(..)
-      , Direction(..)
-      , Timestamp(..)
-      , Node(..)
-      , Proceed(..)
-      , Client(..)
-      , Verbosity(..)
-) where
+module Types where
 
 import Control.Concurrent.STM
 import Control.Concurrent.Async
@@ -52,14 +40,14 @@ data Environment = Environment {
                                        --   track of when the last signal was
                                        --   received.
 
-      , _stc        :: TChan Signal    -- ^ Send messages to all clients
+      , _stc        :: TChan NormalSignal    -- ^ Send messages to all clients
 
-      , _st1c       :: TBQueue Signal  -- ^ Send message to one client
+      , _st1c       :: TBQueue NormalSignal  -- ^ Send message to one client
 
       , _io         :: TBQueue (IO ()) -- ^ Send action to the dedicated local
                                        --   IO thread
 
-      , _handledQueries :: TVar (Set Signal)
+      , _handledQueries :: TVar (Set NormalSignal)
                                        -- ^ Timestamped signals that have
                                        --   already been handled by the current
                                        --   node, and can thus be ignored if
@@ -74,7 +62,7 @@ data Environment = Environment {
 -- | Unifies everything the list of known nodes has to store
 data Client = Client { _clientTimestamp :: Timestamp
                      , _clientAsync     :: Async ()
-                     , _clientQueue     :: TBQueue Signal
+                     , _clientQueue     :: TBQueue NormalSignal
                      }
 
 
@@ -146,50 +134,56 @@ instance Binary PortNumber where
 
 
 
-
-
--- | Stores a signal to be executed by a node, e.g. print a message, search for
---   new neighbours etc.
 data Signal =
 
-        -- | Query to add an edge to the network. Direction specifies which way
-        --   the new connection should go. The Either part is used to limit how
-        --   far the request bounces through the network.
-        --
-        --   The name has been chosen because when an EdgeRequest is complete,
-        --   the graph of nodes will have a new edge.
-        EdgeRequest Node EdgeData
+        Normal NormalSignal
 
-        -- | Sent to the new downstream neighbour node so it can keep track of
-        --   how many times it's referenced.
-      | IAddedYou
-
-        -- | Sent to the requesting node: "I have upstream neighbour space free"
-      | AddMe
-
-        -- | Randomly sent to downstream nodes so the timestamps are refreshed,
-        --   and the node is kept in the books as an upstream neighbour
-      | KeepAlive
-
-        -- | Current node is shutting down, remove it from your upstream
-        --   neighbour pool
-      | ShuttingDown Node
-
-        -- | Text message.
-      | TextMessage Timestamp String
-
-              -- | Initial request sent from a future client to a bootstrap server.
-        --   While the reverse connection is provided by the request, the
-        --   hostname will be deduced by the incoming connection by the server.
-      | BootstrapRequest PortNumber
-
-        -- | Sent as a response to a Bootstrap to tell the node its hostname, so
-        --   it can add it to its Environment.
-      | YourHostIs HostName
+      -- | Signals that are handled in a special way. For example bootstrap
+      --   servers are able to issue a special signal that is processed
+      --   despite them not being upstream neighbours of a node. -- TODO: Implement this behaviour
+      | Special SpecialSignal
 
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary Signal
+
+
+-- | Stores a signal to be executed by a node, e.g. print a message, search for
+--   new neighbours etc.
+data NormalSignal =
+
+      -- | Query to add an edge to the network. Direction specifies which way
+      --   the new connection should go. The Either part is used to limit how
+      --   far the request bounces through the network.
+      --
+      --   The name has been chosen because when an EdgeRequest is complete,
+      --   the graph of nodes will have a new edge.
+        EdgeRequest Node EdgeData
+
+      -- | Sent to the new downstream neighbour node so it can keep track of
+      --   how many times it's referenced.
+      | IAddedYou
+
+      -- | Sent to the requesting node: "I have upstream neighbour space free"
+      | AddMe
+
+      -- | Randomly sent to downstream nodes so the timestamps are refreshed,
+      --   and the node is kept in the books as an upstream neighbour
+      | KeepAlive
+
+      -- | Current node is shutting down, remove it from your upstream
+      --   neighbour pool
+      | ShuttingDown Node
+
+      -- | Text message.
+      | TextMessage Timestamp String
+
+      deriving (Eq, Ord, Show, Generic)
+
+instance Binary NormalSignal
+
+
+
 
 
 
@@ -209,6 +203,31 @@ data ServerResponse =
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary ServerResponse
+
+
+
+
+
+-- | Classifies special signals in order to process them differently
+data SpecialSignal =
+
+      -- | Sent from a bootstrap server to the network. Bypasses checks whether
+      --   it was issued from a registered upstream nodes, and is therefore
+      --   suitable for making an initial connection to the network.
+        BootstrapHelper NormalSignal
+
+      -- | Initial request sent from a future client to a bootstrap server.
+      --   While the reverse connection is provided by the request, the
+      --   hostname will be deduced by the incoming connection by the server.
+      | BootstrapRequest PortNumber
+
+      -- | Sent as a response to a Bootstrap to tell the node its hostname, so
+      --   it can add it to its Environment.
+      | YourHostIs HostName
+
+      deriving (Eq, Ord, Show, Generic)
+
+instance Binary SpecialSignal
 
 
 
@@ -252,13 +271,13 @@ instance Binary Predicate
 
 
 -- | How many messages should be printed?
-data Verbosity = Chatty -- ^ *Everything*, e.g. passing bounces, keep-alive
-                        --   signals
-               | Debug  -- ^ Various status messages, e.g. gaining and losing
-                        --   neighbours
-               | Normal -- ^ Useful for normal execution, e.g. node deficit,
-                        --   chat messages
-               | Quiet  -- ^ Only messages intended for display, i.e. chat
-               | Mute   -- ^ Nothing, node just serves as a network helper
+data Verbosity = Chatty  -- ^ *Everything*, e.g. passing bounces, keep-alive
+                         --   signals
+               | Debug   -- ^ Various status messages, e.g. gaining and losing
+                         --   neighbours
+               | Default -- ^ Useful for normal execution, e.g. node deficit,
+                         --   chat messages
+               | Quiet   -- ^ Only messages intended for display, i.e. chat
+               | Mute    -- ^ Nothing, node just serves as a network helper
       deriving (Eq, Ord, Show)
       -- Note: Order matters in order to make `myVerbosity > x` work!
