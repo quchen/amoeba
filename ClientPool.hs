@@ -13,6 +13,7 @@ import qualified Data.Map               as Map
 import           Control.Monad
 import           Data.Traversable
 import           Data.Maybe (isJust)
+import           Text.Printf
 
 import Types
 import Utilities
@@ -40,7 +41,12 @@ clientPool env = withAsync (clientPoolLoop env) $ \cPool  ->
 clientPoolLoop :: Environment -> IO ()
 clientPoolLoop env = forever $ do
 
-      atomically . toIO env Chatty . putStrLn $ "Client pool tick"
+      putStr "Downstream:"
+      ds <- atomically $ Map.keys <$> readTVar (_downstream env)
+      print ds
+      putStr "Upstream:"
+      us <- atomically $ Map.keys <$> readTVar (_upstream env)
+      print us
 
       -- How many nodes does the current node know, how many is it known by?
       let mapSize db = fromIntegral . Map.size <$> readTVar (db env)
@@ -53,12 +59,20 @@ clientPoolLoop env = forever $ do
       -- Enough downstream neighbours?
       when (numKnownNodes < minNeighbours) $ do  -- Send out requests
             let deficit = minNeighbours - numKnownNodes
+            atomically . toIO env Debug $
+                 printf
+                 "Deficit of %d outgoing connections detected\n"
+                 deficit
             forM_ [1..deficit] $ \_ -> sendEdgeRequest env Outgoing
 
       -- Enough upstream neighbours?
       when (numKnownBy < minNeighbours) $ do
             -- Send out announces
             let deficit = minNeighbours - numKnownBy
+            atomically . toIO env Debug $
+                 printf
+                 "Deficit of %d incoming connections detected\n"
+                 deficit
             forM_ [1..deficit] $ \_ -> sendEdgeRequest env Incoming
 
       threadDelay $ _poolTickRate (_config env)

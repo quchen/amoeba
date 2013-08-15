@@ -109,10 +109,10 @@ normalHandler env h from signal = do
 --   and should therefore only be invoked from within other handlers making sure
 --   of that, see normalHandler and specialHandler.
 normalHandler' :: Environment
-              -> Handle       -- ^ Data channel
-              -> Node         -- ^ Signal origin
-              -> NormalSignal -- ^ Signal type
-              -> IO ()
+               -> Handle       -- ^ Data channel
+               -> Node         -- ^ Signal origin
+               -> NormalSignal -- ^ Signal type
+               -> IO ()
 
 normalHandler' env h from signal = send h OK >> case signal of
       TextMessage {}    -> floodMessage      env signal

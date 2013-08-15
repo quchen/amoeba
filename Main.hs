@@ -92,7 +92,7 @@ initEnvironment node config = Environment
 
 defaultConfig :: Config
 defaultConfig = Config {
-        _serverPort        = 21000
+        _serverPort        = 21002
       , _maxNeighbours     = 10
       , _minNeighbours     = 2
       , _maxChanSize       = 100

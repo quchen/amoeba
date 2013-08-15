@@ -74,7 +74,7 @@ handleRequest env h host = (`finally` hClose h) $ do
 
       putStrLn "Receiving data ..."
       receive h >>= \case
-            BootstrapRequest port -> print "laskdjlj" >> handleValidRequest env h host port
+            BootstrapRequest port -> print "-> Valid request" >> handleValidRequest env h host port
             BootstrapHelper  {}   -> return () -- illegal action
             YourHostIs       {}   -> return () -- illegal action
 
@@ -135,9 +135,9 @@ sendEdgeRequest env beneficiary dir = do
 randomNode :: BSEnv -> STM (Maybe Node)
 randomNode env = do
       nodes <- readTVar (_knownNodes env)
-      if Set.size nodes > 0
+      if not $ Set.null nodes
             then do gen <- readTVar (_rng env)
-                    let (i, gen') = randomR (0, Set.size nodes) gen
+                    let (i, gen') = randomR (0, Set.size nodes - 1) gen
                     writeTVar (_rng env) gen'
                     return . Just $ Set.toList nodes !! i
                           -- ^ Set.elemAt unavailable in Containers 0.5.0.0 :-(
