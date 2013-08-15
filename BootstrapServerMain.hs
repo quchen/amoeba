@@ -118,15 +118,18 @@ housekeeping env = do
 sendEdgeRequest :: BSEnv -> Node -> Direction -> IO ()
 sendEdgeRequest env beneficiary dir = do
 
-      -- p = denial probability
-      let p = 0.5 -- TODO: read this from some config
+      -- p = Acceptance probability. Set it to 1 if there's only one node that
+      -- could accept it.
+      numKnownNodes <- atomically $ Set.size <$> readTVar (_knownNodes env)
+      let p = 1 -- TODO: read this from some config
           signal = Special . BootstrapHelper $ EdgeRequest beneficiary (EdgeData dir (Right p))
 
       targetNode <- atomically $ randomNode env
 
       case targetNode of
             Nothing -> putStrLn "No known network, sending no requests"
-            Just n -> do bracket (connectToNode n) hClose $ \h -> do
+            Just n -> do putStrLn $ "Request sent to " ++ show n
+                         bracket (connectToNode n) hClose $ \h -> do
                          send h signal
 
 

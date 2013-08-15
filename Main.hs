@@ -13,6 +13,8 @@
 -- TODO: Decent logging
 -- TODO: Error handling. Right now any exception kills everything because it's
 --       rethrown in the parent thread (thanks to Async).
+-- TODO: When there are no clients, the chans will be filled up with edge
+--       requests all the way
 
 
 
@@ -30,6 +32,7 @@ import           Control.Monad
 import           Network
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import System.Environment (getArgs)
 
 import Bootstrap
 import ClientPool
@@ -52,7 +55,11 @@ startNode :: IO ()
 startNode = do
 
       let config = defaultConfig -- Can easily be changed to a command args parser
-          port = _serverPort config
+
+      -- TODO: Proper argument parsing
+      args <- getArgs
+      let port = if null args then _serverPort config
+                              else fromIntegral $ read (head args)
 
       bracket (listenOn $ PortNumber port) sClose $ \socket -> do
 
@@ -92,9 +99,9 @@ initEnvironment node config = Environment
 
 defaultConfig :: Config
 defaultConfig = Config {
-        _serverPort        = 21002
+        _serverPort        = 21000
       , _maxNeighbours     = 10
-      , _minNeighbours     = 2
+      , _minNeighbours     = 1
       , _maxChanSize       = 100
       , _bounces           = 3
       , _acceptP           = 0.5 -- TODO: Error if not 0 < p <= 1

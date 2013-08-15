@@ -41,10 +41,10 @@ clientPool env = withAsync (clientPoolLoop env) $ \cPool  ->
 clientPoolLoop :: Environment -> IO ()
 clientPoolLoop env = forever $ do
 
-      putStr "Downstream:"
+      putStr "Downstream: "
       ds <- atomically $ Map.keys <$> readTVar (_downstream env)
       print ds
-      putStr "Upstream:"
+      putStr "Upstream:   "
       us <- atomically $ Map.keys <$> readTVar (_upstream env)
       print us
 
@@ -101,7 +101,7 @@ sendEdgeRequest env dir = atomically $
 --   neighbour, removes timed out upstream nodes and dead clients/downstream
 --   nodes.
 housekeeping :: Environment -> IO ()
-housekeeping env = forever $ do
+housekeeping env = debug (const (return ())) $ forever $ do
       -- Order matters: remove dead neighbours first, then send KeepAlive
       -- signals
       -- TODO: Update timestamps of running clients

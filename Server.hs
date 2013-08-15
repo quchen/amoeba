@@ -45,6 +45,8 @@ serverLoop socket env = forever $ do
       --     immediately after forking
       (h, host, port) <- accept socket
       let fromNode = Node host port
+      atomically . toIO env Debug . putStrLn $
+            "New connection from " ++ show fromNode
       void.async $ worker env h fromNode
 
 
@@ -70,8 +72,8 @@ worker env h from = (`finally` hClose h) $ do
       -- TODO: Error handling: What to do if rubbish data comes in?
       --       -> Respond error, kill worker
       receive h >>= \case
-            Normal  normal  -> normalHandler  env h from normal
-            Special special -> specialHandler env h from special
+            Normal  normal  -> debug (putStrLn "normal signal") >> normalHandler  env h from normal
+            Special special -> debug (putStrLn "special signal") >> specialHandler env h from special
 
 
 
@@ -92,7 +94,8 @@ normalHandler env h from signal = do
       allowed <- atomically $ Map.member from <$> readTVar (_upstream env)
 
       if allowed
-            then do normalHandler' env h from signal
+            then do send h OK
+                    normalHandler' env h from signal
                     -- Update "last heard of" timestamp. Note that this will not
                     -- add a valid return address (but some address the incoming
                     -- connection happens to have)!
@@ -114,7 +117,7 @@ normalHandler' :: Environment
                -> NormalSignal -- ^ Signal type
                -> IO ()
 
-normalHandler' env h from signal = send h OK >> case signal of
+normalHandler' env h from signal = case signal of
       TextMessage {}    -> floodMessage      env signal
       ShuttingDown node -> shuttingDown      env node
       IAddedYou         -> iAddedYouReceived env from
@@ -339,23 +342,29 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
       -- Make sure not to connect to itself or to already known nodes
       allowed <- isAllowed env dir origin
 
+
       -- Roll whether to accept the query first, then check whether there's
       -- room. In case of failure, bounce on.
-      acceptEdge <- (> p) <$> randomRIO (0,1)
-      case (allowed && acceptEdge, dir) of
-            (False ,_) -> do let msg = "Request denied, bouncing"
-                             atomically . toIO env Debug $ putStrLn msg
-                             bounceOn
-            (_, Outgoing) -> do -- TODO: Sub-method, running off screen here
+      acceptEdge <- (p >) <$> randomRIO (0, 1 :: Double)
+      case (allowed, acceptEdge, dir) of
+            (False, _, _) -> do
+                  let msg = "Edge not allowed, bouncing"
+                  atomically . toIO env Debug $ putStrLn msg
+                  bounceOn
+            (_, False, _) -> do
+                  let msg = "Random bounce"
+                  atomically . toIO env Debug $ putStrLn msg
+                  bounceOn
+            (_, _, Outgoing) -> do -- TODO: Sub-method, running off screen here
                   isRoom <- isRoomIn (_downstream env)
                   if isRoom then acceptOutgoingRequest env origin
                             else do let msg = "No room for incoming " ++
                                               "connections, bouncing"
                                     atomically . toIO env Chatty $ putStrLn msg
                                     bounceOn
-            (_, Incoming) -> do -- TODO: Sub-method, running off screen here
+            (_, _, Incoming) -> do -- TODO: Sub-method, running off screen here
                   isRoom <- isRoomIn (_upstream env)
-                  if isRoom then forkNewClient env origin -- TODO: Message
+                  if isRoom then acceptIncomingRequest env origin
                             else do let msg = "No room for outgoing " ++
                                               "connections, bouncing"
                                     atomically . toIO env Chatty $ putStrLn msg
@@ -380,8 +389,17 @@ acceptOutgoingRequest env origin = do
       timestamp <- makeTimestamp
       bracket (connectToNode origin) hClose $ \h -> do
             send h AddMe
-            atomically $ updateKnownBy env origin timestamp
+            atomically $ do
+                  toIO env Debug . putStrLn $ "'Outgoing' request from "
+                                                   ++ show origin ++ " accepted"
+                  modifyTVar (_upstream env) $ Map.insert origin timestamp
 
+
+acceptIncomingRequest :: Environment -> Node -> IO ()
+acceptIncomingRequest env origin = do
+      forkNewClient env origin -- TODO: Message
+      atomically $ toIO env Debug . putStrLn $ "'Incoming' request from "
+                                                   ++ show origin ++ " accepted"
 
 
 -- | Invoked on an incoming "Outgoing request successful" signal, i.e. after
@@ -423,5 +441,5 @@ isAllowed env dir origin = do
             Incoming -> isInDatabase (_downstream env)
             Outgoing -> isInDatabase (_upstream env)
 
-      return $ isSelf || isAlreadyKnown
+      return . not $ isSelf || isAlreadyKnown
 

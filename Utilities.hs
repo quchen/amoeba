@@ -7,6 +7,7 @@ module Utilities (
       , send
       , toIO
       , connectToNode
+      , debug
 ) where
 
 import Data.Functor
@@ -65,12 +66,15 @@ receive h = raceAgainstTimeout $ do
           int64Size = int64toInt . BS.length $ encode (maxBound :: Int64)
 
       -- Read message header = length of the incoming signal
-      print "getting"
+      debug $ print "getting"
       mLength <- int64toInt . decode <$> BS.hGet h int64Size
-      print "getting2"
 
       -- Read the previously determined amount of data
-      decode <$> BS.hGet h mLength
+      r <- decode <$> BS.hGet h mLength
+
+      debug $ print "getting done"
+
+      return r
 
       -- TODO: Handle decoding errors (Maybe?)
 
@@ -80,13 +84,13 @@ receive h = raceAgainstTimeout $ do
 --   Handle. Inverse of 'receive'.
 send :: Binary a => Handle -> a -> IO ()
 send h message = raceAgainstTimeout $ do
-      print "sending"
+      debug $ putStrLn "sending"
       let mSerialized = encode message
           mLength = encode (BS.length mSerialized :: Int64)
       BS.hPut h mLength
       BS.hPut h mSerialized
+      debug $ putStrLn "sent"
       hFlush h
-      print "sent"
 
 -- | Very hacky timeout function. Crashes on timeout. :-x
 raceAgainstTimeout :: IO a -> IO a
@@ -94,7 +98,7 @@ raceAgainstTimeout action = do
       result <- timeout (10^6) action
       case result of
             Just r -> return r
-            Nothing -> print "TIMEOUT" >> undefined
+            Nothing -> debug (putStrLn "TIMEOUT") >> undefined
 --   TODO: Make timeout more useful
 
 
@@ -108,3 +112,10 @@ toIO env verbosity = when p . writeTBQueue (_io env)
 --   object.
 connectToNode :: Node -> IO Handle
 connectToNode n = connectTo (_host n) (PortNumber (_port n))
+
+
+
+
+-- Debugging function. Delete to make the type system tell you where to clean up
+debug :: a -> a
+debug = id

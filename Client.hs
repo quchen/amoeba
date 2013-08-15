@@ -58,6 +58,7 @@ newClient :: Environment
           -> IO ()
 newClient env node stsc =
       let release h = do
+               debug $ putStrLn "\ESC[31mRELEASE\ESC[0m"
                atomically . modifyTVar (_downstream env) $ Map.delete node
                hClose h
 
@@ -78,7 +79,7 @@ clientLoop :: Environment
            -> Node               -- ^ Target downstream neighbour
            -> [STM NormalSignal] -- ^ Actions that read incoming channels
            -> IO ()
-clientLoop env h node chans = untilTerminate $ do
+clientLoop env h node chans = (debug (print "NEW CLIENT") >>) $ untilTerminate $ do
 
       -- Receive orders from whatever channel is first available
       send h =<< atomically (msum chans)
