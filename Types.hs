@@ -105,7 +105,10 @@ data Config = Config {
 data Node = Node { _host :: HostName
                  , _port :: PortNumber
                  }
-                 deriving (Eq, Ord, Show, Generic)
+                 deriving (Eq, Ord, Generic)
+
+instance Show Node where
+      show n = "Node " ++ _host n ++ ":" ++ show (_port n)
 
 instance Binary Node
 

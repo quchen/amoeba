@@ -24,7 +24,7 @@ import           System.Random
 import           Data.Set (Set)
 import qualified Data.Set as Set
 
-import Utilities (receive, send, connectToNode)
+import Utilities
 import Types hiding (Environment)
 
 
@@ -73,7 +73,7 @@ handleRequest :: BSEnv -> Handle -> HostName -> IO ()
 handleRequest env h host = (`finally` hClose h) $ do
 
       putStrLn "Receiving data ..."
-      receive h >>= \case
+      receive' h >>= \case
             BootstrapRequest port -> print "-> Valid request" >> handleValidRequest env h host port
             BootstrapHelper  {}   -> return () -- illegal action
             YourHostIs       {}   -> return () -- illegal action
@@ -96,7 +96,7 @@ handleValidRequest env h host port = do
       -- If everything's fine, add client to list of known nodes.
       atomically $ modifyTVar (_knownNodes env) $ Set.insert beneficiary
       putStrLn "Replying with hostname"
-      send h (YourHostIs host)
+      send' h (YourHostIs host)
 
 
 

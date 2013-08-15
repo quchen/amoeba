@@ -65,6 +65,7 @@ startNode = do
 
             putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
             host <- bootstrap config port
+            putStrLn "Bootstrap finished" -- debugging
 
             -- Setup all the communication channels
             env <- initEnvironment (Node host port) config

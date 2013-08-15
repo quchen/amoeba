@@ -20,8 +20,8 @@ import           Network
 import           System.IO
 import           System.Random
 import           Text.Printf
-import qualified Data.Map               as Map
-import qualified Data.Set               as Set
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 
 import Types
@@ -91,16 +91,21 @@ normalHandler :: Environment
 normalHandler env h from signal = do
 
       -- Check whether contacting node is valid upstream
-      allowed <- atomically $ Map.member from <$> readTVar (_upstream env)
+      -- allowed <- atomically $ Map.member from <$> readTVar (_upstream env)
+      -- TODO: Distinguish between certain signals here. For example, an
+      --       IAddedYou should of course not require an already existing
+      --       connection.
+      let allowed = True
 
       if allowed
-            then do send h OK
+            then do debug (putStrLn "Accepting normal signal")
+                    send' h OK
                     normalHandler' env h from signal
                     -- Update "last heard of" timestamp. Note that this will not
                     -- add a valid return address (but some address the incoming
                     -- connection happens to have)!
                     makeTimestamp >>= atomically . updateKnownBy env from
-            else do send h Ignore
+            else do send' h Ignore
                     atomically . toIO env Debug . putStrLn $
                           "Illegally contacted by " ++ show from ++ "; ignoring"
 
@@ -117,7 +122,7 @@ normalHandler' :: Environment
                -> NormalSignal -- ^ Signal type
                -> IO ()
 
-normalHandler' env h from signal = case signal of
+normalHandler' env h from signal = debug (print signal) >> case signal of
       TextMessage {}    -> floodMessage      env signal
       ShuttingDown node -> shuttingDown      env node
       IAddedYou         -> iAddedYouReceived env from
@@ -140,8 +145,8 @@ specialHandler env h from signal = do
 
       case signal of
             BootstrapHelper sig -> normalHandler' env h from sig
-            BootstrapRequest {} -> send h Error >> bootstrapRequest env
-            YourHostIs {}       -> send h Error >> yourHostIs       env
+            BootstrapRequest {} -> send' h Error >> bootstrapRequest env
+            YourHostIs {}       -> send' h Error >> yourHostIs       env
 
 
 
@@ -388,7 +393,7 @@ acceptOutgoingRequest :: Environment -> Node -> IO ()
 acceptOutgoingRequest env origin = do
       timestamp <- makeTimestamp
       bracket (connectToNode origin) hClose $ \h -> do
-            send h AddMe
+            send h (Normal AddMe)
             atomically $ do
                   toIO env Debug . putStrLn $ "'Outgoing' request from "
                                                    ++ show origin ++ " accepted"
@@ -407,7 +412,10 @@ acceptIncomingRequest env origin = do
 --   permission to add it as a downstream neighbour. Spawns a new worker
 --   connecting to the accepting node.
 addMeReceived :: Environment -> Node -> IO ()
-addMeReceived env node = forkNewClient env node
+addMeReceived env node = do
+      forkNewClient env node
+      atomically $ toIO env Debug . putStrLn $ "'AddMe' confirmation from "
+                                                   ++ show node
 
 
 -- | IAddedYou is sent to a new downstream neighbour as the result of a

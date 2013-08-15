@@ -5,6 +5,8 @@ module Utilities (
       , untilTerminate
       , receive
       , send
+      , receive'
+      , send'
       , toIO
       , connectToNode
       , debug
@@ -52,8 +54,8 @@ untilTerminate m = go
 --
 --   **Note:** receiving limits individual incoming requests with a hard cutoff,
 --   currently Int64 bytes.
-receive :: Binary a => Handle -> IO a
-receive h = raceAgainstTimeout $ do
+receive' :: Binary a => Handle -> IO a
+receive' h = raceAgainstTimeout $ do
 
       -- TODO: Add timeout to prevent Slowloris
 
@@ -78,12 +80,19 @@ receive h = raceAgainstTimeout $ do
 
       -- TODO: Handle decoding errors (Maybe?)
 
+-- | Monomorphic aliase for type safety
+receive :: Handle -> IO Signal
+receive = receive'
+
+-- | Monomorphic aliase for type safety
+send :: Handle -> Signal -> IO ()
+send = send'
 
 
 -- | Sends a Signal/ServerResponse, encoded as Binary with a size header, to a
 --   Handle. Inverse of 'receive'.
-send :: Binary a => Handle -> a -> IO ()
-send h message = raceAgainstTimeout $ do
+send' :: Binary a => Handle -> a -> IO ()
+send' h message = raceAgainstTimeout $ do
       debug $ putStrLn "sending"
       let mSerialized = encode message
           mLength = encode (BS.length mSerialized :: Int64)
