@@ -40,6 +40,8 @@ bootstrap config port = do
                   _                 -> Nothing -- TODO: Error message "Bootstrap reply rubbish"
                      -- TODO: Handle timeouts, yell if pattern mismatch
 
+
+
       maybe (bootstrap config port) return result
 
 -- [Why send port?]
@@ -52,4 +54,5 @@ bootstrap config port = do
 
 -- | Finds the address of a suitable bootstrap server.
 getBootstrapServer :: IO Node
-getBootstrapServer = error("TODO: implement bootstrap server discovery")
+getBootstrapServer = return $ Node "localhost" 20000
+-- TODO: Make bootstrap server selection a little more complex :-)

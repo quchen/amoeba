@@ -13,7 +13,7 @@ module Server (
 
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
-import           Control.Exception (bracket)
+import           Control.Exception (finally, bracket)
 import           Control.Monad
 import           Data.Functor
 import           Network
@@ -39,13 +39,11 @@ import Client
 serverLoop :: Socket
            -> Environment
            -> IO ()
-serverLoop socket env = forever $
+serverLoop socket env = forever $ do
 
-      bracket (accept socket)
-              (\(h,_,_) -> hClose h) $
-              \(h, host, port) -> do
-
-      hSetBinaryMode h True
+      -- NB: h is closed by the worker, bracketing here would close it
+      --     immediately after forking
+      (h, host, port) <- accept socket
       let fromNode = Node host port
       void.async $ worker env h fromNode
 
@@ -60,7 +58,7 @@ worker :: Environment
        -> Handle
        -> Node
        -> IO ()
-worker env h from = do
+worker env h from = (`finally` hClose h) $ do
 
       -- TODO: Ignore signals sent by nodes not registered as upstream.
       --       Open issues:

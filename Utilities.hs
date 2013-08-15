@@ -15,7 +15,12 @@ import qualified Data.ByteString.Lazy as BS
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Int
 import System.IO
+import Control.Concurrent.Async
+import Control.Concurrent
+import Control.Exception
+import System.Timeout
 import Control.Concurrent.STM
+import Data.Maybe (fromJust)
 import Network (connectTo, PortID(PortNumber))
 
 import Data.Binary
@@ -47,7 +52,7 @@ untilTerminate m = go
 --   **Note:** receiving limits individual incoming requests with a hard cutoff,
 --   currently Int64 bytes.
 receive :: Binary a => Handle -> IO a
-receive h = do
+receive h = raceAgainstTimeout $ do
 
       -- TODO: Add timeout to prevent Slowloris
 
@@ -60,7 +65,9 @@ receive h = do
           int64Size = int64toInt . BS.length $ encode (maxBound :: Int64)
 
       -- Read message header = length of the incoming signal
+      print "getting"
       mLength <- int64toInt . decode <$> BS.hGet h int64Size
+      print "getting2"
 
       -- Read the previously determined amount of data
       decode <$> BS.hGet h mLength
@@ -72,13 +79,23 @@ receive h = do
 -- | Sends a Signal/ServerResponse, encoded as Binary with a size header, to a
 --   Handle. Inverse of 'receive'.
 send :: Binary a => Handle -> a -> IO ()
-send h message = do
+send h message = raceAgainstTimeout $ do
+      print "sending"
       let mSerialized = encode message
           mLength = encode (BS.length mSerialized :: Int64)
       BS.hPut h mLength
       BS.hPut h mSerialized
       hFlush h
+      print "sent"
 
+-- | Very hacky timeout function. Crashes on timeout. :-x
+raceAgainstTimeout :: IO a -> IO a
+raceAgainstTimeout action = do
+      result <- timeout (10^6) action
+      case result of
+            Just r -> return r
+            Nothing -> print "TIMEOUT" >> undefined
+--   TODO: Make timeout more useful
 
 
 -- | Sends an IO action, depending on the verbosity level.

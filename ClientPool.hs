@@ -15,7 +15,7 @@ import           Data.Traversable
 import           Data.Maybe (isJust)
 
 import Types
-import Utilities (makeTimestamp)
+import Utilities
 
 
 -- | Sets up the client pool by forking the housekeeping thread, and then starts
@@ -39,6 +39,8 @@ clientPool env = withAsync (clientPoolLoop env) $ \cPool  ->
 --   by the configuration.
 clientPoolLoop :: Environment -> IO ()
 clientPoolLoop env = forever $ do
+
+      atomically . toIO env Chatty . putStrLn $ "Client pool tick"
 
       -- How many nodes does the current node know, how many is it known by?
       let mapSize db = fromIntegral . Map.size <$> readTVar (db env)

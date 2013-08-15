@@ -92,9 +92,9 @@ initEnvironment node config = Environment
 
 defaultConfig :: Config
 defaultConfig = Config {
-        _serverPort        = 20000
+        _serverPort        = 21000
       , _maxNeighbours     = 10
-      , _minNeighbours     = 5
+      , _minNeighbours     = 2
       , _maxChanSize       = 100
       , _bounces           = 3
       , _acceptP           = 0.5 -- TODO: Error if not 0 < p <= 1
