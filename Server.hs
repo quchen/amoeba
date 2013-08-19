@@ -125,10 +125,10 @@ normalHandler' :: Environment
                -> IO Proceed
 
 normalHandler' env h from signal = case signal of
-      TextMessage {}    -> floodMessage      env signal
-      ShuttingDown to   -> shuttingDown      env from to
-      EdgeRequest {}    -> edgeBounce        env signal
-      KeepAlive         -> keepAlive         env from
+      TextMessage {}  -> floodMessage env signal
+      ShuttingDown to -> shuttingDown env from to
+      EdgeRequest {}  -> edgeBounce   env signal
+      KeepAlive       -> keepAlive    env from
 
 
 
@@ -158,16 +158,18 @@ specialHandler env h from signal = do
                   send' h Error >> illegalYourHostIs env
 
             IAddedYou ->
+                  -- TODO: Server response
                   iAddedYouReceived env from
 
             AddMe node ->
+                  -- TODO: Server response
                   addMeReceived env (To node)
 
 
 
 
--- | A node should never receive a YourHostIs signal unless it issued
---   Bootstrap. In case it gets one anyway, this function is called.
+-- | A node should never receive a YourHostIs signal unless it issued a
+--   bootstrap. In case it gets one anyway, this function is called.
 illegalYourHostIs :: Environment -> IO Proceed
 illegalYourHostIs env = do
       atomically . toIO env Debug . putStrLn $
@@ -176,7 +178,8 @@ illegalYourHostIs env = do
 
 
 
-
+-- | A node should never receive a Bootstrap signal unless it issued a
+--   bootstrap. In case it gets one anyway, this function is called.
 illegalBootstrapSignal :: Environment -> IO Proceed
 illegalBootstrapSignal env = do
       atomically . toIO env Debug . putStrLn $
@@ -193,41 +196,36 @@ keepAlive :: Environment -> From -> IO Proceed
 keepAlive env origin = do
       atomically . toIO env Chatty . putStrLn $
             "KeepAlive signal received from " ++ show origin
-      return Terminate
+      return Continue
 
 
 
 
 
 
-
-
-
--- | Sends a message to the printer thread
+-- | Prints a text message and floods it on to the network
 floodMessage :: Environment
              -> NormalSignal
              -> IO Proceed
-floodMessage env signal = do
+floodMessage env signal@(TextMessage _timestamp message) = do
 
       -- Only process the message if it hasn't been processed already
       process <- atomically $
             Set.member signal <$> readTVar (_handledQueries env)
+      -- TODO: Housekeeping to delete old messages
 
       when process $ atomically $ do
 
             -- Add signal to the list of already handled ones
             modifyTVar (_handledQueries env) (Set.insert signal)
-
-            -- Print message on the current node
-            let (TextMessage _timestamp message) = signal -- TODO: Handle pattern mismatch
             toIO env Quiet $ putStrLn message
-
-            -- Propagate message on to all clients
             writeTChan (_stc env) signal
 
       return Continue
 
-
+-- TODO: Handle (impossible) pattern mismatch (which is caught by the invoking
+--       handler already)
+floodMessage _ _ = undefined
 
 
 
@@ -237,8 +235,8 @@ updateKnownBy :: Environment
               -> From
               -> Timestamp
               -> STM ()
-updateKnownBy env node timestamp = modifyTVar (_upstream env) $
-                                               Map.adjust (const timestamp) node
+updateKnownBy env node timestamp =
+      modifyTVar (_upstream env) $ Map.adjust (const timestamp) node
 
 
 
@@ -252,11 +250,10 @@ shuttingDown :: Environment
              -> To          -- ^ Shutdown node's server address (used to
                             --   terminate upstream connections to it)
              -> IO Proceed
-shuttingDown env from to@(To node) = do
+shuttingDown env from to = do
 
-      atomically $ toIO env Debug $ printf "Shutdown notice from %s:%s"
-                                                             (show $ _host node)
-                                                             (show $ _port node)
+      atomically . toIO env Debug . putStrLn $
+            "Shutdown notice from %s:%s" ++ show to
 
       -- Remove from lists of known nodes and nodes known by
       atomically $ modifyTVar (_upstream env) (Map.delete from)
@@ -278,22 +275,6 @@ shuttingDown env from to@(To node) = do
 
 
 
--- | A node signals that it has added the current node to its pool. This happens
---   at the end of a neighbour search.
---
---   This should be the first signal the current node receives from another node
---   choosing it as its new downstream neighbour.
-iAddedYou :: Environment
-          -> From
-          -> IO Proceed
-iAddedYou env node = do
-      timestamp <- makeTimestamp
-      atomically $ do
-            modifyTVar (_upstream env) (Map.insert node timestamp)
-            toIO env Debug $ putStrLn $ "New upstream neighbour: " ++ show node
-       -- Let's not close the door in front of our new friend :-)
-
-      return Continue
 
 
 
@@ -338,7 +319,7 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Left n))) = do
 
       let buildSignal = EdgeRequest origin . EdgeData dir
       atomically $ do
-            writeTBQueue (_st1c env) . buildSignal $ case n of
+            writeTBQueue (_st1c env) . buildSignal $ case n of -- n :: Word
                   0 -> Right (_acceptP $ _config env)
                   k -> Left $ min (k - 1) (_bounces $ _config env)
                        -- ^ Cap the number of hard bounces with the current
@@ -385,7 +366,7 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
                   atomically . toIO env Debug $ putStrLn msg
                   bounceOn
             (_, False, _) -> do
-                  let msg = "Random bounce"
+                  let msg = "Random bounce (accept: p = " ++ show p ++ ")"
                   atomically . toIO env Debug $ putStrLn msg
                   bounceOn
             (_, _, Outgoing) -> do -- TODO: Sub-method, running off screen here
@@ -420,15 +401,15 @@ edgeBounce env signal = do
 --   neighbour".
 acceptOutgoingRequest :: Environment -> To -> IO Proceed
 acceptOutgoingRequest env node = do
-      timestamp <- makeTimestamp
       -- TODO: Await confirmation of the AddMe signal (-> proper handshake)
       bracket (connectToNode node) hClose $ \h -> do
             send h (Special . AddMe $ _self env)
             atomically $ do
                   toIO env Debug . putStrLn $ "'Outgoing' request from "
-                                                   ++ show node ++ " accepted"
+                                                     ++ show node ++ " accepted"
 
       return Continue
+
 
 
 -- | Invoked when an Incoming EdgeRequest is accepted by the current node.
@@ -442,6 +423,7 @@ acceptIncomingRequest env node = do
       return Continue
 
 
+
 -- | Invoked on an incoming "Outgoing request successful" signal, i.e. after
 --   sending out a Outgoing EdgeRequest, another node has given this node the
 --   permission to add it as a downstream neighbour. Spawns a new worker
@@ -453,16 +435,22 @@ addMeReceived env node = do
       return Continue
 
 
+
 -- | IAddedYou is sent to a new downstream neighbour as the result of a
 --   successful Incoming request. When received, this handler does the
 --   bookkeeping for the new incoming connection.
 iAddedYouReceived :: Environment -> From -> IO Proceed
 iAddedYouReceived env node = do
-      makeTimestamp >>= atomically . modifyTVar (_upstream env) . Map.insert node
+      timestamp <- makeTimestamp
+      atomically $ do
+            modifyTVar (_upstream env) (Map.insert node timestamp)
+            toIO env Debug $ putStrLn $ "New upstream neighbour: " ++ show node
       return Continue
 
       -- TODO: Check whether the previous 3 functions get all the directions
       --       right (i.e. do what they should)!
+
+
 
 
 

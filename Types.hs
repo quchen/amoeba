@@ -257,8 +257,9 @@ instance Binary Direction
 
 
 -- | Used in loops that may end. Continue means looping, Terminate hops out.
+--   Functions will typically have the return type @IO Proceed@, indicating that
+--   they are part of a loop that may terminate under certain conditions.
 data Proceed = Continue | Terminate
-      deriving (Eq, Ord, Show)
 
 
 

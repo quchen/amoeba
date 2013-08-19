@@ -17,12 +17,8 @@ import qualified Data.ByteString.Lazy as BS
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Int
 import System.IO
-import Control.Concurrent.Async
-import Control.Concurrent
-import Control.Exception
 import System.Timeout
 import Control.Concurrent.STM
-import Data.Maybe (fromJust)
 import Network (connectTo, PortID(PortNumber))
 
 import Data.Binary
