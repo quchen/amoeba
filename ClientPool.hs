@@ -101,7 +101,7 @@ sendEdgeRequest env dir = atomically $
 --   neighbour, removes timed out upstream nodes and dead clients/downstream
 --   nodes.
 housekeeping :: Environment -> IO ()
-housekeeping env = debug (const (return ())) $ forever $ do
+housekeeping env = forever $ do
       -- Order matters: remove dead neighbours first, then send KeepAlive
       -- signals
       -- TODO: Update timestamps of running clients

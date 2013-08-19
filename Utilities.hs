@@ -9,7 +9,6 @@ module Utilities (
       , send'
       , toIO
       , connectToNode
-      , debug
 ) where
 
 import Data.Functor
@@ -68,15 +67,10 @@ receive' h = do
           int64Size = int64toInt . BS.length $ encode (maxBound :: Int64)
 
       -- Read message header = length of the incoming signal
-      debug $ print "getting"
       mLength <- int64toInt . decode <$> BS.hGet h int64Size
 
       -- Read the previously determined amount of data
-      r <- decode <$> BS.hGet h mLength
-
-      debug $ print "getting done"
-
-      return r
+      decode <$> BS.hGet h mLength
 
       -- TODO: Handle decoding errors (Maybe?)
 
@@ -93,12 +87,10 @@ send = send'
 --   Handle. Inverse of 'receive'.
 send' :: Binary a => Handle -> a -> IO ()
 send' h message = do
-      debug $ putStrLn "sending"
       let mSerialized = encode message
           mLength = encode (BS.length mSerialized :: Int64)
       BS.hPut h mLength
       BS.hPut h mSerialized
-      debug $ putStrLn "sent"
       hFlush h
 
 -- | Very hacky timeout function. Crashes on timeout. :-x
@@ -107,8 +99,8 @@ raceAgainstTimeout action = do
       result <- timeout (10^6) action
       case result of
             Just r -> return r
-            Nothing -> debug (putStrLn "TIMEOUT") >> undefined
---   TODO: Make timeout more useful
+            Nothing -> undefined
+--   TODO: Make timeout more useful, especially: remove undefined
 
 
 -- | Sends an IO action, depending on the verbosity level.
@@ -121,10 +113,3 @@ toIO env verbosity = when p . writeTBQueue (_io env)
 --   object.
 connectToNode :: To -> IO Handle
 connectToNode (To n) = connectTo (_host n) (PortNumber (_port n))
-
-
-
-
--- Debugging function. Delete to make the type system tell you where to clean up
-debug :: a -> a
-debug = id

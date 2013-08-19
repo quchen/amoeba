@@ -57,8 +57,8 @@ serverLoop socket env = forever $ do
 --   print chat messages etc.
 --   (The first parameter is the same as in the result of Network.accept.)
 worker :: Environment
-       -> Handle
-       -> From
+       -> Handle      -- ^ Incoming connection handler
+       -> From        -- ^ Incoming connection address
        -> IO ()
 worker env h from = (`finally` hClose h) . forever $ do
 
@@ -72,8 +72,10 @@ worker env h from = (`finally` hClose h) . forever $ do
       -- TODO: Error handling: What to do if rubbish data comes in?
       --       -> Respond error, kill worker
       receive h >>= \case
-            Normal  normal  -> debug (putStrLn "normal signal") >> normalHandler  env h from normal
-            Special special -> debug (putStrLn "special signal") >> specialHandler env h from special
+            Normal  normal  -> normalHandler  env h from normal
+            Special special -> specialHandler env h from special
+
+      -- TODO: Handle termination
 
 
 
@@ -98,8 +100,7 @@ normalHandler env h from signal = do
       let allowed = True
 
       if allowed
-            then do debug (putStrLn "Accepting normal signal")
-                    send' h OK
+            then do send' h OK
                     normalHandler' env h from signal
                     -- Update "last heard of" timestamp. Note that this will not
                     -- add a valid return address (but some address the incoming
@@ -122,7 +123,7 @@ normalHandler' :: Environment
                -> NormalSignal -- ^ Signal type
                -> IO ()
 
-normalHandler' env h from signal = debug (print signal) >> case signal of
+normalHandler' env h from signal = case signal of
       TextMessage {}    -> floodMessage      env signal
       ShuttingDown to   -> shuttingDown      env from to
       EdgeRequest {}    -> edgeBounce        env signal
