@@ -60,7 +60,7 @@ worker :: Environment
        -> Handle
        -> Node
        -> IO ()
-worker env h from = (`finally` hClose h) $ do
+worker env h from = (`finally` hClose h) . forever $ do
 
       -- TODO: Ignore signals sent by nodes not registered as upstream.
       --       Open issues:
@@ -125,8 +125,6 @@ normalHandler' :: Environment
 normalHandler' env h from signal = debug (print signal) >> case signal of
       TextMessage {}    -> floodMessage      env signal
       ShuttingDown node -> shuttingDown      env node
-      IAddedYou         -> iAddedYouReceived env from
-      AddMe             -> addMeReceived     env from
       EdgeRequest {}    -> edgeBounce        env signal
       KeepAlive         -> keepAlive         env from
 
@@ -144,9 +142,24 @@ specialHandler env h from signal = do
       -- TODO: Check whether contact is a valid, e.g. if it's a bootstrap server
 
       case signal of
-            BootstrapHelper sig -> normalHandler' env h from sig
-            BootstrapRequest {} -> send' h Error >> bootstrapRequest env
-            YourHostIs {}       -> send' h Error >> yourHostIs       env
+
+            BootstrapHelper sig@(EdgeRequest {}) ->
+                  normalHandler' env h from sig
+
+            BootstrapHelper _ ->
+                  send' h Error >> illegalBootstrapSignal env
+
+            BootstrapRequest {} ->
+                  send' h Error >> illegalBootstrapSignal env
+
+            YourHostIs {} ->
+                  send' h Error >> yourHostIs env
+
+            IAddedYou ->
+                  iAddedYouReceived env from
+
+            AddMe node ->
+                  addMeReceived env node
 
 
 
@@ -161,10 +174,10 @@ yourHostIs env = do
 
 
 
-bootstrapRequest :: Environment -> IO ()
-bootstrapRequest env = do
+illegalBootstrapSignal :: Environment -> IO ()
+illegalBootstrapSignal env = do
       atomically . toIO env Debug . putStrLn $
-            "BootstrapRequest signal received on a normal server, ignoring"
+            "Illegal bootstrap signal; ignoring"
 
 
 
@@ -393,7 +406,7 @@ acceptOutgoingRequest :: Environment -> Node -> IO ()
 acceptOutgoingRequest env origin = do
       timestamp <- makeTimestamp
       bracket (connectToNode origin) hClose $ \h -> do
-            send h (Normal AddMe)
+            send h (Special . AddMe $ _self env)
             atomically $ do
                   toIO env Debug . putStrLn $ "'Outgoing' request from "
                                                    ++ show origin ++ " accepted"
@@ -414,8 +427,7 @@ acceptIncomingRequest env origin = do
 addMeReceived :: Environment -> Node -> IO ()
 addMeReceived env node = do
       forkNewClient env node
-      atomically $ toIO env Debug . putStrLn $ "'AddMe' confirmation from "
-                                                   ++ show node
+      atomically $ toIO env Debug . putStrLn $ "'AddMe' from " ++ show node
 
 
 -- | IAddedYou is sent to a new downstream neighbour as the result of a
@@ -423,11 +435,11 @@ addMeReceived env node = do
 --   bookkeeping for the new incoming connection.
 iAddedYouReceived :: Environment -> Node -> IO ()
 iAddedYouReceived env node = do
-      timestamp <- makeTimestamp
-      atomically $ updateKnownBy env node timestamp
+      makeTimestamp >>= atomically . modifyTVar (_upstream env) . Map.insert node
 
 
-      -- TODO: Check whether the previous 3 functions get all the directions right (i.e. do what they should)!
+      -- TODO: Check whether the previous 3 functions get all the directions
+      --       right (i.e. do what they should)!
 
 
 

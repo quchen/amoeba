@@ -157,13 +157,6 @@ data NormalSignal =
       --   the graph of nodes will have a new edge.
         EdgeRequest Node EdgeData
 
-      -- | Sent to the new downstream neighbour node so it can keep track of
-      --   how many times it's referenced.
-      | IAddedYou
-
-      -- | Sent to the requesting node: "I have upstream neighbour space free"
-      | AddMe
-
       -- | Randomly sent to downstream nodes so the timestamps are refreshed,
       --   and the node is kept in the books as an upstream neighbour
       | KeepAlive
@@ -205,7 +198,9 @@ instance Binary ServerResponse
 
 
 
--- | Classifies special signals in order to process them differently
+-- | Classifies special signals in order to process them differently. For
+--   example, many of them do not need the sending node to be known in order
+--   to be processed.
 data SpecialSignal =
 
       -- | Sent from a bootstrap server to the network. Bypasses checks whether
@@ -221,6 +216,13 @@ data SpecialSignal =
       -- | Sent as a response to a Bootstrap to tell the node its hostname, so
       --   it can add it to its Environment.
       | YourHostIs HostName
+
+      -- | Sent to the new downstream neighbour node so it can keep track of
+      --   how many times it's referenced.
+      | IAddedYou
+
+      -- | Sent to the requesting node: "I have upstream neighbour space free"
+      | AddMe Node
 
       deriving (Eq, Ord, Show, Generic)
 

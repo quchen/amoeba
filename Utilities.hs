@@ -55,7 +55,7 @@ untilTerminate m = go
 --   **Note:** receiving limits individual incoming requests with a hard cutoff,
 --   currently Int64 bytes.
 receive' :: Binary a => Handle -> IO a
-receive' h = raceAgainstTimeout $ do
+receive' h = do
 
       -- TODO: Add timeout to prevent Slowloris
 
@@ -92,7 +92,7 @@ send = send'
 -- | Sends a Signal/ServerResponse, encoded as Binary with a size header, to a
 --   Handle. Inverse of 'receive'.
 send' :: Binary a => Handle -> a -> IO ()
-send' h message = raceAgainstTimeout $ do
+send' h message = do
       debug $ putStrLn "sending"
       let mSerialized = encode message
           mLength = encode (BS.length mSerialized :: Int64)

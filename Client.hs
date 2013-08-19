@@ -57,13 +57,14 @@ newClient :: Environment
           -> TBQueue NormalSignal -- ^ This client's private signal channel
           -> IO ()
 newClient env node stsc =
+
       let release h = do
                debug $ putStrLn "\ESC[31mRELEASE\ESC[0m"
                atomically . modifyTVar (_downstream env) $ Map.delete node
                hClose h
 
       in bracket (connectToNode node) release $ \h -> do
-               send h (Normal IAddedYou)
+               send h (Special IAddedYou)
                stc <- atomically $ dupTChan (_stc env)
                clientLoop env h node [ readTChan stc
                                      , readTBQueue (_st1c env)
