@@ -37,10 +37,6 @@ Research goals
 
 - How can certain attacks on the network be prevented?
 
-    - A small number of modified nodes accepts all edge requests it receives (instead of maybe relaying it), and additionally share the collected addresses among each other, connecting to as many nodes as possible, leading to a very central role in the network. For a certain (but small) number of such modified nodes, the network integrity could be endangered, for example by shutting down all of a sudden, or filtering large parts of the network traffic.
-
-    - Rubbish data: How much is the network affected by spamming it with nonsense edge requests?
-
 
 
 Network description
@@ -60,6 +56,31 @@ An outline of how the network looks like:
 
 - To look at the large scale structure of the network, a specialized request can be made by a specialized graph plot server. This request makes every client send a list of all its neighbours to the plot server. (This is strictly a debugging tool, since it opens the door for a truckload of attacks.)
 
+
+Known vulnerabilities and immunities
+------------------------------------
+
+This is a list of known and feasible attacks on the current design:
+
+- Malicious single nodes
+
+  - DDoS: Spamming the network with loads of trashy messages. Especially flooding signals (such as text messages) have a very large impact compared to the single signal they are issued with. Furthermore, messages are anonymous, so if you have N neighbours, you can at least send N messages per malicious node without any possible spam protection being able to jump in. (This attack does of course scale with the number of spammers.)
+
+  - SlowLoris
+
+  - Node crawling: Although nodes only retain the addresses of downstream neighbours (remember the upstream connection is one-way, clients will not send or handle signals issued the wrong way), EdgeRequest signals carry valid server addresses and traverse a large part of the network before they are accepted. Specialized nodes could simply store all valid addresses they encounter. This is completely undetectable by other nodes and, while not dangerous on its own, can lead to a large knowledge about the network. The node database could be shared with malicious nodes that could harness that information for attacks on the network.
+
+- Malicious sub-networks
+
+  - Nodes accepting all EdgeRequest signals they encounter can build up a connection to a large portion of the network
+
+    - Filtering: Certain signals could be thrown away, for example EdgeRequest signals from a certain IP range so that no new nodes can connect to the network
+
+    - Altering signals
+
+    - No network dynamics: The network right now is static, once a connection is established it will only be destroyed due to technical failure or planned termination. A test where two neighbours compare some of their neighbours and drop common ones could battle the possibility of nodes gathering up too many connections illegally.
+
+  - *Immune:* Bootstrap takeover: The bootstrap server remembers all nodes it has helped spawn. Should the malicious network be able to bully out all legally known nodes, the bootstrap server would have to send the next request through the malicious network first. However, the newly spawned node now exists in the bootstrap server's database, providing a way through the blockade.
 
 
 Terminology
