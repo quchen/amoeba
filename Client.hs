@@ -32,7 +32,7 @@ import Utilities
 
 
 -- Starts a new client in a separate thread.
-forkNewClient :: Environment -> Node -> IO ()
+forkNewClient :: Environment -> To -> IO ()
 forkNewClient env targetNode = do
 
       -- Setup queue for talking directly to the speicif client created here.
@@ -53,13 +53,12 @@ forkNewClient env targetNode = do
 -- whether there is any space in the client pool; that's the job of the function
 -- that sends the newClient command (i.e. the server).
 newClient :: Environment
-          -> Node                 -- ^ Target downstream neighbour
+          -> To                   -- ^ Target downstream neighbour
           -> TBQueue NormalSignal -- ^ This client's private signal channel
           -> IO ()
 newClient env node stsc =
 
       let release h = do
-               debug $ putStrLn "\ESC[31mRELEASE\ESC[0m"
                atomically . modifyTVar (_downstream env) $ Map.delete node
                hClose h
 
@@ -77,10 +76,10 @@ newClient env node stsc =
 -- meant to be handled by only one client), and executes their orders.
 clientLoop :: Environment
            -> Handle             -- ^ Network connection
-           -> Node               -- ^ Target downstream neighbour
+           -> To                 -- ^ Target downstream neighbour
            -> [STM NormalSignal] -- ^ Actions that read incoming channels
            -> IO ()
-clientLoop env h node chans = (debug (print "NEW CLIENT") >>) $ untilTerminate $ do
+clientLoop env h node chans = untilTerminate $ do
 
       -- Receive orders from whatever channel is first available
       send h . Normal =<< atomically (msum chans)
@@ -95,13 +94,13 @@ clientLoop env h node chans = (debug (print "NEW CLIENT") >>) $ untilTerminate $
 -- | Response to sending a signal to a server successfully. (Updates the "last
 --   successfully sent signal to" timestamp)
 ok :: Environment
-   -> Node        -- ^ Target downstream neighbour
+   -> To          -- ^ Target downstream neighbour
    -> IO Proceed
-ok env downstream = do
+ok env node = do
       timestamp <- makeTimestamp
       let updateTimestamp client = client { _clientTimestamp = timestamp }
       atomically $ modifyTVar (_downstream env) $
-            Map.adjust updateTimestamp downstream
+            Map.adjust updateTimestamp node
       return Continue
 
 

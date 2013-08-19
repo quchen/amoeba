@@ -53,6 +53,6 @@ bootstrap config port = do
 
 
 -- | Finds the address of a suitable bootstrap server.
-getBootstrapServer :: IO Node
-getBootstrapServer = return $ Node "localhost" 20000
+getBootstrapServer :: IO To
+getBootstrapServer = return . To $ Node "localhost" 20000
 -- TODO: Make bootstrap server selection a little more complex :-)

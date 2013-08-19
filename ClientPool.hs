@@ -88,7 +88,7 @@ sendEdgeRequest :: Environment
                 -> IO ()
 sendEdgeRequest env dir = atomically $
                           writeTBQueue (_st1c env) $
-                          EdgeRequest (_self env) $
+                          EdgeRequest (To $ _self env) $
                           EdgeData dir $
                           Left $
                           (_bounces._config) env
@@ -101,7 +101,7 @@ sendEdgeRequest env dir = atomically $
 --   neighbour, removes timed out upstream nodes and dead clients/downstream
 --   nodes.
 housekeeping :: Environment -> IO ()
-housekeeping env = debug (const (return ())) $ forever $ do
+housekeeping env = forever $ do
       -- Order matters: remove dead neighbours first, then send KeepAlive
       -- signals
       -- TODO: Update timestamps of running clients

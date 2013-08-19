@@ -29,7 +29,7 @@ import Types hiding (Environment)
 
 
 
-data BSEnv = BSEnv { _knownNodes :: TVar (Set Node)
+data BSEnv = BSEnv { _knownNodes :: TVar (Set To)
                    , _rng        :: TVar StdGen-- RNG or infinite stream of random numbers?
                    }
 
@@ -86,7 +86,7 @@ handleRequest env h host = (`finally` hClose h) $ do
 handleValidRequest :: BSEnv -> Handle -> HostName -> PortNumber -> IO ()
 handleValidRequest env h host port = do
 
-      let beneficiary = Node host port
+      let beneficiary = To $ Node host port
 
       -- If it's a bootstrap request, send a couple of edge requests to nodes
       putStrLn "Sending edge requests"
@@ -115,7 +115,7 @@ housekeeping env = do
 
 
 -- | Sends a single request to a random known node
-sendEdgeRequest :: BSEnv -> Node -> Direction -> IO ()
+sendEdgeRequest :: BSEnv -> To -> Direction -> IO ()
 sendEdgeRequest env beneficiary dir = do
 
       -- p = Acceptance probability. Set it to 1 if there's only one node that
@@ -135,7 +135,7 @@ sendEdgeRequest env beneficiary dir = do
 
 
 -- | Gets a random node out of the list of known ones
-randomNode :: BSEnv -> STM (Maybe Node)
+randomNode :: BSEnv -> STM (Maybe To)
 randomNode env = do
       nodes <- readTVar (_knownNodes env)
       if not $ Set.null nodes
