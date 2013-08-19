@@ -88,7 +88,7 @@ sendEdgeRequest :: Environment
                 -> IO ()
 sendEdgeRequest env dir = atomically $
                           writeTBQueue (_st1c env) $
-                          EdgeRequest (_self env) $
+                          EdgeRequest (To $ _self env) $
                           EdgeData dir $
                           Left $
                           (_bounces._config) env

@@ -26,12 +26,12 @@ data Environment = Environment {
 
       -- Mutable environment
 
-        _downstream :: TVar (Map Node Client)
+        _downstream :: TVar (Map To Client)
                                        -- ^ Neighbours the current node knows,
                                        --   and when they have last been sent
                                        --   a signal
 
-      , _upstream    :: TVar (Map Node Timestamp)
+      , _upstream    :: TVar (Map From Timestamp)
                                        -- ^ Nodes the current node knows it's
                                        --   a downstream neighbour of, or
                                        --   equivalently the set of upstream
@@ -149,21 +149,21 @@ instance Binary Signal
 --   new neighbours etc.
 data NormalSignal =
 
-      -- | Query to add an edge to the network. Direction specifies which way
-      --   the new connection should go. The Either part is used to limit how
-      --   far the request bounces through the network.
+      -- | Query to add an edge to the network. The 'To' parameter is the
+      --   issuing node's server address.
       --
       --   The name has been chosen because when an EdgeRequest is complete,
       --   the graph of nodes will have a new edge.
-        EdgeRequest Node EdgeData
+        EdgeRequest To EdgeData
 
       -- | Randomly sent to downstream nodes so the timestamps are refreshed,
       --   and the node is kept in the books as an upstream neighbour
       | KeepAlive
 
       -- | Current node is shutting down, remove it from your upstream
-      --   neighbour pool
-      | ShuttingDown Node
+      --   neighbour pool. The 'To' address provided is the server address of
+      --   the terminating node.
+      | ShuttingDown To
 
       -- | Text message.
       | TextMessage Timestamp String
@@ -280,3 +280,18 @@ data Verbosity = Chatty  -- ^ *Everything*, e.g. passing bounces, keep-alive
                | Mute    -- ^ Nothing, node just serves as a network helper
       deriving (Eq, Ord, Show)
       -- Note: Order matters in order to make `myVerbosity > x` work!
+
+
+
+-- | Node address clients can send data to. Used to ensure upstream nodes aren't
+--   sent downstream data.
+newtype From = From { getFrom :: Node }
+      deriving (Eq, Ord, Show)
+
+
+-- | Node address clients can send data to. Used to ensure downstream data is
+--   sent only to appropriate handles.
+newtype To = To { getTo :: Node }
+      deriving (Eq, Ord, Show, Generic)
+
+instance Binary To

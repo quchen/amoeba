@@ -119,8 +119,8 @@ toIO env verbosity = when p . writeTBQueue (_io env)
 
 -- | Like Network.connectTo, but extracts the connection data from a @Node@
 --   object.
-connectToNode :: Node -> IO Handle
-connectToNode n = connectTo (_host n) (PortNumber (_port n))
+connectToNode :: To -> IO Handle
+connectToNode (To n) = connectTo (_host n) (PortNumber (_port n))
 
 
 

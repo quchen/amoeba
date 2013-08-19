@@ -44,7 +44,7 @@ serverLoop socket env = forever $ do
       -- NB: h is closed by the worker, bracketing here would close it
       --     immediately after forking
       (h, host, port) <- accept socket
-      let fromNode = Node host port
+      let fromNode = From $ Node host port
       atomically . toIO env Debug . putStrLn $
             "New connection from " ++ show fromNode
       void.async $ worker env h fromNode
@@ -58,7 +58,7 @@ serverLoop socket env = forever $ do
 --   (The first parameter is the same as in the result of Network.accept.)
 worker :: Environment
        -> Handle
-       -> Node
+       -> From
        -> IO ()
 worker env h from = (`finally` hClose h) . forever $ do
 
@@ -84,7 +84,7 @@ worker env h from = (`finally` hClose h) . forever $ do
 --   processed differently.)
 normalHandler :: Environment
               -> Handle       -- ^ Data channel
-              -> Node         -- ^ Signal origin
+              -> From         -- ^ Signal origin
               -> NormalSignal -- ^ Signal type
               -> IO ()
 
@@ -118,13 +118,13 @@ normalHandler env h from signal = do
 --   of that, see normalHandler and specialHandler.
 normalHandler' :: Environment
                -> Handle       -- ^ Data channel
-               -> Node         -- ^ Signal origin
+               -> From         -- ^ Signal origin
                -> NormalSignal -- ^ Signal type
                -> IO ()
 
 normalHandler' env h from signal = debug (print signal) >> case signal of
       TextMessage {}    -> floodMessage      env signal
-      ShuttingDown node -> shuttingDown      env node
+      ShuttingDown to   -> shuttingDown      env from to
       EdgeRequest {}    -> edgeBounce        env signal
       KeepAlive         -> keepAlive         env from
 
@@ -133,7 +133,7 @@ normalHandler' env h from signal = debug (print signal) >> case signal of
 
 specialHandler :: Environment
                -> Handle        -- ^ Data channel
-               -> Node          -- ^ Signal origin
+               -> From          -- ^ Signal origin
                -> SpecialSignal -- ^ Signal type
                -> IO ()
 
@@ -159,7 +159,7 @@ specialHandler env h from signal = do
                   iAddedYouReceived env from
 
             AddMe node ->
-                  addMeReceived env node
+                  addMeReceived env (To node)
 
 
 
@@ -185,7 +185,7 @@ illegalBootstrapSignal env = do
 -- | Acknowledges an incoming KeepAlive signal, which is effectively a no-op,
 --   apart from that it (like any other signal) refreshes the "last heard of
 --   timestamp".
-keepAlive :: Environment -> Node -> IO ()
+keepAlive :: Environment -> From -> IO ()
 keepAlive env origin = do
       atomically . toIO env Chatty . putStrLn $
             "KeepAlive signal received from " ++ show origin
@@ -230,7 +230,7 @@ floodMessage env signal = do
 -- | Inserts or updates the timestamp in the "last heard of" database. Does
 --   nothing if the node isn't registered upstream.
 updateKnownBy :: Environment
-              -> Node
+              -> From
               -> Timestamp
               -> STM ()
 updateKnownBy env node timestamp = modifyTVar (_upstream env) $
@@ -242,22 +242,26 @@ updateKnownBy env node timestamp = modifyTVar (_upstream env) $
 
 -- | Remove the issuing node from the database
 shuttingDown :: Environment
-             -> Node
+             -> From        -- ^ Shutdown node's incoming address as seen from
+                            --   this node (used to terminate downstream
+                            --   connections to it)
+             -> To          -- ^ Shutdown node's server address (used to
+                            --   terminate upstream connections to it)
              -> IO ()
-shuttingDown env node = do
+shuttingDown env from to@(To node) = do
 
       atomically $ toIO env Debug $ printf "Shutdown notice from %s:%s"
-                                           (show $ _host node)
-                                           (show $ _port node)
+                                                             (show $ _host node)
+                                                             (show $ _port node)
 
       -- Remove from lists of known nodes and nodes known by
-      atomically $ modifyTVar (_upstream env) (Map.delete node)
+      atomically $ modifyTVar (_upstream env) (Map.delete from)
 
       -- Just in case there is also a downstream connection to the same node,
       -- kill that one as well
-      downstream <- atomically $ Map.lookup node <$> readTVar (_downstream env)
+      downstream <- atomically $ Map.lookup to <$> readTVar (_downstream env)
       maybe (return ()) (cancel._clientAsync) downstream
-      atomically $ modifyTVar (_downstream env) (Map.delete node)
+      atomically $ modifyTVar (_downstream env) (Map.delete to)
 
 
 
@@ -274,7 +278,7 @@ shuttingDown env node = do
 --   This should be the first signal the current node receives from another node
 --   choosing it as its new neighbour.
 iAddedYou :: Environment
-          -> Node
+          -> From
           -> IO ()
 iAddedYou env node = do
       timestamp <- makeTimestamp
@@ -358,7 +362,7 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
                 (< threshold) . fromIntegral . Map.size <$> readTVar tVar
 
       -- Make sure not to connect to itself or to already known nodes
-      allowed <- isAllowed env dir origin
+      allowed <- isAllowed env origin
 
 
       -- Roll whether to accept the query first, then check whether there's
@@ -402,29 +406,28 @@ edgeBounce env signal = do
 -- | Sent as a confirmation message when a Outgoing request issued by another
 --   node was accepted by this node. In other words, this function sends a "yes,
 --   you may add me as your neighbour".
-acceptOutgoingRequest :: Environment -> Node -> IO ()
-acceptOutgoingRequest env origin = do
+acceptOutgoingRequest :: Environment -> To -> IO ()
+acceptOutgoingRequest env node = do
       timestamp <- makeTimestamp
-      bracket (connectToNode origin) hClose $ \h -> do
+      bracket (connectToNode node) hClose $ \h -> do
             send h (Special . AddMe $ _self env)
             atomically $ do
                   toIO env Debug . putStrLn $ "'Outgoing' request from "
-                                                   ++ show origin ++ " accepted"
-                  modifyTVar (_upstream env) $ Map.insert origin timestamp
+                                                   ++ show node ++ " accepted"
 
 
-acceptIncomingRequest :: Environment -> Node -> IO ()
-acceptIncomingRequest env origin = do
-      forkNewClient env origin -- TODO: Message
+acceptIncomingRequest :: Environment -> To -> IO ()
+acceptIncomingRequest env node = do
+      forkNewClient env node -- TODO: Message
       atomically $ toIO env Debug . putStrLn $ "'Incoming' request from "
-                                                   ++ show origin ++ " accepted"
+                                                   ++ show node ++ " accepted"
 
 
 -- | Invoked on an incoming "Outgoing request successful" signal, i.e. after
 --   sending out a Outgoing EdgeRequest, another node has given this node the
 --   permission to add it as a downstream neighbour. Spawns a new worker
 --   connecting to the accepting node.
-addMeReceived :: Environment -> Node -> IO ()
+addMeReceived :: Environment -> To -> IO ()
 addMeReceived env node = do
       forkNewClient env node
       atomically $ toIO env Debug . putStrLn $ "'AddMe' from " ++ show node
@@ -433,10 +436,9 @@ addMeReceived env node = do
 -- | IAddedYou is sent to a new downstream neighbour as the result of a
 --   successful Incoming request. When received, this handler does the
 --   bookkeeping for the new incoming connection.
-iAddedYouReceived :: Environment -> Node -> IO ()
+iAddedYouReceived :: Environment -> From -> IO ()
 iAddedYouReceived env node = do
       makeTimestamp >>= atomically . modifyTVar (_upstream env) . Map.insert node
-
 
       -- TODO: Check whether the previous 3 functions get all the directions
       --       right (i.e. do what they should)!
@@ -444,22 +446,16 @@ iAddedYouReceived env node = do
 
 
 
--- | Checks whether a connection from/to origin is allowed. A node must not
+-- | Checks whether a connection to a certain node is allowed. A node must not
 --   connect to itself or to known neighbours multiple times.
-isAllowed :: Environment -> Direction -> Node -> IO Bool
-isAllowed env dir origin = do
-
-      -- Don't connecto to yourself
-      let isSelf = origin == _self env
-
-      -- 1. The origin node requesting an incoming connection is already
-      --    downstream
-      -- 2. The origin node requesting an outgoing connection is already
-      --    upstream
-      let isInDatabase db = atomically $ Map.member origin <$> readTVar db
-      isAlreadyKnown <- case dir of
-            Incoming -> isInDatabase (_downstream env)
-            Outgoing -> isInDatabase (_upstream env)
-
+--
+--   Due to the fact that an EdgeRequest does not contain the upstream address
+--   of the connection to be established, it cannot be checked whether the node
+--   is already an upstream neighbour directly; timeouts will have to take care
+--   of that.
+isAllowed :: Environment -> To -> IO Bool
+isAllowed env node@(To to) = do
+      let isSelf = to == _self env
+      isAlreadyKnown <- atomically $ Map.member node <$> readTVar (_downstream env)
       return . not $ isSelf || isAlreadyKnown
-
+-- TODO: Solve the upstream neighbour checking issue
