@@ -89,6 +89,7 @@ clientLoop env h node chans = untilTerminate $ do
       -- Receive orders from whatever channel is first available
       send h . Normal =<< atomically (msum chans)
 
+
       receive' h >>= \case
             OK     -> ok env node
             Error  -> genericError env

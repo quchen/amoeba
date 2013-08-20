@@ -41,14 +41,14 @@ clientPool env = withAsync (clientPoolLoop env) $ \cPool  ->
 clientPoolLoop :: Environment -> IO ()
 clientPoolLoop env = forever $ do
 
+      let lastDigitOnly (To node) = _port node `rem` 10 -- For DEBUGging
       ds <- atomically $ Map.keys <$> readTVar (_downstream env)
       printf "Downstream: [%d] %s\n"
              (length ds)
-             (show ds)
+             (show $ map lastDigitOnly ds)
       us <- atomically $ Map.keys <$> readTVar (_upstream env)
-      printf "Upstream: [%d] %s\n"
+      printf "Upstream:   [%d]\n"
              (length us)
-             (show us)
 
       -- How many nodes does the current node know, how many is it known by?
       let dbSize db = fromIntegral . Map.size <$> readTVar (db env)
@@ -143,13 +143,7 @@ removeTimedOutUpstream env = do
       (Timestamp now) <- makeTimestamp
       atomically $ do
             let notTimedOut (Timestamp t) = now - t < (_poolTimeout._config) env
-            timedOut <- Map.filter (not . notTimedOut) <$> readTVar (_upstream env) -- for DEBUG
             modifyTVar (_upstream env) (Map.filter notTimedOut)
-
-            when (not . Map.null $ timedOut) $ -- for DEBUG
-                  toIO env Debug $ putStrLn $
-                        "\ESC[31mKicking timed out upstream nodes\ESC[0m"
-
             -- TODO: terminate corresponding connection (right now I *think*
             --       timeouts will eventually do this, but explicit termination
             --       would be a cleaner solution.
@@ -165,11 +159,11 @@ removeTimedOutDownstream env = do
                       now - t < (_poolTimeout._config) env
                 ds = _downstream env
             (keep, kill) <- Map.partition notTimedOut <$> readTVar ds
-            writeTVar ds $ Map.map (\c -> c { _clientTimestamp = tsNow }) keep
+            writeTVar ds keep
             return kill
       void $ traverse (cancel._clientAsync) kill'
---   TODO: Find out whether this function is useful, or whether
---         'removeDeadClients' is enough
+-- TODO: Find out whether this function is useful, or whether
+--       'removeDeadClients' is enough
 
 
 

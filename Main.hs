@@ -5,6 +5,7 @@
 -- TODO: Create "network snapshot" type message to generate GraphViz pictures
 --       of how everything looks like
 -- TODO: Randomly replace downstream neighbours
+-- TODO: Randomly kick nodes if the maximum capacity is reached
 -- TODO: Create a new signal that makes every node send a list of neighbours to
 --       a specific node, which then constructs a GraphViz representation of the
 --       network
@@ -20,6 +21,7 @@
 -- TODO: Restart bootstrapping process if all downstream neighbours are lost
 --       (Wait some time for incoming edge requests though? They may contain
 --       potential new downstream neighbours.)
+-- TODO: Upstream neighbours are not rejected (enough?) when the pool is full
 
 
 
@@ -112,8 +114,8 @@ defaultConfig = Config {
       , _bounces           = 1
       , _acceptP           = 0.5 -- TODO: Error if not 0 < p <= 1
       , _maxSoftBounces    = 10
-      , _poolTickRate      = 1 * 10^6
-      , _keepAliveTickRate = 1 * 10^6
+      , _poolTickRate      = 3 * 10^6
+      , _keepAliveTickRate = 3 * 10^6
       , _poolTimeout       = 10
       , _verbosity         = Debug
 }
