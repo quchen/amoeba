@@ -39,11 +39,15 @@ forkNewClient env targetNode = do
       -- STSC = Server to Single Client
       stsc <- newTBQueueIO (_maxChanSize $ _config env)
 
-      withAsync (newClient env targetNode stsc) $ \thread -> do
-            timestamp <- makeTimestamp
-            let client = Client timestamp thread stsc
-            atomically . modifyTVar (_downstream env) $
-                                                    Map.insert targetNode client
+      let  yell = atomically $ toIO env Debug . putStrLn $ -- DEBUG
+                    "\ESC[31mNew client: " ++ show targetNode ++ "\ESC[0m"
+
+      thread <- async $ newClient env targetNode stsc
+      timestamp <- makeTimestamp
+      let client = Client timestamp thread stsc
+      atomically . modifyTVar (_downstream env) $ Map.insert targetNode client
+
+      -- GO ON: Client loop seems to terminate too early
 
 
 
@@ -59,17 +63,17 @@ newClient :: Environment
 newClient env node stsc =
 
       let release h = do
-               atomically . modifyTVar (_downstream env) $ Map.delete node
-               hClose h
+            atomically . modifyTVar (_downstream env) $ Map.delete node
+            hClose h
 
       in bracket (connectToNode node) release $ \h -> do
-               send h (Special IAddedYou)
-               -- TODO: Await response
-               stc <- atomically $ dupTChan (_stc env)
-               clientLoop env h node [ readTChan stc
-                                     , readTBQueue (_st1c env)
-                                     , readTBQueue stsc
-                                     ]
+            send h (Special IAddedYou)
+            -- TODO: Await response
+            stc <- atomically $ dupTChan (_stc env)
+            clientLoop env h node [ readTChan stc
+                                  , readTBQueue (_st1c env)
+                                  , readTBQueue stsc
+                                  ]
 
 
 

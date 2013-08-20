@@ -41,38 +41,36 @@ clientPool env = withAsync (clientPoolLoop env) $ \cPool  ->
 clientPoolLoop :: Environment -> IO ()
 clientPoolLoop env = forever $ do
 
-      putStr "Downstream: "
       ds <- atomically $ Map.keys <$> readTVar (_downstream env)
-      print ds
-      putStr "Upstream:   "
+      printf "Downstream: [%d] %s\n"
+             (length ds)
+             (show ds)
       us <- atomically $ Map.keys <$> readTVar (_upstream env)
-      print us
+      printf "Upstream: [%d] %s\n"
+             (length us)
+             (show us)
 
       -- How many nodes does the current node know, how many is it known by?
-      let mapSize db = fromIntegral . Map.size <$> readTVar (db env)
+      let dbSize db = fromIntegral . Map.size <$> readTVar (db env)
                         -- ^ fromIntegral :: Int -> Word
-      (numKnownNodes, numKnownBy) <- atomically $
-            liftA2 (,) (mapSize _downstream) (mapSize _upstream)
+      (numDownstream, numUpstream) <- atomically $
+            liftA2 (,) (dbSize _downstream) (dbSize _upstream)
 
       let minNeighbours = _minNeighbours (_config env)
 
       -- Enough downstream neighbours?
-      when (numKnownNodes < minNeighbours) $ do  -- Send out requests
-            let deficit = minNeighbours - numKnownNodes
+      when (numDownstream < minNeighbours) $ do  -- Send out requests
+            let deficit = minNeighbours - numDownstream
             atomically . toIO env Debug $
-                 printf
-                 "Deficit of %d outgoing connections detected\n"
-                 deficit
+                 printf "\ESC[32mDeficit of %d outgoing connections detected\ESC[0m\n" deficit
             forM_ [1..deficit] $ \_ -> sendEdgeRequest env Outgoing
 
       -- Enough upstream neighbours?
-      when (numKnownBy < minNeighbours) $ do
+      when (numUpstream < minNeighbours) $ do
             -- Send out announces
-            let deficit = minNeighbours - numKnownBy
+            let deficit = minNeighbours - numUpstream
             atomically . toIO env Debug $
-                 printf
-                 "Deficit of %d incoming connections detected\n"
-                 deficit
+                 printf "\ESC[32mDeficit of %d incoming connections detected\ESC[0m\n" deficit
             forM_ [1..deficit] $ \_ -> sendEdgeRequest env Incoming
 
       threadDelay $ _poolTickRate (_config env)
@@ -105,6 +103,7 @@ housekeeping env = forever $ do
       -- Order matters: remove dead neighbours first, then send KeepAlive
       -- signals
       -- TODO: Update timestamps of running clients
+
       removeTimedOutUpstream env
       removeTimedOutDownstream env
       removeDeadClients env
@@ -144,13 +143,20 @@ removeTimedOutUpstream env = do
       (Timestamp now) <- makeTimestamp
       atomically $ do
             let notTimedOut (Timestamp t) = now - t < (_poolTimeout._config) env
+            timedOut <- Map.filter (not . notTimedOut) <$> readTVar (_upstream env) -- for DEBUG
             modifyTVar (_upstream env) (Map.filter notTimedOut)
+
+            when (not . Map.null $ timedOut) $ -- for DEBUG
+                  toIO env Debug $ putStrLn $
+                        "\ESC[31mKicking timed out upstream nodes\ESC[0m"
+
             -- TODO: terminate corresponding connection (right now I *think*
             --       timeouts will eventually do this, but explicit termination
             --       would be a cleaner solution.
 
 
 
+-- | Kick all clients that haven't been sent an order in some time.
 removeTimedOutDownstream :: Environment -> IO ()
 removeTimedOutDownstream env = do
       tsNow@(Timestamp now) <- makeTimestamp
@@ -162,6 +168,8 @@ removeTimedOutDownstream env = do
             writeTVar ds $ Map.map (\c -> c { _clientTimestamp = tsNow }) keep
             return kill
       void $ traverse (cancel._clientAsync) kill'
+--   TODO: Find out whether this function is useful, or whether
+--         'removeDeadClients' is enough
 
 
 

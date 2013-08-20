@@ -15,6 +15,11 @@
 --       rethrown in the parent thread (thanks to Async).
 -- TODO: When there are no clients, the chans will be filled up with edge
 --       requests all the way
+-- TODO: A fully saturated network will bounce new EdgeRequest signals forever
+--       FIXED: Limit on soft bounces introduced
+-- TODO: Restart bootstrapping process if all downstream neighbours are lost
+--       (Wait some time for incoming edge requests though? They may contain
+--       potential new downstream neighbours.)
 
 
 
@@ -101,15 +106,16 @@ initEnvironment node config = Environment
 defaultConfig :: Config
 defaultConfig = Config {
         _serverPort        = 21000
-      , _maxNeighbours     = 10
-      , _minNeighbours     = 1
+      , _maxNeighbours     = 6
+      , _minNeighbours     = 3
       , _maxChanSize       = 100
-      , _bounces           = 3
+      , _bounces           = 1
       , _acceptP           = 0.5 -- TODO: Error if not 0 < p <= 1
+      , _maxSoftBounces    = 10
       , _poolTickRate      = 1 * 10^6
-      , _keepAliveTickRate = 3 * 10^5
+      , _keepAliveTickRate = 1 * 10^6
       , _poolTimeout       = 10
-      , _verbosity         = Chatty
+      , _verbosity         = Debug
 }
 
 

@@ -83,8 +83,11 @@ data Config = Config {
                                       --   communication channels can hold
 
       , _bounces        :: Word       -- ^ Number of initial bounces
-      , _acceptP        :: Double     -- ^ Edge requesti acceptance probability
+      , _acceptP        :: Double     -- ^ Edge request acceptance probability
                                       --   for the second bounce phase.
+      , _maxSoftBounces :: Word       -- ^ How many times a soft-bounced request
+                                      --   is maximally relayed before it is
+                                      --   rejected
       , _poolTickRate   :: Int        -- ^ Every couple of milliseconds, the
                                       --   client pool will loop to maintain a
                                       --   proper connection to the network.
@@ -237,7 +240,13 @@ instance Binary SpecialSignal
 --   network.
 data EdgeData = EdgeData {
         _direction   :: Direction
-      , _bounceParam :: Either Word Double
+      , _bounceParam :: Either Word (Word, Double)
+            -- ^ Left n: Hard bounces left, i.e. how many times more the
+            --           request will definitely be relayed
+            --   Right (n, p): n: Counter how many times the signal was bounced
+            --                    in the soft phase; this can be used to swallow
+            --                    requests that bounce indefinitely.
+            --                 p: Acceptance probability
       }
       deriving (Eq, Ord, Show, Generic)
 
@@ -287,13 +296,19 @@ data Verbosity = Chatty  -- ^ *Everything*, e.g. passing bounces, keep-alive
 -- | Node address clients can send data to. Used to ensure upstream nodes aren't
 --   sent downstream data.
 newtype From = From { getFrom :: Node }
-      deriving (Eq, Ord, Show)
+      deriving (Eq, Ord)
+
+instance Show From where
+      show (From node) = "From " ++ show node
 
 
 -- | Node address clients can send data to. Used to ensure downstream data is
 --   sent only to appropriate handles.
 newtype To = To { getTo :: Node }
-      deriving (Eq, Ord, Show, Generic)
+      deriving (Eq, Ord, Generic)
+
+instance Show To where
+      show (To node) = "To " ++ show node
 
 instance Binary To
 

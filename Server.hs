@@ -314,18 +314,28 @@ edgeBounce :: Environment
            -> NormalSignal
            -> IO Proceed
 
+-- Phase 1 ends: Left counter reaches 0, start soft bounce phase
+edgeBounce env (EdgeRequest origin (EdgeData dir (Left 0))) =
+      let buildSignal = EdgeRequest origin . EdgeData dir
+      in  edgeBounce env . buildSignal . Right $ (0, _acceptP $ _config env)
+
 -- Phase 1: Left value, bounce on.
 edgeBounce env (EdgeRequest origin (EdgeData dir (Left n))) = do
 
       let buildSignal = EdgeRequest origin . EdgeData dir
+          nMax = _bounces $ _config env
       atomically $ do
-            writeTBQueue (_st1c env) . buildSignal $ case n of -- n :: Word
-                  0 -> Right (_acceptP $ _config env)
-                  k -> Left $ min (k - 1) (_bounces $ _config env)
-                       -- ^ Cap the number of hard bounces with the current
-                       -- node's configuration to prevent "maxBound bounces
-                       -- left" attacks
-            toIO env Chatty $ printf "Bounced %s (%d left)" (show origin) n
+
+            writeTBQueue (_st1c env) . buildSignal $ Left $ min (n - 1) nMax
+                                -- Cap the number of hard    ^
+                                -- bounces with the current  |
+                                -- node's configuration to   |
+                                -- prevent "maxBound bounces |
+                                -- left" attacks             |
+            toIO env Chatty $ printf "Bounced %s request from %s (%d left)\n"
+                                     (show dir)
+                                     (show origin)
+                                     n
 
       return Continue
 
@@ -336,16 +346,24 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Left n))) = do
 --
 -- (Note that bouncing on always decreases the denial probability, even in case
 -- the reason was not enough room.)
-edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
+edgeBounce env (EdgeRequest origin (EdgeData dir (Right (n, p)))) = do
 
       -- Build "bounce on" action to relay signal if necessary
-      let buildSignal = EdgeRequest origin . EdgeData dir . Right
+      let buildSignal = EdgeRequest origin . EdgeData dir
           p' = max p $ (_acceptP._config) env
           -- ^ The relayed acceptance probability is at least as high as the
           -- one the relaying node uses. This prevents "small p" attacks
           -- that bounce indefinitely.
-          bounceOn = do atomically . writeTBQueue (_st1c env) $ buildSignal p'
-                        return Continue
+          bounceOn = if n >= (_maxSoftBounces $ _config env)
+                then let msg = "\ESC[31mToo many bounces, swallowing\ESC[0m"
+                     in  atomically . toIO env Debug $ putStrLn msg
+                else atomically . writeTBQueue (_st1c env) . buildSignal $
+                                                             Right (n+1, p')
+      -- Build "bounce again from the beginning" signal. This is invoked if
+      -- an EdgeRequest reaches the issuing node again.
+      let n = _bounces $ _config env
+          bounceReset = do
+                atomically . writeTBQueue (_st1c env) $ buildSignal $ Left n
 
       -- Checks whether there's still room for another entry. The TVar can
       -- either be the set of known or "known by" nodes.
@@ -359,11 +377,11 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
 
       -- Roll whether to accept the query first, then check whether there's
       -- room. In case of failure, bounce on.
-      acceptEdge <- (p >) <$> randomRIO (0, 1 :: Double)
+      acceptEdge <- (< p) <$> randomRIO (0, 1 :: Double)
       case (relationship, acceptEdge, dir) of
             (IsSelf, _, _) -> do
                   let msg = "Edge to itself requested, bouncing"
-                  atomically . toIO env Debug $ putStrLn msg
+                  atomically . toIO env Chatty $ putStrLn msg
                   bounceOn
             (IsDownstreamNeighbour, _, Incoming) -> do
                   -- In case you're wondering about the seemingly different
@@ -371,11 +389,11 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
                   -- direction is from the viewpoint of the requestee, while the
                   -- relationship to that node is seen from the current node.
                   let msg = "Edge downstream already exists, bouncing"
-                  atomically . toIO env Debug $ putStrLn msg
+                  atomically . toIO env Chatty $ putStrLn msg
                   bounceOn
             (_, False, _) -> do
                   let msg = "Random bounce (accept: p = " ++ show p ++ ")"
-                  atomically . toIO env Debug $ putStrLn msg
+                  atomically . toIO env Chatty $ putStrLn msg
                   bounceOn
             (_, _, Outgoing) -> do -- TODO: Sub-method, running off screen here
                   isRoom <- isRoomIn (_downstream env)
@@ -392,6 +410,8 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
                                     atomically . toIO env Chatty $ putStrLn msg
                                     bounceOn
 
+      return Continue
+
 
 
 
@@ -407,7 +427,7 @@ edgeBounce env signal = do
 -- | Invoked when an Outgoing EdgeRequest is accepted by the current node. Sends
 --   the originally issuing node the message "yes, you may add me as your new
 --   neighbour".
-acceptOutgoingRequest :: Environment -> To -> IO Proceed
+acceptOutgoingRequest :: Environment -> To -> IO ()
 acceptOutgoingRequest env node = do
       -- TODO: Await confirmation of the AddMe signal (-> proper handshake)
       bracket (connectToNode node) hClose $ \h -> do
@@ -417,19 +437,17 @@ acceptOutgoingRequest env node = do
                   toIO env Debug . putStrLn $ "'Outgoing' request from "
                                                      ++ show node ++ " accepted"
 
-      return Continue
 
 
 
 -- | Invoked when an Incoming EdgeRequest is accepted by the current node.
 --   Spawns a new worker.
-acceptIncomingRequest :: Environment -> To -> IO Proceed
+acceptIncomingRequest :: Environment -> To -> IO ()
 acceptIncomingRequest env node = do
       forkNewClient env node
       atomically $ toIO env Debug . putStrLn $ "'Incoming' request from "
                                                    ++ show node ++ " accepted"
 
-      return Continue
 
 
 

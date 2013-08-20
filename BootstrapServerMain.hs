@@ -122,7 +122,7 @@ sendEdgeRequest env beneficiary dir = do
       -- could accept it.
       numKnownNodes <- atomically $ Set.size <$> readTVar (_knownNodes env)
       let p = 1 -- TODO: read this from some config
-          signal = Special . BootstrapHelper $ EdgeRequest beneficiary (EdgeData dir (Right p))
+          signal = Special . BootstrapHelper $ EdgeRequest beneficiary (EdgeData dir (Right (0,p)))
 
       targetNode <- atomically $ randomNode env
 
