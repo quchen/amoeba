@@ -1,11 +1,11 @@
 -- | The server is the main part of a node. It accepts incoming requests, and
 --   distributes the responses to the clients.
+--
+--   The suffix 'H' stands for 'Handler', which is a function that reacts
+--   directly to an incoming signal's instructions. (Contrary to that, helper
+--   functions invoked inside handlers don't have a special name.)
 
 {-# LANGUAGE LambdaCase #-}
-
--- TODO: Handle pattern mismatches on all of the handler functions. Those
---       branches should never be reached, but just to be safe there should be
---       error messages anyway.
 
 module Server (
       serverLoop
@@ -57,7 +57,7 @@ serverLoop socket env = forever $ do
 --   print chat messages etc.
 --   (The first parameter is the same as in the result of Network.accept.)
 worker :: Environment
-       -> Handle      -- ^ Incoming connection handler
+       -> Handle      -- ^ Incoming connection handle
        -> From        -- ^ Incoming connection address
        -> IO ()
 worker env h from = (`finally` hClose h) . untilTerminate $ do
@@ -65,17 +65,16 @@ worker env h from = (`finally` hClose h) . untilTerminate $ do
       -- TODO: Ignore signals sent by nodes not registered as upstream.
       --       Open issues:
       --         - Do this here or in the server loop?
-      --         - How do the ignored nodes find out they're being ignored? --> Solution: timeouts
+      --         - How do the ignored nodes find out they're being ignored?
+      --             --> Solution: timeouts
 
       -- TODO: Housekeeping to delete already handled messages
 
       -- TODO: Error handling: What to do if rubbish data comes in?
       --       -> Respond error, kill worker
       receive h >>= \case
-            Normal  normal  -> normalHandler  env h from normal
-            Special special -> specialHandler env h from special
-
-      -- TODO: Handle termination
+            Normal  normal  -> normalH  env h from normal
+            Special special -> specialH env h from special
 
 
 
@@ -84,13 +83,13 @@ worker env h from = (`finally` hClose h) . untilTerminate $ do
 --   neighbour, update timestamps etc. (An example for an abnormally issued
 --   normal signal is one encapsulated in a bootstrap request, which will be
 --   processed differently.)
-normalHandler :: Environment
-              -> Handle       -- ^ Data channel
-              -> From         -- ^ Signal origin
-              -> NormalSignal -- ^ Signal type
-              -> IO Proceed
+normalH :: Environment
+        -> Handle       -- ^ Data channel
+        -> From         -- ^ Signal origin
+        -> NormalSignal -- ^ Signal type
+        -> IO Proceed
 
-normalHandler env h from signal = do
+normalH env h from signal = do
 
       -- Check whether contacting node is valid upstream
       -- allowed <- atomically $ Map.member from <$> readTVar (_upstream env)
@@ -105,7 +104,7 @@ normalHandler env h from signal = do
                     -- add a valid return address (but some address the incoming
                     -- connection happens to have)!
                     makeTimestamp >>= atomically . updateKnownBy env from
-                    normalHandler' env h from signal
+                    normalH' env from signal
             else do send' h Ignore
                     atomically . toIO env Debug . putStrLn $
                           "Illegally contacted by " ++ show from ++ "; ignoring"
@@ -117,61 +116,56 @@ normalHandler env h from signal = do
 
 -- | Handler for any normal signal. Does not check whether the sender is legal,
 --   and should therefore only be invoked from within other handlers making sure
---   of that, see normalHandler and specialHandler.
-normalHandler' :: Environment
-               -> Handle       -- ^ Data channel
-               -> From         -- ^ Signal origin
-               -> NormalSignal -- ^ Signal type
-               -> IO Proceed
+--   of that, see normalH and specialH.
+normalH' :: Environment
+         -> From         -- ^ Signal origin
+         -> NormalSignal -- ^ Signal type
+         -> IO Proceed
 
-normalHandler' env h from signal = case signal of
-      Flood fSignal   -> floodSignalHandler env fSignal
-      ShuttingDown to -> shuttingDown       env from to
-      EdgeRequest {}  -> edgeBounce         env signal
-      KeepAlive       -> keepAlive          env from
+normalH' env _    (Flood fSignal)           = floodSignalH  env fSignal
+normalH' env _    (EdgeRequest to edgeData) = edgeBounceH   env to edgeData
+normalH' env from (ShuttingDown to)         = shuttingDownH env from to
+normalH' env from (KeepAlive)               = keepAliveH    env from
 
 
 
 
-specialHandler :: Environment
-               -> Handle        -- ^ Data channel
-               -> From          -- ^ Signal origin
-               -> SpecialSignal -- ^ Signal type
-               -> IO Proceed
+-- | Handler for special signals, i.e. those that may circumvent the usual
+--   checks like whether the signal was sent from a registered upstream
+--   neighbour.
+specialH :: Environment
+         -> Handle        -- ^ Data channel
+         -> From          -- ^ Signal origin
+         -> SpecialSignal -- ^ Signal type
+         -> IO Proceed
 
-specialHandler env h from signal = do
+specialH env h from (BootstrapHelper sig@(EdgeRequest {})) =
+      normalH' env from sig
 
-      -- TODO: Check whether contact is a valid, e.g. if it's a bootstrap server
+specialH env h from (BootstrapHelper _) =
+      send' h Error >> illegalBootstrapSignalH env
 
-      case signal of
+specialH env h from (BootstrapRequest {}) =
+      send' h Error >> illegalBootstrapSignalH env
 
-            BootstrapHelper sig@(EdgeRequest {}) ->
-                  normalHandler' env h from sig
+specialH env h from (YourHostIs {}) =
+      send' h Error >> illegalYourHostIsH env
 
-            BootstrapHelper _ -> do
-                  send' h Error >> illegalBootstrapSignal env
+specialH env h from (AddMe node) =
+      addMeReceivedH env (To node) -- TODO: Server response
 
-            BootstrapRequest {} -> do
-                  send' h Error >> illegalBootstrapSignal env
+specialH env h from IAddedYou =
+      iAddedYouReceivedH env from -- TODO: Server response
 
-            YourHostIs {} -> do
-                  send' h Error >> illegalYourHostIs env
 
-            IAddedYou ->
-                  -- TODO: Server response
-                  iAddedYouReceived env from
-
-            AddMe node ->
-                  -- TODO: Server response
-                  addMeReceived env (To node)
 
 
 
 
 -- | A node should never receive a YourHostIs signal unless it issued a
 --   bootstrap. In case it gets one anyway, this function is called.
-illegalYourHostIs :: Environment -> IO Proceed
-illegalYourHostIs env = do
+illegalYourHostIsH :: Environment -> IO Proceed
+illegalYourHostIsH env = do
       atomically . toIO env Debug . putStrLn $
             "BootstrapRequest signal received on a normal server, ignoring"
       return Terminate
@@ -180,8 +174,8 @@ illegalYourHostIs env = do
 
 -- | A node should never receive a Bootstrap signal unless it issued a
 --   bootstrap. In case it gets one anyway, this function is called.
-illegalBootstrapSignal :: Environment -> IO Proceed
-illegalBootstrapSignal env = do
+illegalBootstrapSignalH :: Environment -> IO Proceed
+illegalBootstrapSignalH env = do
       atomically . toIO env Debug . putStrLn $
             "Illegal bootstrap signal; ignoring"
       return Terminate
@@ -192,8 +186,8 @@ illegalBootstrapSignal env = do
 -- | Acknowledges an incoming KeepAlive signal, which is effectively a no-op,
 --   apart from that it (like any other signal) refreshes the "last heard of
 --   timestamp".
-keepAlive :: Environment -> From -> IO Proceed
-keepAlive env origin = do
+keepAliveH :: Environment -> From -> IO Proceed
+keepAliveH env origin = do
       atomically . toIO env Chatty . putStrLn $
             "KeepAlive signal received from " ++ show origin
       return Continue
@@ -202,10 +196,13 @@ keepAlive env origin = do
 
 
 
-floodSignalHandler :: Environment
+-- | Checks whether a signal meant to be distributed over the entire network has
+--   already been received; if yes it is ignored, otherwise the contents are
+--   executed and the signal is passed on to all downstream neighbours.
+floodSignalH :: Environment
                    -> FloodSignal
                    -> IO Proceed
-floodSignalHandler env fSignal = do
+floodSignalH env fSignal = do
 
       -- Check whether the signal has previously been handled
       known <- atomically $ Set.member fSignal <$> readTVar (_handledFloods env)
@@ -216,7 +213,7 @@ floodSignalHandler env fSignal = do
 
       when (not known) $ floodOn >> case fSignal of
             TextMessage message   -> textMessageH env message
-            NeighbourList painter -> undefined
+            NeighbourList painter -> neighbourListH env painter
 
       return Continue
 
@@ -226,6 +223,16 @@ textMessageH :: Environment
              -> String
              -> IO ()
 textMessageH env message = atomically $ toIO env Quiet $ putStrLn message
+
+
+-- | Sends the list of downstream neighbours to a specified address
+neighbourListH :: Environment
+               -> To
+               -> IO ()
+neighbourListH env painter =
+      bracket (connectToNode painter) hClose $ \h ->
+            send' h =<< atomically (Map.keysSet <$> readTVar (_downstream env))
+            -- TODO: Handle response?
 
 
 
@@ -245,14 +252,14 @@ updateKnownBy env node timestamp =
 
 
 -- | Remove the issuing node from the database
-shuttingDown :: Environment
+shuttingDownH :: Environment
              -> From        -- ^ Shutdown node's incoming address as seen from
                             --   this node (used to terminate downstream
                             --   connections to it)
              -> To          -- ^ Shutdown node's server address (used to
                             --   terminate upstream connections to it)
              -> IO Proceed
-shuttingDown env from to = do
+shuttingDownH env from to = do
 
       atomically . toIO env Debug . putStrLn $
             "Shutdown notice from %s:%s" ++ show to
@@ -312,17 +319,20 @@ shuttingDown env from to = do
 --        Because of the probabilistic travelling distance of these bounces,
 --        they are also referred to as "soft bounces".
 
-edgeBounce :: Environment
-           -> NormalSignal
-           -> IO Proceed
+edgeBounceH :: Environment
+            -> To
+            -> EdgeData
+            -> IO Proceed
 
 -- Phase 1 ends: Left counter reaches 0, start soft bounce phase
-edgeBounce env (EdgeRequest origin (EdgeData dir (Left 0))) =
-      let buildSignal = EdgeRequest origin . EdgeData dir
-      in  edgeBounce env . buildSignal . Right $ (0, _acceptP $ _config env)
+edgeBounceH env origin (EdgeData dir (Left 0)) =
+      edgeBounceH env origin .
+      EdgeData dir .
+      Right $
+      (0, _acceptP $ _config env)
 
 -- Phase 1: Left value, bounce on.
-edgeBounce env (EdgeRequest origin (EdgeData dir (Left n))) = do
+edgeBounceH env origin (EdgeData dir (Left n)) = do
 
       let buildSignal = EdgeRequest origin . EdgeData dir
           nMax = _bounces $ _config env
@@ -348,7 +358,7 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Left n))) = do
 --
 -- (Note that bouncing on always decreases the denial probability, even in case
 -- the reason was not enough room.)
-edgeBounce env (EdgeRequest origin (EdgeData dir (Right (n, p)))) = do
+edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
 
       -- Build "bounce on" action to relay signal if necessary
       let buildSignal = EdgeRequest origin . EdgeData dir
@@ -417,14 +427,6 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right (n, p)))) = do
 
 
 
--- Bad signal received. "Else" case of the function's pattern.
-edgeBounce env signal = do
-      atomically $ toIO env Debug $ printf ("Signal %s received by edgeBounce;"
-                                    ++ "this should never happen") (show signal)
-
-      return Terminate
-
-
 
 -- | Invoked when an Outgoing EdgeRequest is accepted by the current node. Sends
 --   the originally issuing node the message "yes, you may add me as your new
@@ -457,8 +459,8 @@ acceptIncomingRequest env node = do
 --   sending out a Outgoing EdgeRequest, another node has given this node the
 --   permission to add it as a downstream neighbour. Spawns a new worker
 --   connecting to the accepting node.
-addMeReceived :: Environment -> To -> IO Proceed
-addMeReceived env node = do
+addMeReceivedH :: Environment -> To -> IO Proceed
+addMeReceivedH env node = do
       -- NB: forkNewClient will take care of everything, this function is
       --     just for printing a log message
       forkNewClient env node
@@ -470,8 +472,8 @@ addMeReceived env node = do
 -- | IAddedYou is sent to a new downstream neighbour as the result of a
 --   successful Incoming request. When received, this handler does the
 --   bookkeeping for the new incoming connection.
-iAddedYouReceived :: Environment -> From -> IO Proceed
-iAddedYouReceived env node = do
+iAddedYouReceivedH :: Environment -> From -> IO Proceed
+iAddedYouReceivedH env node = do
       timestamp <- makeTimestamp
       atomically $ do
             modifyTVar (_upstream env) (Map.insert node timestamp)

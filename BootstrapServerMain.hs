@@ -25,7 +25,7 @@ import           Data.Set (Set)
 import qualified Data.Set as Set
 
 import Utilities
-import Types hiding (Environment)
+import Types
 
 
 
