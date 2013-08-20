@@ -72,9 +72,12 @@ worker env h from = (`finally` hClose h) . untilTerminate $ do
 
       -- TODO: Error handling: What to do if rubbish data comes in?
       --       -> Respond error, kill worker
-      receive h >>= \case
+      response <- receive h >>= \case
             Normal  normal  -> normalH  env h from normal
             Special special -> specialH env h from special
+
+      if hIsOpen h then return response
+                   else return Terminate
 
 
 
