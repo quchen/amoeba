@@ -72,9 +72,13 @@ worker env h from = (`finally` hClose h) . untilTerminate $ do
 
       -- TODO: Error handling: What to do if rubbish data comes in?
       --       -> Respond error, kill worker
-      receive h >>= \case
+      response <- receive h >>= \case
             Normal  normal  -> normalH  env h from normal
             Special special -> specialH env h from special
+
+      isOpen <- hIsOpen h
+      if isOpen then return response
+                else return Terminate
 
 
 
@@ -122,10 +126,10 @@ normalH' :: Environment
          -> NormalSignal -- ^ Signal type
          -> IO Proceed
 
-normalH' env _    (Flood fSignal)           = floodSignalH  env fSignal
-normalH' env _    (EdgeRequest to edgeData) = edgeBounceH   env to edgeData
-normalH' env from (ShuttingDown to)         = shuttingDownH env from to
-normalH' env from (KeepAlive)               = keepAliveH    env from
+normalH' env _    (Flood tStamp fSignal) = floodSignalH  env (tStamp, fSignal)
+normalH' env _    (EdgeRequest to edge)  = edgeBounceH   env to edge
+normalH' env from (ShuttingDown to)      = shuttingDownH env from to
+normalH' env from (KeepAlive)            = keepAliveH    env from
 
 
 
@@ -199,17 +203,21 @@ keepAliveH env origin = do
 -- | Checks whether a signal meant to be distributed over the entire network has
 --   already been received; if yes it is ignored, otherwise the contents are
 --   executed and the signal is passed on to all downstream neighbours.
+--
+--   (Time timestamp sent along is so that identical signal bodies can be
+--   distinguished.)
 floodSignalH :: Environment
-                   -> FloodSignal
-                   -> IO Proceed
-floodSignalH env fSignal = do
+             -> (Timestamp, FloodSignal)
+             -> IO Proceed
+floodSignalH env tFSignal@(timestamp, fSignal) = do
 
       -- Check whether the signal has previously been handled
-      known <- atomically $ Set.member fSignal <$> readTVar (_handledFloods env)
+      known <- atomically $
+            Set.member tFSignal <$> readTVar (_handledFloods env)
 
       let floodOn = atomically $ do
-            modifyTVar (_handledFloods env) (Set.insert fSignal)
-            writeTChan (_stc env) $ Flood fSignal
+            modifyTVar (_handledFloods env) (Set.insert tFSignal)
+            writeTChan (_stc env) $ Flood timestamp fSignal
 
       when (not known) $ floodOn >> case fSignal of
             TextMessage message   -> textMessageH env message

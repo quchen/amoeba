@@ -47,7 +47,7 @@ data Environment = Environment {
       , _io         :: TBQueue (IO ()) -- ^ Send action to the dedicated local
                                        --   IO thread
 
-      , _handledFloods :: TVar (Set FloodSignal)
+      , _handledFloods :: TVar (Set (Timestamp, FloodSignal))
                                        -- ^ Timestamped signals that have
                                        --   already been handled by the current
                                        --   node, and can thus be ignored if
@@ -169,7 +169,7 @@ data NormalSignal =
       | ShuttingDown To
 
       -- | Signals meant to be considered by every node in the network.
-      | Flood FloodSignal
+      | Flood Timestamp FloodSignal
 
       deriving (Eq, Ord, Show, Generic)
 
