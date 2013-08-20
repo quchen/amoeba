@@ -230,9 +230,13 @@ neighbourListH :: Environment
                -> To
                -> IO ()
 neighbourListH env painter =
-      bracket (connectToNode painter) hClose $ \h ->
-            send' h =<< atomically (Map.keysSet <$> readTVar (_downstream env))
-            -- TODO: Handle response?
+      bracket (connectToNode painter) hClose $ \h -> do
+            vertex <- atomically $ do
+                  neighbours <- Map.keysSet <$> readTVar (_downstream env)
+                  return (_self env, neighbours)
+            send' h vertex
+            -- TODO: Handle response
+            -- TODO Refactor this mess
 
 
 
