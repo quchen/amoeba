@@ -1,6 +1,7 @@
 import Options.Applicative
 import Network
 import Data.Word
+import Text.Read (readEither)
 
 main = execParser opts >>= print
       where opts = info (helper <*> config) $
@@ -84,3 +85,28 @@ maxNeighbours = undefined
 
 minNeighbours :: Parser Word
 minNeighbours = undefined
+
+
+
+-- | Reader for a Double between 0 and 1
+probability :: String -> Either ParseError Double
+probability x = case readEither x of
+      Right x' | x' >= 0 && x' <= 1 -> Right x'
+      Right x' -> Left . ErrorMsg $ "Bad probability " ++ x ++ "; 0 <= p <= 1"
+      Left _   -> Left . ErrorMsg $ "Parse error on double " ++ x
+
+
+
+positiveInt :: String -> Either ParseError Int
+positiveInt x = case readEither x of
+      Right x' | x' > 0 -> Right x'
+      Right x' -> Left . ErrorMsg $ "Positive number expected ( " ++ x ++ " given)"
+      Left _   -> Left . ErrorMsg $ "Parse error on integer " ++ x
+
+
+
+nonzeroInt :: String -> Either ParseError Int
+nonzeroInt x = case readEither x of
+      Right x' | x' >= 0 -> Right x'
+      Right x' -> Left . ErrorMsg $ "Nonzero number expected ( " ++ x ++ " given)"
+      Left _   -> Left . ErrorMsg $ "Parse error on integer " ++ x
