@@ -296,3 +296,10 @@ newtype To = To { getTo :: Node }
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary To
+
+
+-- | Encodes in what relationship two nodes stand to each other
+data NodeRelationship = IsSelf
+                      | IsDownstreamNeighbour
+                      | IsUnrelated
+                   -- | IsUpstreamNeighbour -- Currently unused

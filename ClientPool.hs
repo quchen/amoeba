@@ -90,7 +90,7 @@ sendEdgeRequest env dir = atomically $
                           writeTBQueue (_st1c env) $
                           EdgeRequest (To $ _self env) $
                           EdgeData dir $
-                          Left $
+                          Left $ -- Left = hard bounces, i.e. "at least n times"
                           (_bounces._config) env
 
 

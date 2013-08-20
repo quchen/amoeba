@@ -64,6 +64,7 @@ newClient env node stsc =
 
       in bracket (connectToNode node) release $ \h -> do
                send h (Special IAddedYou)
+               -- TODO: Await response
                stc <- atomically $ dupTChan (_stc env)
                clientLoop env h node [ readTChan stc
                                      , readTBQueue (_st1c env)

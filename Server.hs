@@ -354,15 +354,23 @@ edgeBounce env (EdgeRequest origin (EdgeData dir (Right p))) = do
                 (< threshold) . fromIntegral . Map.size <$> readTVar tVar
 
       -- Make sure not to connect to itself or to already known nodes
-      allowed <- isAllowed env origin
+      relationship <- nodeRelationship env origin
 
 
       -- Roll whether to accept the query first, then check whether there's
       -- room. In case of failure, bounce on.
       acceptEdge <- (p >) <$> randomRIO (0, 1 :: Double)
-      case (allowed, acceptEdge, dir) of
-            (False, _, _) -> do
-                  let msg = "Edge not allowed, bouncing"
+      case (relationship, acceptEdge, dir) of
+            (IsSelf, _, _) -> do
+                  let msg = "Edge to itself requested, bouncing"
+                  atomically . toIO env Debug $ putStrLn msg
+                  bounceOn
+            (IsDownstreamNeighbour, _, Incoming) -> do
+                  -- In case you're wondering about the seemingly different
+                  -- directions in that pattern (Incoming+Downstream): The
+                  -- direction is from the viewpoint of the requestee, while the
+                  -- relationship to that node is seen from the current node.
+                  let msg = "Edge downstream already exists, bouncing"
                   atomically . toIO env Debug $ putStrLn msg
                   bounceOn
             (_, False, _) -> do
@@ -404,7 +412,8 @@ acceptOutgoingRequest env node = do
       -- TODO: Await confirmation of the AddMe signal (-> proper handshake)
       bracket (connectToNode node) hClose $ \h -> do
             send h (Special . AddMe $ _self env)
-            atomically $ do
+            -- TODO: receive/handle server response
+            atomically $
                   toIO env Debug . putStrLn $ "'Outgoing' request from "
                                                      ++ show node ++ " accepted"
 
@@ -430,6 +439,8 @@ acceptIncomingRequest env node = do
 --   connecting to the accepting node.
 addMeReceived :: Environment -> To -> IO Proceed
 addMeReceived env node = do
+      -- NB: forkNewClient will take care of everything, this function is
+      --     just for printing a log message
       forkNewClient env node
       atomically $ toIO env Debug . putStrLn $ "'AddMe' from " ++ show node
       return Continue
@@ -462,9 +473,14 @@ iAddedYouReceived env node = do
 --   of the connection to be established, it cannot be checked whether the node
 --   is already an upstream neighbour directly; timeouts will have to take care
 --   of that.
-isAllowed :: Environment -> To -> IO Bool
-isAllowed env node@(To to) = do
-      let isSelf = to == _self env
-      isAlreadyKnown <- atomically $ Map.member node <$> readTVar (_downstream env)
-      return . not $ isSelf || isAlreadyKnown
+nodeRelationship :: Environment -> To -> IO NodeRelationship
+nodeRelationship env node@(To to) = do
+      let self = to == _self env
+      isAlreadyDownstream <- atomically $
+            Map.member node <$> readTVar (_downstream env)
+
+      case (self, isAlreadyDownstream) of
+            (True, _) -> return IsSelf
+            (_, True) -> return IsDownstreamNeighbour
+            _else     -> return IsUnrelated
 -- TODO: Solve the upstream neighbour checking issue
