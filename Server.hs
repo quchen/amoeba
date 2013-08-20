@@ -125,10 +125,10 @@ normalHandler' :: Environment
                -> IO Proceed
 
 normalHandler' env h from signal = case signal of
-      TextMessage {}  -> floodMessage env signal
-      ShuttingDown to -> shuttingDown env from to
-      EdgeRequest {}  -> edgeBounce   env signal
-      KeepAlive       -> keepAlive    env from
+      Flood fSignal   -> floodSignalHandler env fSignal
+      ShuttingDown to -> shuttingDown       env from to
+      EdgeRequest {}  -> edgeBounce         env signal
+      KeepAlive       -> keepAlive          env from
 
 
 
@@ -202,30 +202,32 @@ keepAlive env origin = do
 
 
 
+floodSignalHandler :: Environment
+                   -> FloodSignal
+                   -> IO Proceed
+floodSignalHandler env fSignal = do
 
--- | Prints a text message and floods it on to the network
-floodMessage :: Environment
-             -> NormalSignal
-             -> IO Proceed
-floodMessage env signal@(TextMessage _timestamp message) = do
+      -- Check whether the signal has previously been handled
+      known <- atomically $ Set.member fSignal <$> readTVar (_handledFloods env)
 
-      -- Only process the message if it hasn't been processed already
-      process <- atomically $
-            Set.member signal <$> readTVar (_handledQueries env)
-      -- TODO: Housekeeping to delete old messages
+      let floodOn = atomically $ do
+            modifyTVar (_handledFloods env) (Set.insert fSignal)
+            writeTChan (_stc env) $ Flood fSignal
 
-      when process $ atomically $ do
-
-            -- Add signal to the list of already handled ones
-            modifyTVar (_handledQueries env) (Set.insert signal)
-            toIO env Quiet $ putStrLn message
-            writeTChan (_stc env) signal
+      when (not known) $ floodOn >> case fSignal of
+            TextMessage message   -> textMessageH env message
+            NeighbourList painter -> undefined
 
       return Continue
 
--- TODO: Handle (impossible) pattern mismatch (which is caught by the invoking
---       handler already)
-floodMessage _ _ = undefined
+
+-- | Prints a text message and floods it on to the network
+textMessageH :: Environment
+             -> String
+             -> IO ()
+textMessageH env message = atomically $ toIO env Quiet $ putStrLn message
+
+
 
 
 

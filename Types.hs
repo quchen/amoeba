@@ -47,7 +47,7 @@ data Environment = Environment {
       , _io         :: TBQueue (IO ()) -- ^ Send action to the dedicated local
                                        --   IO thread
 
-      , _handledQueries :: TVar (Set NormalSignal)
+      , _handledFloods :: TVar (Set FloodSignal)
                                        -- ^ Timestamped signals that have
                                        --   already been handled by the current
                                        --   node, and can thus be ignored if
@@ -168,12 +168,30 @@ data NormalSignal =
       --   the terminating node.
       | ShuttingDown To
 
-      -- | Text message.
-      | TextMessage Timestamp String
+      -- | Signals meant to be considered by every node in the network.
+      | Flood FloodSignal
 
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary NormalSignal
+
+
+
+
+-- | These signals will be distributed over the entire network, with every node
+--   distributing them to all its downstream neighbours.
+data FloodSignal =
+
+      -- | Simple text message
+        TextMessage String
+
+      -- | Used to send a drawing server a full list of all neighbours. The
+      --   address is of the painting server.
+      | NeighbourList To
+
+      deriving (Eq, Ord, Show, Generic)
+
+instance Binary FloodSignal
 
 
 
