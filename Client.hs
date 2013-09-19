@@ -15,6 +15,7 @@ import Control.Concurrent.STM
 import Control.Concurrent.Async
 import Control.Exception
 import System.IO
+import Data.Functor
 import Control.Monad
 import qualified Data.Map as Map
 
@@ -67,13 +68,14 @@ newClient env node stsc =
             hClose h
 
       in bracket (connectToNode node) release $ \h -> do
-            send h (Special IAddedYou)
-            -- TODO: Await response
-            stc <- atomically $ dupTChan (_stc env)
-            clientLoop env h node [ readTChan stc
-                                  , readTBQueue (_st1c env)
-                                  , readTBQueue stsc
-                                  ]
+            response <- request h (Special IAddedYou)
+            case response of
+                  OK -> do stc <- atomically $ dupTChan (_stc env)
+                           clientLoop env h node [ readTChan stc
+                                                 , readTBQueue (_st1c env)
+                                                 , readTBQueue stsc
+                                                 ]
+                  _  -> return ()
 
 
 
@@ -87,10 +89,9 @@ clientLoop :: Environment
 clientLoop env h node chans = untilTerminate $ do
 
       -- Receive orders from whatever channel is first available
-      send h . Normal =<< atomically (msum chans)
+      signal <- Normal <$> atomically (msum chans)
 
-
-      receive' h >>= \case
+      request h signal >>= \case
             OK     -> ok env node
             Error  -> genericError env
             Ignore -> ignore env

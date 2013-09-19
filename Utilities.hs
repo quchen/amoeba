@@ -3,12 +3,18 @@
 module Utilities (
         makeTimestamp
       , untilTerminate
-      , receive
-      , send
-      , receive'
-      , send'
       , toIO
       , connectToNode
+
+      -- * Sending/receiving network signals
+      , send'
+      , receive'
+      , request'
+
+      -- * Monomorphic aliases for type safety
+      , send
+      , receive
+      , request
 ) where
 
 import Data.Functor
@@ -41,6 +47,11 @@ untilTerminate m = go
                              Terminate -> return ()
 
 
+-- | Intended to replace 'untilTerminate' to allow more flexible return values
+--   for looping functions
+untilM :: Monad m => (a -> Bool) -> m a -> m ()
+untilM p m = go
+      where go = m >>= \x -> when (p x) go
 
 
 
@@ -70,15 +81,6 @@ receive' h = do
 
       -- TODO: Handle decoding errors (Maybe?)
 
--- | Monomorphic aliase for type safety
-receive :: Handle -> IO Signal
-receive = receive'
-
--- | Monomorphic aliase for type safety
-send :: Handle -> Signal -> IO ()
-send = send'
-
-
 -- | Sends a Signal/ServerResponse, encoded as Binary with a size header, to a
 --   Handle. Inverse of 'receive'.
 send' :: Binary a => Handle -> a -> IO ()
@@ -89,6 +91,28 @@ send' h message = do
       BS.hPut h mSerialized
       hFlush h
 
+{-# DEPRECATED send, receive
+      "Use request to avoid unhandled server answers" #-}
+{-# DEPRECATED send', receive'
+      "Use request' to avoid unhandled server answers" #-}
+
+-- | Sends out a signal and waits for an answer. Combines 'send\'' and
+--   'receive\'' in order to avoid unhandled server responses.
+request' :: (Binary a, Binary b) => Handle -> a -> IO b
+request' h message = send' h message >> receive' h
+
+
+
+receive :: Handle -> IO Signal
+receive = receive'
+
+send :: Handle -> Signal -> IO ()
+send = send'
+
+request :: Handle -> Signal -> IO ServerResponse
+request = request'
+
+
 -- | Very hacky timeout function. Crashes on timeout. :-x
 raceAgainstTimeout :: IO a -> IO a
 raceAgainstTimeout action = do
@@ -97,6 +121,8 @@ raceAgainstTimeout action = do
             Just r -> return r
             Nothing -> undefined
 --   TODO: Make timeout more useful, especially: remove undefined
+{-# WARNING raceAgainstTimeout
+      "Function crashes on timeout, this is just for debugging" #-}
 
 
 -- | Sends an IO action, depending on the verbosity level.

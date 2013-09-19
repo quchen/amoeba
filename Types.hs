@@ -211,6 +211,11 @@ data ServerResponse =
         --   upstream neighbour
       | Ignore
 
+        -- | Signal OK, but can't be accepted for some reason. This is the
+        --   equivalent of 'Ignore' for commands that do not need an existing
+        --   neighbourship, such as 'IAddedYou'.
+      | Denied
+
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary ServerResponse

@@ -15,7 +15,7 @@ import System.IO
 import Data.Functor ((<$>))
 
 import Types
-import Utilities (send', receive', connectToNode)
+import Utilities (request', connectToNode)
 
 
 
@@ -34,8 +34,10 @@ bootstrap config port = do
       -- the handle properly. Instead, bind the result to an identifier, and
       -- check it after the bracketing.
       result <- bracket (connectToNode  bNode) hClose $ \h -> do
-            send' h (BootstrapRequest port) -- See note [Why send port?]
-            (<$> receive' h) $ \case
+
+            -- See note [Why send port?]
+            response <- request' h (BootstrapRequest port)
+            return $ case response of
                   (YourHostIs host) -> Just host
                   _                 -> Nothing -- TODO: Error message "Bootstrap reply rubbish"
                      -- TODO: Handle timeouts, yell if pattern mismatch

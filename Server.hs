@@ -72,13 +72,15 @@ worker env h from = (`finally` hClose h) . untilTerminate $ do
 
       -- TODO: Error handling: What to do if rubbish data comes in?
       --       -> Respond error, kill worker
-      response <- receive h >>= \case
+      result <- receive h >>= \case
             Normal  normal  -> normalH  env h from normal
             Special special -> specialH env h from special
 
       isOpen <- hIsOpen h
-      if isOpen then return response
-                else return Terminate
+      return $ if isOpen then result
+                         else Terminate
+      -- TODO: refactor in terms of 'bool' added in GHC 7.8,
+      -- bool response Terminate =<< hIsOpen h
 
 
 
