@@ -1,6 +1,6 @@
 MAIN = amoeba
 BSMAIN = bootstrap
-SRC = .
+SRC = src
 
 all :
 	ghc -O -o $(MAIN) -i$(SRC) $(SRC)/Main.hs
@@ -10,7 +10,7 @@ bootstrap : all
 	./$(BSMAIN)
 
 clean :
-	rm -rf *.o
-	rm -rf *.hi
+	rm -f $(SRC)/*.o
+	rm -f $(SRC)/*.hi
 	rm -f $(MAIN)
 	rm -f $(BSMAIN)
