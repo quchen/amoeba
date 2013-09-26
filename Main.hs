@@ -15,9 +15,8 @@
 -- TODO: Error handling. Right now any exception kills everything because it's
 --       rethrown in the parent thread (thanks to Async).
 -- TODO: When there are no clients, the chans will be filled up with edge
---       requests all the way
--- TODO: A fully saturated network will bounce new EdgeRequest signals forever
---       FIXED: Limit on soft bounces introduced
+--       requests all the way. GHC 7.8 can easily generate an error using the
+--       new "isFullTBQueue" function.
 -- TODO: Restart bootstrapping process if all downstream neighbours are lost
 --       (Wait some time for incoming edge requests though? They may contain
 --       potential new downstream neighbours.)

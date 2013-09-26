@@ -5,6 +5,8 @@ module Utilities (
       , untilTerminate
       , toIO
       , connectToNode
+      , whileM
+      , isContinue
 
       -- * Sending/receiving network signals
       , send'
@@ -49,9 +51,15 @@ untilTerminate m = go
 
 -- | Intended to replace 'untilTerminate' to allow more flexible return values
 --   for looping functions
-untilM :: Monad m => (a -> Bool) -> m a -> m ()
-untilM p m = go
+whileM :: Monad m => (a -> Bool) -> m a -> m ()
+whileM p m = go
       where go = m >>= \x -> when (p x) go
+
+
+
+isContinue :: Proceed -> Bool
+isContinue Continue = True
+isContinue _        = False
 
 
 
@@ -90,11 +98,6 @@ send' h message = do
       BS.hPut h mLength
       BS.hPut h mSerialized
       hFlush h
-
-{-# DEPRECATED send, receive
-      "Use request to avoid unhandled server answers" #-}
-{-# DEPRECATED send', receive'
-      "Use request' to avoid unhandled server answers" #-}
 
 -- | Sends out a signal and waits for an answer. Combines 'send\'' and
 --   'receive\'' in order to avoid unhandled server responses.

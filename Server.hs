@@ -5,7 +5,11 @@
 --   directly to an incoming signal's instructions. (Contrary to that, helper
 --   functions invoked inside handlers don't have a special name.)
 
+-- TODO: Make the handlers return IO (Proceed, ServerResponse) so the server
+--       cannot forget to answer each incoming request.
+
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TupleSections #-}
 
 module Server (
       serverLoop
@@ -47,7 +51,7 @@ serverLoop socket env = forever $ do
       let fromNode = From $ Node host port
       atomically . toIO env Debug . putStrLn $
             "New connection from " ++ show fromNode
-      void.async $ worker env h fromNode
+      void . async $ worker env h fromNode
 
 
 
@@ -60,7 +64,7 @@ worker :: Environment
        -> Handle      -- ^ Incoming connection handle
        -> From        -- ^ Incoming connection address
        -> IO ()
-worker env h from = (`finally` hClose h) . untilTerminate $ do
+worker env h from = (`finally` hClose h) . whileM isContinue $ do
 
       -- TODO: Ignore signals sent by nodes not registered as upstream.
       --       Open issues:
@@ -72,15 +76,12 @@ worker env h from = (`finally` hClose h) . untilTerminate $ do
 
       -- TODO: Error handling: What to do if rubbish data comes in?
       --       -> Respond error, kill worker
-      result <- receive h >>= \case
+      (proceed, response) <- receive h >>= \case
             Normal  normal  -> normalH  env h from normal
             Special special -> specialH env h from special
 
-      isOpen <- hIsOpen h
-      return $ if isOpen then result
-                         else Terminate
-      -- TODO: refactor in terms of 'bool' added in GHC 7.8,
-      -- bool response Terminate =<< hIsOpen h
+      send' h response
+      return proceed
 
 
 
@@ -93,7 +94,7 @@ normalH :: Environment
         -> Handle       -- ^ Data channel
         -> From         -- ^ Signal origin
         -> NormalSignal -- ^ Signal type
-        -> IO Proceed
+        -> IO (Proceed, ServerResponse)
 
 normalH env h from signal = do
 
@@ -105,16 +106,14 @@ normalH env h from signal = do
       let allowed = True
 
       if allowed
-            then do send' h OK
-                    -- Update "last heard of" timestamp. Note that this will not
+            then do -- Update "last heard of" timestamp. Note that this will not
                     -- add a valid return address (but some address the incoming
                     -- connection happens to have)!
                     makeTimestamp >>= atomically . updateKnownBy env from
-                    normalH' env from signal
-            else do send' h Ignore
-                    atomically . toIO env Debug . putStrLn $
+                    (, OK) <$> normalH' env from signal
+            else do atomically . toIO env Debug . putStrLn $
                           "Illegally contacted by " ++ show from ++ "; ignoring"
-                    return Terminate
+                    return (Terminate, Ignore)
 
 
 
@@ -143,25 +142,25 @@ specialH :: Environment
          -> Handle        -- ^ Data channel
          -> From          -- ^ Signal origin
          -> SpecialSignal -- ^ Signal type
-         -> IO Proceed
+         -> IO (Proceed, ServerResponse)
 
-specialH env h from (BootstrapHelper sig@(EdgeRequest {})) =
-      normalH' env from sig
+specialH env h from (BootstrapHelper sig@(EdgeRequest {})) = do
+      (, OK) <$> normalH' env from sig
 
 specialH env h from (BootstrapHelper _) =
-      send' h Error >> illegalBootstrapSignalH env
+      (, Error) <$> illegalBootstrapSignalH env
 
 specialH env h from (BootstrapRequest {}) =
-      send' h Error >> illegalBootstrapSignalH env
+      (, Error) <$> illegalBootstrapSignalH env
 
 specialH env h from (YourHostIs {}) =
-      send' h Error >> illegalYourHostIsH env
+      (, Error) <$> illegalYourHostIsH env
 
 specialH env h from (AddMe node) =
-      addMeReceivedH env (To node) -- TODO: Server response
+      (, OK) <$> addMeReceivedH env (To node)
 
 specialH env h from IAddedYou =
-      iAddedYouReceivedH env from -- TODO: Server response
+      (, OK) <$> iAddedYouReceivedH env from
 
 
 
@@ -456,6 +455,9 @@ acceptOutgoingRequest env node = do
 
 -- | Invoked when an Incoming EdgeRequest is accepted by the current node.
 --   Spawns a new worker.
+--
+--   Identical as 'addMeReceivedH', except that the initial request was issued
+--   by another node.
 acceptIncomingRequest :: Environment -> To -> IO ()
 acceptIncomingRequest env node = do
       forkNewClient env node
@@ -467,8 +469,10 @@ acceptIncomingRequest env node = do
 
 -- | Invoked on an incoming "Outgoing request successful" signal, i.e. after
 --   sending out a Outgoing EdgeRequest, another node has given this node the
---   permission to add it as a downstream neighbour. Spawns a new worker
---   connecting to the accepting node.
+--   permission to add it as a downstream neighbour. Spawns a new worker.
+--
+--   Identical as 'acceptIncomingRequest', except that the initial request was
+--   issued by another node.
 addMeReceivedH :: Environment -> To -> IO Proceed
 addMeReceivedH env node = do
       -- NB: forkNewClient will take care of everything, this function is
