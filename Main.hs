@@ -44,6 +44,7 @@ import Bootstrap
 import ClientPool
 import Server
 import Types
+import CmdArgParser
 
 
 
@@ -60,12 +61,8 @@ main = startNode
 startNode :: IO ()
 startNode = do
 
-      let config = defaultConfig -- Can easily be changed to a command args parser
-
-      -- TODO: Proper argument parsing
-      args <- getArgs
-      let port = if null args then _serverPort config
-                              else fromIntegral $ read (head args)
+      config <- parseArgs
+      let port = _serverPort config
 
       bracket (listenOn $ PortNumber port) sClose $ \socket -> do
 

@@ -1,95 +1,166 @@
+module CmdArgParser (parseArgs) where
+
 import Options.Applicative
 import Network
 import Data.Word
+import Data.Monoid
 import Text.Read (readEither)
 
-main = execParser opts >>= print
+import qualified Types as T
+
+parseArgs = execParser opts
       where opts = info (helper <*> config) $
                    fullDesc
                 <> progDesc "Amoeba client"
                 <> header "Testing optparse-applicative"
 
-data Config = Config {
-        _serverPort     :: PortNumber
-      --, _maxNeighbours  :: Word
-      --, _minNeighbours  :: Word
-      , _maxChanSize    :: Int
-      , _bounces        :: Word
-      , _acceptP        :: Double
-      , _poolTickRate   :: Int
-      , _keepAliveTickRate :: Int
-      , _poolTimeout    :: Double
-      --, _verbosity      :: Verbosity
-} deriving (Show)
-data Verbosity = Chatty | Debug | Default | Quiet | Mute
-      deriving (Show)
+--data Config = Config {
+--        _serverPort     :: PortNumber
+--      , _maxNeighbours  :: Word
+--      , _minNeighbours  :: Word
+--      , _maxChanSize    :: Int
+--      , _bounces        :: Word
+--      , _acceptP        :: Double
+--      , _poolTickRate   :: Int
+--      , _keepAliveTickRate :: Int
+--      , _poolTimeout    :: Double
+--      , _verbosity      :: Verbosity
+--} deriving (Show)
+--data Verbosity = Chatty | Debug | Default | Quiet | Mute
+--      deriving (Show)
 
-config :: Parser Config
-config = Config
+
+config :: Parser T.Config
+config = T.Config
      <$> port
+     <*> maxNeighbours
+     <*> minNeighbours
      <*> maxChanSize
      <*> bounces
      <*> acceptP
+     <*> maxSoftBounces
      <*> poolTickRate
      <*> keepAliveTickRate
      <*> poolTimeout
+     <*> verbosity
 
 
 
 port :: Parser PortNumber
 port = let toPN = fromIntegral :: Int -> PortNumber
-       in fmap toPN . option $ long    "port"
-                            <> short   'p'
-                            <> metavar "PORT"
-                            <> help    "Server port"
+       in fmap toPN . option $ mconcat
+             [ long    "port"
+             , short   'p'
+             , metavar "PORT"
+             , help    "Server port"
+             ]
 
--- TODO: Enforce positive
 maxChanSize :: Parser Int
-maxChanSize = option $ long    "chansize"
-                    <> metavar "INT"
-                    <> help    "Maximum communication channel size"
+maxChanSize = nullOption $ mconcat
+      [ reader positive
+      , showDefault
+      , value   10
+      , long    "chansize"
+      , metavar "<INT > 0>"
+      , help    "Maximum communication channel size"
+      ]
 
 bounces :: Parser Word
-bounces = option $ long    "hbounce"
-                <> metavar "UINT"
-                <> help    "Maximum edge search hard bounces"
+bounces = nullOption $ mconcat
+      [ reader nonnegative
+      , showDefault
+      , value   4
+      , long    "hbounce"
+      , metavar "<INT >= 0>"
+      , help    "Maximum edge search hard bounces"
+      ]
+
+maxSoftBounces :: Parser Word
+maxSoftBounces = nullOption $ mconcat
+      [ reader positive
+      , showDefault
+      , value   10
+      , long    "hbounce"
+      , metavar "<INT > 0>"
+      , help    "Maximum edge search soft bounces"
+      ]
 
 
--- TODO: Ensure 0 < p <= 1
+
+
 acceptP :: Parser Double
-acceptP = option $ long    "acceptp"
-                <> metavar "[0<p<=1]"
-                <> help    "Edge request soft bounce acceptance probability"
+acceptP = nullOption $ mconcat
+      [ reader probability
+      , showDefault
+      , value   0.5
+      , long    "acceptp"
+      , metavar "<0 < p <= 1>"
+      , help    "Edge request soft bounce acceptance probability"
+      ]
 
 poolTickRate :: Parser Int
-poolTickRate = option $ long    "ptick"
-                     <> metavar "MILLISECONDS"
-                     <> help    "Tick rate of the client pool"
+poolTickRate = nullOption $ mconcat
+      [ reader positive
+      , showDefaultWith $ \val -> show (val `quot` 10^6) ++ "e6"
+      , value $ 3 * 10^6
+      , long    "ptick"
+      , metavar "MILLISECONDS"
+      , help    "Tick rate of the client pool"
+      ]
 
 keepAliveTickRate :: Parser Int
-keepAliveTickRate = option $ long    "ktick"
-                          <> metavar "MILLISECONDS"
-                          <> help    "Tick rate for sending keep-alive signals"
+keepAliveTickRate = nullOption $ mconcat
+      [ reader positive
+      , showDefaultWith $ \val -> show (val `quot` 10^6) ++ "e6"
+      , value $ 3 * 10^6
+      , long    "ktick"
+      , metavar "MILLISECONDS"
+      , help    "Tick rate for sending keep-alive signals"
+      ]
 
--- TODO: Ensure positive
 poolTimeout :: Parser Double
-poolTimeout = option $ long    "timeout"
-                    <> metavar "SECONDS"
-                    <> help    "Timeout threshold"
+poolTimeout = nullOption $ mconcat
+      [ reader positive
+      , showDefault
+      , value   10
+      , long    "timeout"
+      , metavar "SECONDS"
+      , help    "Timeout threshold"
+      ]
 
-verbosity :: Parser Verbosity
-verbosity = undefined
-
-maxNeighbours :: Parser Word
-maxNeighbours = undefined
+verbosity :: Parser T.Verbosity
+verbosity = nullOption $ mconcat
+      [ reader readVerbosity
+      , value   T.Default
+      , long    "verbosity"
+      , metavar "<mute|quiet|default|debug|chatty>"
+      , help    "Verbosity level, increasing from left to right"
+      ]
 
 minNeighbours :: Parser Word
-minNeighbours = undefined
+minNeighbours = nullOption $ mconcat
+      [ reader positive
+      , showDefault
+      , value   5
+      , long    "maxn"
+      , metavar "<INT > 0>"
+      , help    "Minimum amount of neighbours (up-/downstream separate)"
+      ]
+
+maxNeighbours :: Parser Word
+maxNeighbours = nullOption $ mconcat
+      [ reader positive
+      , showDefault
+      , value   20
+      , long    "minn"
+      , metavar "<INT > 0>"
+      , help    "Maximum amount of neighbours (up-/downstream separate)"
+      ]
 
 
 
 -- | Reader for a Double between 0 and 1
-probability :: String -> Either ParseError Double
+probability :: (Num a, Ord a, Read a) => String -> Either ParseError a
 probability x = case readEither x of
       Right x' | x' >= 0 && x' <= 1 -> Right x'
       Right x' -> Left . ErrorMsg $ "Bad probability " ++ x ++ "; 0 <= p <= 1"
@@ -97,16 +168,25 @@ probability x = case readEither x of
 
 
 
-positiveInt :: String -> Either ParseError Int
-positiveInt x = case readEither x of
+positive :: (Num a, Ord a, Read a) => String -> Either ParseError a
+positive x = case readEither x of
       Right x' | x' > 0 -> Right x'
       Right x' -> Left . ErrorMsg $ "Positive number expected ( " ++ x ++ " given)"
       Left _   -> Left . ErrorMsg $ "Parse error on integer " ++ x
 
 
 
-nonzeroInt :: String -> Either ParseError Int
-nonzeroInt x = case readEither x of
+nonnegative :: (Num a, Ord a, Read a) => String -> Either ParseError a
+nonnegative x = case readEither x of
       Right x' | x' >= 0 -> Right x'
-      Right x' -> Left . ErrorMsg $ "Nonzero number expected ( " ++ x ++ " given)"
+      Right x' -> Left . ErrorMsg $ "Nonnegative number expected ( " ++ x ++ " given)"
       Left _   -> Left . ErrorMsg $ "Parse error on integer " ++ x
+
+
+readVerbosity :: String -> Either ParseError T.Verbosity
+readVerbosity "mute"    = Right T.Mute
+readVerbosity "quiet"   = Right T.Quiet
+readVerbosity "default" = Right T.Default
+readVerbosity "debug"   = Right T.Debug
+readVerbosity "chatty"  = Right T.Chatty
+readVerbosity x         = Left . ErrorMsg $ "Unrecognized verbosity level \"" ++ x ++ "\""

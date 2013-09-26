@@ -98,7 +98,7 @@ data Config = Config {
                                       --   gone
       , _verbosity      :: Verbosity  -- ^ Determines quantity of messages
                                       --   printed
-}
+      } deriving (Show)
 
 
 
