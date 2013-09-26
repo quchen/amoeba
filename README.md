@@ -3,7 +3,7 @@ Amoeba
 
 Amoeba is a program for setting up a decentralized network. The name comes from the hope that eventually, the network will be so robust that you can poke any of its parts without endangering its overall integrity.
 
-**Amoeba is currently in the phase that comes before Alpha (coding, compiling, but not running it because it's full of placeholders).**
+The current development stage is Alpha. The basic functionality is there, but it's far from being feature complete.
 
 
 
