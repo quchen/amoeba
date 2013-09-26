@@ -34,8 +34,8 @@ parseArgs = execParser opts
 config :: Parser T.Config
 config = T.Config
      <$> port
-     <*> maxNeighbours
      <*> minNeighbours
+     <*> maxNeighbours
      <*> maxChanSize
      <*> bounces
      <*> acceptP
