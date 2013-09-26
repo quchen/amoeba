@@ -4,6 +4,7 @@ import Options.Applicative
 import Network
 import Data.Word
 import Data.Monoid
+import Data.Char (toLower)
 import Text.Read (readEither)
 
 import qualified Types as T
@@ -184,9 +185,10 @@ nonnegative x = case readEither x of
 
 
 readVerbosity :: String -> Either ParseError T.Verbosity
-readVerbosity "mute"    = Right T.Mute
-readVerbosity "quiet"   = Right T.Quiet
-readVerbosity "default" = Right T.Default
-readVerbosity "debug"   = Right T.Debug
-readVerbosity "chatty"  = Right T.Chatty
-readVerbosity x         = Left . ErrorMsg $ "Unrecognized verbosity level \"" ++ x ++ "\""
+readVerbosity x = case map toLower x of
+      "mute"    -> Right T.Mute
+      "quiet"   -> Right T.Quiet
+      "default" -> Right T.Default
+      "debug"   -> Right T.Debug
+      "chatty"  -> Right T.Chatty
+      _         -> Left . ErrorMsg $ "Unrecognized verbosity level \"" ++ x ++ "\""
