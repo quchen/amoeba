@@ -96,26 +96,30 @@ normalH :: Environment
         -> NormalSignal -- ^ Signal type
         -> IO (Proceed, ServerResponse)
 
-normalH env h from signal = do
-
-      -- Check whether contacting node is valid upstream
-      -- allowed <- atomically $ Map.member from <$> readTVar (_upstream env)
-      -- TODO: Distinguish between certain signals here. For example, an
-      --       IAddedYou should of course not require an already existing
-      --       connection.
-      let allowed = True
-
-      if allowed
-            then do -- Update "last heard of" timestamp. Note that this will not
-                    -- add a valid return address (but some address the incoming
-                    -- connection happens to have)!
-                    makeTimestamp >>= atomically . updateKnownBy env from
-                    (, OK) <$> normalH' env from signal
-            else do atomically . toIO env Debug . putStrLn $
-                          "Illegally contacted by " ++ show from ++ "; ignoring"
-                    return (Terminate, Ignore)
+normalH env h from signal = isRequestAllowed env from >>= \p -> if p
+      then do
+              (, OK) <$> normalH' env from signal
+      else do atomically . toIO env Debug . putStrLn $
+                    "Illegally contacted by " ++ show from ++ "; ignoring"
+              return (Terminate, Ignore)
 
 
+
+-- | Check whether the request is allowed and therefore be processed, by
+--   checking whether the contacting node is registered as upstream. Also
+--   updates the "last heard of" timestamp.
+--
+-- contacting node is valid upstream
+-- allowed <- atomically $ Map.member from <$> readTVar (_upstream env)
+-- TODO: Distinguish between certain signals here. For example, an
+--       IAddedYou should of course not require an already existing
+--       connection.
+isRequestAllowed :: Environment
+                 -> From
+                 -> IO Bool
+isRequestAllowed env from = makeTimestamp >>= \timestamp -> atomically $ do
+      updateKnownBy env from timestamp
+      Map.member from <$> readTVar (_upstream env)
 
 
 
