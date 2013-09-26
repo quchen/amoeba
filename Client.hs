@@ -82,7 +82,7 @@ clientLoop :: Environment
            -> To                 -- ^ Target downstream neighbour
            -> [STM NormalSignal] -- ^ Actions that read incoming channels
            -> IO ()
-clientLoop env h node chans = untilTerminate $ do
+clientLoop env h node chans = whileM isContinue $ do
 
       -- Receive orders from whatever channel is first available
       signal <- Normal <$> atomically (msum chans)

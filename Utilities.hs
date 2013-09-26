@@ -2,7 +2,6 @@
 
 module Utilities (
         makeTimestamp
-      , untilTerminate
       , toIO
       , connectToNode
       , whileM
@@ -40,16 +39,8 @@ makeTimestamp = Timestamp . realToFrac <$> getPOSIXTime
 --   comparable to seconds.
 
 
--- | Similar to @Control.Monad.forever@, but will abort when @Terminate@ is
---   returned.
-untilTerminate :: Monad m => m Proceed -> m ()
-untilTerminate m = go
-      where go = m >>= \case Continue  -> go
-                             Terminate -> return ()
 
-
--- | Intended to replace 'untilTerminate' to allow more flexible return values
---   for looping functions
+-- | Repeatedly executes a monadic action until its contents evaluate to False.
 whileM :: Monad m => (a -> Bool) -> m a -> m ()
 whileM p m = go
       where go = m >>= \x -> when (p x) go
