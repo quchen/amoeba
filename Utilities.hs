@@ -25,7 +25,6 @@ import qualified Data.ByteString.Lazy as BS
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Int
 import System.IO
-import System.Timeout
 import Control.Concurrent.STM
 import Network (connectTo, PortID(PortNumber))
 
@@ -115,17 +114,6 @@ send = send'
 request :: Handle -> Signal -> IO ServerResponse
 request = request'
 
-
--- | Very hacky timeout function. Crashes on timeout. :-x
-raceAgainstTimeout :: IO a -> IO a
-raceAgainstTimeout action = do
-      result <- timeout (10^6) action
-      case result of
-            Just r -> return r
-            Nothing -> undefined
---   TODO: Make timeout more useful, especially: remove undefined
-{-# WARNING raceAgainstTimeout
-      "Function crashes on timeout, this is just for debugging" #-}
 
 
 -- | Sends an IO action, depending on the verbosity level.

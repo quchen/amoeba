@@ -153,7 +153,7 @@ removeTimedOutUpstream env = do
 -- | Kick all clients that haven't been sent an order in some time.
 removeTimedOutDownstream :: Environment -> IO ()
 removeTimedOutDownstream env = do
-      tsNow@(Timestamp now) <- makeTimestamp
+      Timestamp now <- makeTimestamp
       kill' <- atomically $ do
             let notTimedOut (Client { _clientTimestamp = Timestamp t }) =
                       now - t < (_poolTimeout._config) env

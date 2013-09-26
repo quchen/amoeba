@@ -77,8 +77,8 @@ worker env h from = (`finally` hClose h) . whileM isContinue $ do
       -- TODO: Error handling: What to do if rubbish data comes in?
       --       -> Respond error, kill worker
       (proceed, response) <- receive h >>= \case
-            Normal  normal  -> normalH  env h from normal
-            Special special -> specialH env h from special
+            Normal  normal  -> normalH  env from normal
+            Special special -> specialH env from special
 
       send' h response
       return proceed
@@ -91,12 +91,11 @@ worker env h from = (`finally` hClose h) . whileM isContinue $ do
 --   normal signal is one encapsulated in a bootstrap request, which will be
 --   processed differently.)
 normalH :: Environment
-        -> Handle       -- ^ Data channel
         -> From         -- ^ Signal origin
         -> NormalSignal -- ^ Signal type
         -> IO (Proceed, ServerResponse)
 
-normalH env h from signal = isRequestAllowed env from >>= \p -> if p
+normalH env from signal = isRequestAllowed env from >>= \p -> if p
       then do
               (, OK) <$> normalH' env from signal
       else do atomically . toIO env Debug . putStrLn $
@@ -143,27 +142,26 @@ normalH' env from (KeepAlive)            = keepAliveH    env from
 --   checks like whether the signal was sent from a registered upstream
 --   neighbour.
 specialH :: Environment
-         -> Handle        -- ^ Data channel
          -> From          -- ^ Signal origin
          -> SpecialSignal -- ^ Signal type
          -> IO (Proceed, ServerResponse)
 
-specialH env h from (BootstrapHelper sig@(EdgeRequest {})) = do
+specialH env from (BootstrapHelper sig@(EdgeRequest {})) = do
       (, OK) <$> normalH' env from sig
 
-specialH env h from (BootstrapHelper _) =
+specialH env _ (BootstrapHelper _) =
       (, Error) <$> illegalBootstrapSignalH env
 
-specialH env h from (BootstrapRequest {}) =
+specialH env _ (BootstrapRequest {}) =
       (, Error) <$> illegalBootstrapSignalH env
 
-specialH env h from (YourHostIs {}) =
+specialH env _ (YourHostIs {}) =
       (, Error) <$> illegalYourHostIsH env
 
-specialH env h from (AddMe node) =
+specialH env _ (AddMe node) =
       (, OK) <$> addMeReceivedH env (To node)
 
-specialH env h from IAddedYou =
+specialH env from IAddedYou =
       (, OK) <$> iAddedYouReceivedH env from
 
 
@@ -384,6 +382,7 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
                      in  atomically . toIO env Debug $ putStrLn msg
                 else atomically . writeTBQueue (_st1c env) . buildSignal $
                                                              Right (n+1, p')
+
       -- Build "bounce again from the beginning" signal. This is invoked if
       -- an EdgeRequest reaches the issuing node again.
       let n = _bounces $ _config env
@@ -407,7 +406,7 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
             (IsSelf, _, _) -> do
                   let msg = "Edge to itself requested, bouncing"
                   atomically . toIO env Chatty $ putStrLn msg
-                  bounceOn
+                  bounceReset
             (IsDownstreamNeighbour, _, Incoming) -> do
                   -- In case you're wondering about the seemingly different
                   -- directions in that pattern (Incoming+Downstream): The

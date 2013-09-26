@@ -164,7 +164,7 @@ maxNeighbours = nullOption $ mconcat
 probability :: (Num a, Ord a, Read a) => String -> Either ParseError a
 probability x = case readEither x of
       Right x' | x' >= 0 && x' <= 1 -> Right x'
-      Right x' -> Left . ErrorMsg $ "Bad probability " ++ x ++ "; 0 <= p <= 1"
+      Right _  -> Left . ErrorMsg $ "Bad probability " ++ x ++ "; 0 <= p <= 1"
       Left _   -> Left . ErrorMsg $ "Parse error on double " ++ x
 
 
@@ -172,7 +172,7 @@ probability x = case readEither x of
 positive :: (Num a, Ord a, Read a) => String -> Either ParseError a
 positive x = case readEither x of
       Right x' | x' > 0 -> Right x'
-      Right x' -> Left . ErrorMsg $ "Positive number expected ( " ++ x ++ " given)"
+      Right _  -> Left . ErrorMsg $ "Positive number expected ( " ++ x ++ " given)"
       Left _   -> Left . ErrorMsg $ "Parse error on integer " ++ x
 
 
@@ -180,7 +180,7 @@ positive x = case readEither x of
 nonnegative :: (Num a, Ord a, Read a) => String -> Either ParseError a
 nonnegative x = case readEither x of
       Right x' | x' >= 0 -> Right x'
-      Right x' -> Left . ErrorMsg $ "Nonnegative number expected ( " ++ x ++ " given)"
+      Right _  -> Left . ErrorMsg $ "Nonnegative number expected ( " ++ x ++ " given)"
       Left _   -> Left . ErrorMsg $ "Parse error on integer " ++ x
 
 

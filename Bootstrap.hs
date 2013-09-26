@@ -12,7 +12,6 @@ module Bootstrap (
 import Network
 import Control.Exception
 import System.IO
-import Data.Functor ((<$>))
 
 import Types
 import Utilities (request', connectToNode)

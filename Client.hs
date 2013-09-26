@@ -39,10 +39,6 @@ forkNewClient env targetNode = do
       -- Setup queue for talking directly to the speicif client created here.
       -- STSC = Server to Single Client
       stsc <- newTBQueueIO (_maxChanSize $ _config env)
-
-      let  yell = atomically $ toIO env Debug . putStrLn $ -- DEBUG
-                    "\ESC[31mNew client: " ++ show targetNode ++ "\ESC[0m"
-
       thread <- async $ newClient env targetNode stsc
       timestamp <- makeTimestamp
       let client = Client timestamp thread stsc
@@ -92,9 +88,10 @@ clientLoop env h node chans = untilTerminate $ do
       signal <- Normal <$> atomically (msum chans)
 
       request h signal >>= \case
-            OK     -> ok env node
+            OK     -> ok           env node
             Error  -> genericError env
-            Ignore -> ignore env
+            Ignore -> ignore       env
+            Denied -> denied       env
 
 
 
@@ -132,9 +129,16 @@ ignore env = do
 
 
 
--- | Server sent back a generic error
+-- | Server sent back a generic error, see docs for 'Error'
 genericError :: Environment -> IO Proceed
 genericError env = do
       atomically . toIO env Debug $
             putStrLn "Generic server error, terminating client"
+      return Terminate
+
+-- | Server denied a valid request, see docs for 'Denied'
+denied :: Environment -> IO Proceed
+denied env = do
+      atomically . toIO env Debug $
+            putStrLn "Server denied the request"
       return Terminate

@@ -38,7 +38,6 @@ import           Control.Monad
 import           Network
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import System.Environment (getArgs)
 
 import Bootstrap
 import ClientPool
