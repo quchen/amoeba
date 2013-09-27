@@ -27,8 +27,9 @@ defaultConfig = T.Config {
       , T._bounces           = 1
       , T._acceptP           = 0.5
       , T._maxSoftBounces    = 10
-      , T._poolTickRate      = 10^6
-      , T._keepAliveTickRate = 10^6
+      , T._shortTickRate     = 1 * 10^5
+      , T._mediumTickRate    = 3 * 10^5
+      , T._longTickRate      = 10^6
       , T._poolTimeout       = 10
       , T._verbosity         = T.Default
       }
@@ -44,8 +45,9 @@ config = T.Config
      <*> bounces
      <*> acceptP
      <*> maxSoftBounces
-     <*> poolTickRate
-     <*> keepAliveTickRate
+     <*> tickRate "short"  T._shortTickRate
+     <*> tickRate "medium" T._mediumTickRate
+     <*> tickRate "long"   T._longTickRate
      <*> poolTimeout
      <*> verbosity
 
@@ -123,24 +125,14 @@ acceptP = nullOption $ mconcat
       , help    "Edge request soft bounce acceptance probability"
       ]
 
-poolTickRate :: Parser Int
-poolTickRate = nullOption $ mconcat
+tickRate :: String -> (T.Config -> Int) -> Parser Int
+tickRate name getter = nullOption $ mconcat
       [ reader positive
       , showDefaultWith $ \val -> show (val `quot` 10^6) ++ "e6"
-      , value $ T._poolTickRate defaultConfig
+      , value $ getter defaultConfig
       , long    "ptick"
       , metavar "MILLISECONDS"
-      , help    "Tick rate of the client pool"
-      ]
-
-keepAliveTickRate :: Parser Int
-keepAliveTickRate = nullOption $ mconcat
-      [ reader positive
-      , showDefaultWith $ \val -> show (val `quot` 10^6) ++ "e6"
-      , value $ T._keepAliveTickRate defaultConfig
-      , long    "ktick"
-      , metavar "MILLISECONDS"
-      , help    "Tick rate for sending keep-alive signals"
+      , help  $ "Tick rate of " ++ name ++ " loops"
       ]
 
 poolTimeout :: Parser Double

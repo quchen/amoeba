@@ -77,7 +77,7 @@ clientPoolLoop env = forever $ do
                  printf "\ESC[32mDeficit of %d incoming connections detected\ESC[0m\n" deficit
             forM_ [1..deficit] $ \_ -> sendEdgeRequest env Incoming
 
-      threadDelay $ _poolTickRate (_config env)
+      threadDelay $ _mediumTickRate (_config env)
 
 
 
@@ -112,7 +112,7 @@ housekeeping env = forever $ do
       removeTimedOutDsn env
       removeDeadClients env
       sendKeepAlive env
-      threadDelay (_keepAliveTickRate $ _config env)
+      threadDelay (_mediumTickRate $ _config env)
 
 
 
