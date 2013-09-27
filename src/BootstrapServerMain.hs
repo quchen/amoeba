@@ -27,6 +27,10 @@ import qualified Data.Set as Set
 import Utilities
 import Types
 
+import Node as Node
+import CmdArgParser as Node
+
+
 
 
 data BSEnv = BSEnv { _knownNodes :: TVar (Set To)
@@ -49,7 +53,14 @@ main = do
 
       socket <- listenOn $ PortNumber 20000
       putStrLn "Starting server loop"
-      bootstrapServerLoop env socket
+      server <- async $ bootstrapServerLoop env socket
+
+      putStrLn "Starting bootstrapping nodes"
+      config <- Node.parseArgs
+      forM_ [0..20] $ \offset -> async $ Node.startNode $
+            config { _serverPort = _serverPort config + offset }
+
+      wait server
 
 
 
