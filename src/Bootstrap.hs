@@ -1,8 +1,6 @@
 -- | Provides functions for the client to connect to a Bootstrap server in order
 --   to make the initial connection to the network.
 
-{-# LANGUAGE LambdaCase #-}
-
 module Bootstrap (
       bootstrap
 ) where

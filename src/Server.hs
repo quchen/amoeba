@@ -521,5 +521,5 @@ nodeRelationship env node@(To to) = do
       case (self, isAlreadyDownstream) of
             (True, _) -> return IsSelf
             (_, True) -> return IsDownstreamNeighbour
-            _else     -> return IsUnrelated
+            _         -> return IsUnrelated
 -- TODO: Solve the upstream neighbour checking issue

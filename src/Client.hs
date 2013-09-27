@@ -38,8 +38,8 @@ forkNewClient env targetNode = do
 
       -- Setup queue for talking directly to the speicif client created here.
       -- STSC = Server to Single Client
-      stsc <- newTBQueueIO (_maxChanSize $ _config env)
-      thread <- async $ newClient env targetNode stsc
+      stsc      <- newTBQueueIO (_maxChanSize $ _config env)
+      thread    <- async $ newClient env targetNode stsc
       timestamp <- makeTimestamp
       let client = Client timestamp thread stsc
       atomically . modifyTVar (_downstream env) $ Map.insert targetNode client

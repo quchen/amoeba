@@ -16,6 +16,11 @@
 --       (Wait some time for incoming edge requests though? They may contain
 --       potential new downstream neighbours.)
 -- TODO: Upstream neighbours are not rejected (enough?) when the pool is full
+-- TODO: Instead of having the client pool clean up dead workers, each worker
+--       should have an individual dead man switch thread. This should a) be
+--       quicker to react and b) more in the spirit of something decentralized.
+-- TODO: Make the timers slow/medium/fast instead of having an individual tick
+--       rate for each process
 
 
 

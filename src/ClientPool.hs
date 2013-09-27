@@ -164,6 +164,9 @@ removeTimedOutDownstream env = do
       void $ traverse (cancel._clientAsync) kill'
 -- TODO: Find out whether this function is useful, or whether
 --       'removeDeadClients' is enough
+-- TODO: Clients are bracketed to remove themselves from the thread pool once
+--       they terminate for some reason. This function may be totally
+--       unnecessary.
 
 
 
