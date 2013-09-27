@@ -119,7 +119,7 @@ sendKeepAlive env = do
 
       (Timestamp now) <- makeTimestamp
 
-      -- Get a map of all registered clients
+      -- Get a map of all registered downstream clients
       clients <- atomically $ readTVar (_downstream env)
 
       -- Find out which ones haven't been contacted in a while
@@ -161,6 +161,11 @@ removeTimedOutDownstream env = do
             (keep, kill) <- Map.partition notTimedOut <$> readTVar ds
             writeTVar ds keep
             return kill
+
+      when (not $ Map.null kill') $
+            atomically . toIO env Debug $
+                 putStrLn "\ESC[34mDowntream neighbour housekilled. Is this a bug?\ESC[0m\n"
+
       void $ traverse (cancel._clientAsync) kill'
 -- TODO: Find out whether this function is useful, or whether
 --       'removeDeadClients' is enough
