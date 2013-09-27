@@ -21,6 +21,9 @@
 --       quicker to react and b) more in the spirit of something decentralized.
 -- TODO: Make the timers slow/medium/fast instead of having an individual tick
 --       rate for each process
+-- TODO: Configuration sanity checks:
+--           neighbours  -->  max >= min
+--           tickrates   -->  short <= medium <= long
 
 
 
