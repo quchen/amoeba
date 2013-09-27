@@ -2,32 +2,34 @@
 -- TODO: The wire protocol uses Int64 length headers. Make the program robust
 --       against too long messages that exceed the size. Maybe use
 --       hGetContents after all?
--- TODO: Create "network snapshot" type message to generate GraphViz pictures
---       of how everything looks like
 -- TODO: Randomly replace downstream neighbours
 -- TODO: Randomly kick nodes if the maximum capacity is reached
 -- TODO: Create a new signal that makes every node send a list of neighbours to
 --       a specific node, which then constructs a GraphViz representation of the
 --       network
--- TODO: Write options parser
--- TODO: Make clients update their timestamps in the DB regularly
--- TODO: Decent logging
 -- TODO: Error handling. Right now any exception kills everything because it's
 --       rethrown in the parent thread (thanks to Async).
 -- TODO: When there are no clients, the chans will be filled up with edge
---       requests all the way
--- TODO: A fully saturated network will bounce new EdgeRequest signals forever
---       FIXED: Limit on soft bounces introduced
+--       requests all the way. GHC 7.8 can easily generate an error using the
+--       new "isFullTBQueue" function.
 -- TODO: Restart bootstrapping process if all downstream neighbours are lost
 --       (Wait some time for incoming edge requests though? They may contain
 --       potential new downstream neighbours.)
 -- TODO: Upstream neighbours are not rejected (enough?) when the pool is full
+-- TODO: Instead of having the client pool clean up dead workers, each worker
+--       should have an individual dead man switch thread. This should a) be
+--       quicker to react and b) more in the spirit of something decentralized.
+-- TODO: Make the timers slow/medium/fast instead of having an individual tick
+--       rate for each process
+-- TODO: Configuration sanity checks:
+--           neighbours  -->  max >= min
+--           tickrates   -->  short <= medium <= long
 
 
 
 
 
-module Main where
+module Node (startNode) where
 
 
 
@@ -36,10 +38,10 @@ import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
-import           Network
+import           Data.Maybe (fromMaybe)
 import qualified Data.Map as Map
+import           Network
 import qualified Data.Set as Set
-import System.Environment (getArgs)
 
 import Bootstrap
 import ClientPool
@@ -48,25 +50,12 @@ import Types
 
 
 
-
-main :: IO ()
-main = startNode
-
-
-
-
-
 -- | Node main function. Bootstraps, launches server loop, client pool,
 --   terminal IO thread.
-startNode :: IO ()
-startNode = do
+startNode :: Config -> IO ()
+startNode config = do
 
-      let config = defaultConfig -- Can easily be changed to a command args parser
-
-      -- TODO: Proper argument parsing
-      args <- getArgs
-      let port = if null args then _serverPort config
-                              else fromIntegral $ read (head args)
+      let port = _serverPort config
 
       bracket (listenOn $ PortNumber port) sClose $ \socket -> do
 
@@ -104,21 +93,6 @@ initEnvironment node config = Environment
 
       where size = _maxChanSize config
 
-
-defaultConfig :: Config
-defaultConfig = Config {
-        _serverPort        = 21000
-      , _maxNeighbours     = 6
-      , _minNeighbours     = 3
-      , _maxChanSize       = 100
-      , _bounces           = 1
-      , _acceptP           = 0.5 -- TODO: Error if not 0 < p <= 1
-      , _maxSoftBounces    = 10
-      , _poolTickRate      = 3 * 10^6
-      , _keepAliveTickRate = 3 * 10^6
-      , _poolTimeout       = 10
-      , _verbosity         = Debug
-}
 
 
 

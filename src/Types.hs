@@ -88,17 +88,19 @@ data Config = Config {
       , _maxSoftBounces :: Word       -- ^ How many times a soft-bounced request
                                       --   is maximally relayed before it is
                                       --   rejected
-      , _poolTickRate   :: Int        -- ^ Every couple of milliseconds, the
-                                      --   client pool will loop to maintain a
-                                      --   proper connection to the network.
-      , _keepAliveTickRate :: Int     -- ^ Like the pool tickrate, but for
-                                      --   sending KeepAlive signals downstream.
+      , _shortTickRate  :: Int        -- ^ Tick interval in milliseconds for
+                                      --   "short" loops.
+      , _mediumTickRate :: Int        -- ^ Tick interval in milliseconds for
+                                      --   "medium" loops, for example the
+                                      --   client pool or the keep-alive loops.
+      , _longTickRate   :: Int        -- ^ Tick interval in milliseconds for
+                                      --   "long" loops.
       , _poolTimeout    :: Double     -- ^ Number of seconds before a
                                       --   non-responding node is considered
                                       --   gone
       , _verbosity      :: Verbosity  -- ^ Determines quantity of messages
                                       --   printed
-}
+      } deriving (Show)
 
 
 
@@ -210,6 +212,11 @@ data ServerResponse =
         -- | Sent to node that tries to connect without being a registered
         --   upstream neighbour
       | Ignore
+
+        -- | Signal OK, but can't be accepted for some reason. This is the
+        --   equivalent of 'Ignore' for commands that do not need an existing
+        --   neighbourship, such as 'IAddedYou'.
+      | Denied
 
       deriving (Eq, Ord, Show, Generic)
 

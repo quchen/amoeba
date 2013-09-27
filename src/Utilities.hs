@@ -2,13 +2,20 @@
 
 module Utilities (
         makeTimestamp
-      , untilTerminate
-      , receive
-      , send
-      , receive'
-      , send'
       , toIO
       , connectToNode
+      , whileM
+      , isContinue
+
+      -- * Sending/receiving network signals
+      , send'
+      , receive'
+      , request'
+
+      -- * Monomorphic aliases for type safety
+      , send
+      , receive
+      , request
 ) where
 
 import Data.Functor
@@ -17,7 +24,6 @@ import qualified Data.ByteString.Lazy as BS
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Int
 import System.IO
-import System.Timeout
 import Control.Concurrent.STM
 import Network (connectTo, PortID(PortNumber))
 
@@ -33,14 +39,17 @@ makeTimestamp = Timestamp . realToFrac <$> getPOSIXTime
 --   comparable to seconds.
 
 
--- | Similar to @Control.Monad.forever@, but will abort when @Terminate@ is
---   returned.
-untilTerminate :: Monad m => m Proceed -> m ()
-untilTerminate m = go
-      where go = m >>= \case Continue  -> go
-                             Terminate -> return ()
+
+-- | Repeatedly executes a monadic action until its contents evaluate to False.
+whileM :: Monad m => (a -> Bool) -> m a -> m ()
+whileM p m = go
+      where go = m >>= \x -> when (p x) go
 
 
+
+isContinue :: Proceed -> Bool
+isContinue Continue = True
+isContinue _        = False
 
 
 
@@ -70,15 +79,6 @@ receive' h = do
 
       -- TODO: Handle decoding errors (Maybe?)
 
--- | Monomorphic aliase for type safety
-receive :: Handle -> IO Signal
-receive = receive'
-
--- | Monomorphic aliase for type safety
-send :: Handle -> Signal -> IO ()
-send = send'
-
-
 -- | Sends a Signal/ServerResponse, encoded as Binary with a size header, to a
 --   Handle. Inverse of 'receive'.
 send' :: Binary a => Handle -> a -> IO ()
@@ -89,14 +89,22 @@ send' h message = do
       BS.hPut h mSerialized
       hFlush h
 
--- | Very hacky timeout function. Crashes on timeout. :-x
-raceAgainstTimeout :: IO a -> IO a
-raceAgainstTimeout action = do
-      result <- timeout (10^6) action
-      case result of
-            Just r -> return r
-            Nothing -> undefined
---   TODO: Make timeout more useful, especially: remove undefined
+-- | Sends out a signal and waits for an answer. Combines 'send\'' and
+--   'receive\'' in order to avoid unhandled server responses.
+request' :: (Binary a, Binary b) => Handle -> a -> IO b
+request' h message = send' h message >> receive' h
+
+
+
+receive :: Handle -> IO Signal
+receive = receive'
+
+send :: Handle -> Signal -> IO ()
+send = send'
+
+request :: Handle -> Signal -> IO ServerResponse
+request = request'
+
 
 
 -- | Sends an IO action, depending on the verbosity level.

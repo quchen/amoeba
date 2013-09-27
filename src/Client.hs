@@ -15,6 +15,7 @@ import Control.Concurrent.STM
 import Control.Concurrent.Async
 import Control.Exception
 import System.IO
+import Data.Functor
 import Control.Monad
 import qualified Data.Map as Map
 
@@ -37,12 +38,8 @@ forkNewClient env targetNode = do
 
       -- Setup queue for talking directly to the speicif client created here.
       -- STSC = Server to Single Client
-      stsc <- newTBQueueIO (_maxChanSize $ _config env)
-
-      let  yell = atomically $ toIO env Debug . putStrLn $ -- DEBUG
-                    "\ESC[31mNew client: " ++ show targetNode ++ "\ESC[0m"
-
-      thread <- async $ newClient env targetNode stsc
+      stsc      <- newTBQueueIO (_maxChanSize $ _config env)
+      thread    <- async $ newClient env targetNode stsc
       timestamp <- makeTimestamp
       let client = Client timestamp thread stsc
       atomically . modifyTVar (_downstream env) $ Map.insert targetNode client
@@ -67,13 +64,14 @@ newClient env node stsc =
             hClose h
 
       in bracket (connectToNode node) release $ \h -> do
-            send h (Special IAddedYou)
-            -- TODO: Await response
-            stc <- atomically $ dupTChan (_stc env)
-            clientLoop env h node [ readTChan stc
-                                  , readTBQueue (_st1c env)
-                                  , readTBQueue stsc
-                                  ]
+            response <- request h (Special IAddedYou)
+            case response of
+                  OK -> do stc <- atomically $ dupTChan (_stc env)
+                           clientLoop env h node [ readTChan stc
+                                                 , readTBQueue (_st1c env)
+                                                 , readTBQueue stsc
+                                                 ]
+                  _  -> return ()
 
 
 
@@ -84,16 +82,16 @@ clientLoop :: Environment
            -> To                 -- ^ Target downstream neighbour
            -> [STM NormalSignal] -- ^ Actions that read incoming channels
            -> IO ()
-clientLoop env h node chans = untilTerminate $ do
+clientLoop env h node chans = whileM isContinue $ do
 
       -- Receive orders from whatever channel is first available
-      send h . Normal =<< atomically (msum chans)
+      signal <- Normal <$> atomically (msum chans)
 
-
-      receive' h >>= \case
-            OK     -> ok env node
+      request h signal >>= \case
+            OK     -> ok           env node
             Error  -> genericError env
-            Ignore -> ignore env
+            Ignore -> ignore       env
+            Denied -> denied       env
 
 
 
@@ -131,9 +129,16 @@ ignore env = do
 
 
 
--- | Server sent back a generic error
+-- | Server sent back a generic error, see docs for 'Error'
 genericError :: Environment -> IO Proceed
 genericError env = do
       atomically . toIO env Debug $
             putStrLn "Generic server error, terminating client"
+      return Terminate
+
+-- | Server denied a valid request, see docs for 'Denied'
+denied :: Environment -> IO Proceed
+denied env = do
+      atomically . toIO env Debug $
+            putStrLn "Server denied the request"
       return Terminate

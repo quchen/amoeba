@@ -5,7 +5,11 @@
 --   directly to an incoming signal's instructions. (Contrary to that, helper
 --   functions invoked inside handlers don't have a special name.)
 
+-- TODO: Make the handlers return IO (Proceed, ServerResponse) so the server
+--       cannot forget to answer each incoming request.
+
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TupleSections #-}
 
 module Server (
       serverLoop
@@ -47,7 +51,7 @@ serverLoop socket env = forever $ do
       let fromNode = From $ Node host port
       atomically . toIO env Debug . putStrLn $
             "New connection from " ++ show fromNode
-      void.async $ worker env h fromNode
+      void . async $ worker env h fromNode
 
 
 
@@ -60,7 +64,7 @@ worker :: Environment
        -> Handle      -- ^ Incoming connection handle
        -> From        -- ^ Incoming connection address
        -> IO ()
-worker env h from = (`finally` hClose h) . untilTerminate $ do
+worker env h from = (`finally` hClose h) . whileM isContinue $ do
 
       -- TODO: Ignore signals sent by nodes not registered as upstream.
       --       Open issues:
@@ -72,13 +76,12 @@ worker env h from = (`finally` hClose h) . untilTerminate $ do
 
       -- TODO: Error handling: What to do if rubbish data comes in?
       --       -> Respond error, kill worker
-      response <- receive h >>= \case
-            Normal  normal  -> normalH  env h from normal
-            Special special -> specialH env h from special
+      (proceed, response) <- receive h >>= \case
+            Normal  normal  -> normalH  env from normal
+            Special special -> specialH env from special
 
-      isOpen <- hIsOpen h
-      if isOpen then return response
-                else return Terminate
+      send' h response
+      return proceed
 
 
 
@@ -88,33 +91,34 @@ worker env h from = (`finally` hClose h) . untilTerminate $ do
 --   normal signal is one encapsulated in a bootstrap request, which will be
 --   processed differently.)
 normalH :: Environment
-        -> Handle       -- ^ Data channel
         -> From         -- ^ Signal origin
         -> NormalSignal -- ^ Signal type
-        -> IO Proceed
+        -> IO (Proceed, ServerResponse)
 
-normalH env h from signal = do
-
-      -- Check whether contacting node is valid upstream
-      -- allowed <- atomically $ Map.member from <$> readTVar (_upstream env)
-      -- TODO: Distinguish between certain signals here. For example, an
-      --       IAddedYou should of course not require an already existing
-      --       connection.
-      let allowed = True
-
-      if allowed
-            then do send' h OK
-                    -- Update "last heard of" timestamp. Note that this will not
-                    -- add a valid return address (but some address the incoming
-                    -- connection happens to have)!
-                    makeTimestamp >>= atomically . updateKnownBy env from
-                    normalH' env from signal
-            else do send' h Ignore
-                    atomically . toIO env Debug . putStrLn $
-                          "Illegally contacted by " ++ show from ++ "; ignoring"
-                    return Terminate
+normalH env from signal = isRequestAllowed env from >>= \p -> if p
+      then do
+              (, OK) <$> normalH' env from signal
+      else do atomically . toIO env Debug . putStrLn $
+                    "Illegally contacted by " ++ show from ++ "; ignoring"
+              return (Terminate, Ignore)
 
 
+
+-- | Check whether the request is allowed and therefore be processed, by
+--   checking whether the contacting node is registered as upstream. Also
+--   updates the "last heard of" timestamp.
+--
+-- contacting node is valid upstream
+-- allowed <- atomically $ Map.member from <$> readTVar (_upstream env)
+-- TODO: Distinguish between certain signals here. For example, an
+--       IAddedYou should of course not require an already existing
+--       connection.
+isRequestAllowed :: Environment
+                 -> From
+                 -> IO Bool
+isRequestAllowed env from = makeTimestamp >>= \timestamp -> atomically $ do
+      updateKnownBy env from timestamp
+      Map.member from <$> readTVar (_upstream env)
 
 
 
@@ -138,28 +142,27 @@ normalH' env from (KeepAlive)            = keepAliveH    env from
 --   checks like whether the signal was sent from a registered upstream
 --   neighbour.
 specialH :: Environment
-         -> Handle        -- ^ Data channel
          -> From          -- ^ Signal origin
          -> SpecialSignal -- ^ Signal type
-         -> IO Proceed
+         -> IO (Proceed, ServerResponse)
 
-specialH env h from (BootstrapHelper sig@(EdgeRequest {})) =
-      normalH' env from sig
+specialH env from (BootstrapHelper sig@(EdgeRequest {})) = do
+      (, OK) <$> normalH' env from sig
 
-specialH env h from (BootstrapHelper _) =
-      send' h Error >> illegalBootstrapSignalH env
+specialH env _ (BootstrapHelper _) =
+      (, Error) <$> illegalBootstrapSignalH env
 
-specialH env h from (BootstrapRequest {}) =
-      send' h Error >> illegalBootstrapSignalH env
+specialH env _ (BootstrapRequest {}) =
+      (, Error) <$> illegalBootstrapSignalH env
 
-specialH env h from (YourHostIs {}) =
-      send' h Error >> illegalYourHostIsH env
+specialH env _ (YourHostIs {}) =
+      (, Error) <$> illegalYourHostIsH env
 
-specialH env h from (AddMe node) =
-      addMeReceivedH env (To node) -- TODO: Server response
+specialH env _ (AddMe node) =
+      (, OK) <$> addMeReceivedH env (To node)
 
-specialH env h from IAddedYou =
-      iAddedYouReceivedH env from -- TODO: Server response
+specialH env from IAddedYou =
+      (, OK) <$> iAddedYouReceivedH env from
 
 
 
@@ -383,6 +386,7 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
                      in  atomically . toIO env Debug $ putStrLn msg
                 else atomically . writeTBQueue (_st1c env) . buildSignal $
                                                              Right (n+1, p')
+
       -- Build "bounce again from the beginning" signal. This is invoked if
       -- an EdgeRequest reaches the issuing node again.
       let n = _bounces $ _config env
@@ -406,7 +410,7 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
             (IsSelf, _, _) -> do
                   let msg = "Edge to itself requested, bouncing"
                   atomically . toIO env Chatty $ putStrLn msg
-                  bounceOn
+                  bounceReset
             (IsDownstreamNeighbour, _, Incoming) -> do
                   -- In case you're wondering about the seemingly different
                   -- directions in that pattern (Incoming+Downstream): The
@@ -458,6 +462,9 @@ acceptOutgoingRequest env node = do
 
 -- | Invoked when an Incoming EdgeRequest is accepted by the current node.
 --   Spawns a new worker.
+--
+--   Identical as 'addMeReceivedH', except that the initial request was issued
+--   by another node.
 acceptIncomingRequest :: Environment -> To -> IO ()
 acceptIncomingRequest env node = do
       forkNewClient env node
@@ -469,8 +476,10 @@ acceptIncomingRequest env node = do
 
 -- | Invoked on an incoming "Outgoing request successful" signal, i.e. after
 --   sending out a Outgoing EdgeRequest, another node has given this node the
---   permission to add it as a downstream neighbour. Spawns a new worker
---   connecting to the accepting node.
+--   permission to add it as a downstream neighbour. Spawns a new worker.
+--
+--   Identical as 'acceptIncomingRequest', except that the initial request was
+--   issued by another node.
 addMeReceivedH :: Environment -> To -> IO Proceed
 addMeReceivedH env node = do
       -- NB: forkNewClient will take care of everything, this function is
@@ -516,5 +525,5 @@ nodeRelationship env node@(To to) = do
       case (self, isAlreadyDownstream) of
             (True, _) -> return IsSelf
             (_, True) -> return IsDownstreamNeighbour
-            _else     -> return IsUnrelated
+            _         -> return IsUnrelated
 -- TODO: Solve the upstream neighbour checking issue
