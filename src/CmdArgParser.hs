@@ -13,7 +13,7 @@ parseArgs = execParser opts
       where opts = info (helper <*> config) $
                    fullDesc
                 <> progDesc "Amoeba client"
-                <> header "Testing optparse-applicative"
+                <> header "Launch a single node in an Amoeba network"
 
 
 

@@ -9,11 +9,14 @@ import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
-import qualified Data.Map               as Map
+import qualified Data.Map as Map
 import           Control.Monad
-import           Data.Traversable
+import qualified Data.Foldable as F
+import qualified Data.Traversable as T
 import           Data.Maybe (isJust)
 import           Text.Printf
+import qualified Data.Set as Set
+
 
 import Types
 import Utilities
@@ -104,15 +107,15 @@ housekeeping env = forever $ do
       -- signals
       -- TODO: Update timestamps of running clients
 
-      removeTimedOutUpstream env
-      removeTimedOutDownstream env
+      removeTimedOutUsn env
+      removeTimedOutDsn env
       removeDeadClients env
       sendKeepAlive env
       threadDelay (_keepAliveTickRate $ _config env)
 
 
 
--- | Sends KeepAlive signals to downstream nodes so they can update their "last
+-- | Sends KeepAlive signals to DownStream Nodes so they can update their "last
 --   heard of" timestamp
 sendKeepAlive :: Environment -> IO ()
 sendKeepAlive env = do
@@ -131,15 +134,15 @@ sendKeepAlive env = do
           -- Sends a KeepAlive signal to the client's dedicated channel
           sendSignal chan = atomically $ writeTBQueue chan KeepAlive
 
-      void $ traverse (sendSignal._clientQueue) needKeepAlive
+      void $ T.traverse (sendSignal._clientQueue) needKeepAlive
 
 
 
 
--- | Remove timed out upstream nodes. Timestamps are updated by the server every
+-- | Remove timed out UpStream Nodes. Timestamps are updated by the server every
 --   time a signal is received and accepted.
-removeTimedOutUpstream :: Environment -> IO ()
-removeTimedOutUpstream env = do
+removeTimedOutUsn :: Environment -> IO ()
+removeTimedOutUsn env = do
       (Timestamp now) <- makeTimestamp
       atomically $ do
             let notTimedOut (Timestamp t) = now - t < (_poolTimeout._config) env
@@ -151,8 +154,8 @@ removeTimedOutUpstream env = do
 
 
 -- | Kick all clients that haven't been sent an order in some time.
-removeTimedOutDownstream :: Environment -> IO ()
-removeTimedOutDownstream env = do
+removeTimedOutDsn :: Environment -> IO ()
+removeTimedOutDsn env = do
       Timestamp now <- makeTimestamp
       kill' <- atomically $ do
             let notTimedOut (Client { _clientTimestamp = Timestamp t }) =
@@ -166,7 +169,7 @@ removeTimedOutDownstream env = do
             atomically . toIO env Debug $
                  putStrLn "\ESC[34mDowntream neighbour housekilled. Is this a bug?\ESC[0m\n"
 
-      void $ traverse (cancel._clientAsync) kill'
+      void $ T.traverse (cancel . _clientAsync) kill'
 -- TODO: Find out whether this function is useful, or whether
 --       'removeDeadClients' is enough
 -- TODO: Clients are bracketed to remove themselves from the thread pool once
@@ -175,8 +178,7 @@ removeTimedOutDownstream env = do
 
 
 
--- | Poll all clients and removes those that are not running anymore or have
---   timed out
+-- | Poll all clients and removes those that are not running anymore.
 removeDeadClients :: Environment -> IO ()
 removeDeadClients env = do
 
@@ -184,15 +186,15 @@ removeDeadClients env = do
       -- knownNodes :: Map Node (Async ())
       knownNodes <- atomically $ readTVar (_downstream env)
       -- polledClients :: Map Node (Maybe Either <...>)
-      polledClients <- sequenceA $ fmap (poll._clientAsync) knownNodes
+      polledClients <- T.sequenceA $ fmap (poll . _clientAsync) knownNodes
 
-      let -- deadNodes :: [Node]
-          deadNodes = Map.keys $ Map.filter isJust polledClients
+      let deadNodes = Map.keysSet $ Map.filter isJust polledClients
           -- TODO: Emit reason the client died if it was because of an exception
 
+      when (not $ Set.null deadNodes) $
+            atomically . toIO env Debug $
+                 putStrLn "\ESC[34mClient housekilled. This is a bug (client should cleanup itself).\ESC[0m\n"
+
       -- Finally, remove all dead nodes by their just found out keys
-      atomically $ modifyTVar (_downstream env) $ \known ->
-            foldr Map.delete known deadNodes
-
-
-
+      atomically $ modifyTVar (_downstream env) $ \knownNodes ->
+            F.foldr Map.delete knownNodes deadNodes
