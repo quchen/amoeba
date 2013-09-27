@@ -144,4 +144,7 @@ randomNode env = do
                     writeTVar (_rng env) gen'
                     return . Just $ Set.toList nodes !! i
                           -- ^ Set.elemAt unavailable in Containers 0.5.0.0 :-(
+                          -- (!!) is safe here, because i was generated in
+                          -- range above. Since this is in STM there can't be
+                          -- any fishy intermediate states either.
             else return Nothing
