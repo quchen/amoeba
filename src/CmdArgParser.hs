@@ -27,8 +27,8 @@ defaultConfig = T.Config {
       , T._bounces           = 1
       , T._acceptP           = 0.5
       , T._maxSoftBounces    = 10
-      , T._poolTickRate      = 3 * 10^6
-      , T._keepAliveTickRate = 3 * 10^6
+      , T._poolTickRate      = 10^6
+      , T._keepAliveTickRate = 10^6
       , T._poolTimeout       = 10
       , T._verbosity         = T.Default
       }
