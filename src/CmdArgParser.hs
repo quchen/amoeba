@@ -15,20 +15,24 @@ parseArgs = execParser opts
                 <> progDesc "Amoeba client"
                 <> header "Testing optparse-applicative"
 
---data Config = Config {
---        _serverPort     :: PortNumber
---      , _maxNeighbours  :: Word
---      , _minNeighbours  :: Word
---      , _maxChanSize    :: Int
---      , _bounces        :: Word
---      , _acceptP        :: Double
---      , _poolTickRate   :: Int
---      , _keepAliveTickRate :: Int
---      , _poolTimeout    :: Double
---      , _verbosity      :: Verbosity
---} deriving (Show)
---data Verbosity = Chatty | Debug | Default | Quiet | Mute
---      deriving (Show)
+
+
+-- | Default configuration, used to set the values of optional parameters.
+defaultConfig :: T.Config
+defaultConfig = T.Config {
+        T._serverPort        = 21000
+      , T._maxNeighbours     = 6
+      , T._minNeighbours     = 3
+      , T._maxChanSize       = 100
+      , T._bounces           = 1
+      , T._acceptP           = 0.5
+      , T._maxSoftBounces    = 10
+      , T._poolTickRate      = 3 * 10^6
+      , T._keepAliveTickRate = 3 * 10^6
+      , T._poolTimeout       = 10
+      , T._verbosity         = T.Default
+      }
+
 
 
 config :: Parser T.Config
@@ -56,11 +60,31 @@ port = let toPN = fromIntegral :: Int -> PortNumber
              , help    "Server port"
              ]
 
+minNeighbours :: Parser Word
+minNeighbours = nullOption $ mconcat
+      [ reader positive
+      , showDefault
+      , value $ T._maxNeighbours defaultConfig
+      , long    "maxn"
+      , metavar "<INT > 0>"
+      , help    "Minimum amount of neighbours (up-/downstream separate)"
+      ]
+
+maxNeighbours :: Parser Word
+maxNeighbours = nullOption $ mconcat
+      [ reader positive
+      , showDefault
+      , value $ T._minNeighbours defaultConfig
+      , long    "minn"
+      , metavar "<INT > 0>"
+      , help    "Maximum amount of neighbours (up-/downstream separate)"
+      ]
+
 maxChanSize :: Parser Int
 maxChanSize = nullOption $ mconcat
       [ reader positive
       , showDefault
-      , value   10
+      , value $ T._maxChanSize defaultConfig
       , long    "chansize"
       , metavar "<INT > 0>"
       , help    "Maximum communication channel size"
@@ -70,7 +94,7 @@ bounces :: Parser Word
 bounces = nullOption $ mconcat
       [ reader nonnegative
       , showDefault
-      , value   4
+      , value $ T._bounces defaultConfig
       , long    "hbounce"
       , metavar "<INT >= 0>"
       , help    "Maximum edge search hard bounces"
@@ -80,7 +104,7 @@ maxSoftBounces :: Parser Word
 maxSoftBounces = nullOption $ mconcat
       [ reader positive
       , showDefault
-      , value   10
+      , value $ T._maxSoftBounces defaultConfig
       , long    "hbounce"
       , metavar "<INT > 0>"
       , help    "Maximum edge search soft bounces"
@@ -93,7 +117,7 @@ acceptP :: Parser Double
 acceptP = nullOption $ mconcat
       [ reader probability
       , showDefault
-      , value   0.5
+      , value $ T._acceptP defaultConfig
       , long    "acceptp"
       , metavar "<0 < p <= 1>"
       , help    "Edge request soft bounce acceptance probability"
@@ -103,7 +127,7 @@ poolTickRate :: Parser Int
 poolTickRate = nullOption $ mconcat
       [ reader positive
       , showDefaultWith $ \val -> show (val `quot` 10^6) ++ "e6"
-      , value $ 3 * 10^6
+      , value $ T._poolTickRate defaultConfig
       , long    "ptick"
       , metavar "MILLISECONDS"
       , help    "Tick rate of the client pool"
@@ -113,7 +137,7 @@ keepAliveTickRate :: Parser Int
 keepAliveTickRate = nullOption $ mconcat
       [ reader positive
       , showDefaultWith $ \val -> show (val `quot` 10^6) ++ "e6"
-      , value $ 3 * 10^6
+      , value $ T._keepAliveTickRate defaultConfig
       , long    "ktick"
       , metavar "MILLISECONDS"
       , help    "Tick rate for sending keep-alive signals"
@@ -123,7 +147,7 @@ poolTimeout :: Parser Double
 poolTimeout = nullOption $ mconcat
       [ reader positive
       , showDefault
-      , value   10
+      , value $ T._poolTimeout defaultConfig
       , long    "timeout"
       , metavar "SECONDS"
       , help    "Timeout threshold"
@@ -132,30 +156,10 @@ poolTimeout = nullOption $ mconcat
 verbosity :: Parser T.Verbosity
 verbosity = nullOption $ mconcat
       [ reader readVerbosity
-      , value   T.Default
+      , value $ T._verbosity defaultConfig
       , long    "verbosity"
       , metavar "<mute|quiet|default|debug|chatty>"
       , help    "Verbosity level, increasing from left to right"
-      ]
-
-minNeighbours :: Parser Word
-minNeighbours = nullOption $ mconcat
-      [ reader positive
-      , showDefault
-      , value   5
-      , long    "maxn"
-      , metavar "<INT > 0>"
-      , help    "Minimum amount of neighbours (up-/downstream separate)"
-      ]
-
-maxNeighbours :: Parser Word
-maxNeighbours = nullOption $ mconcat
-      [ reader positive
-      , showDefault
-      , value   20
-      , long    "minn"
-      , metavar "<INT > 0>"
-      , help    "Maximum amount of neighbours (up-/downstream separate)"
       ]
 
 
