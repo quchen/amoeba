@@ -55,7 +55,8 @@ import Types
 startNode :: Maybe Secret -- ^ Secret to overwrite the one in the config with
           -> Config       -- ^ Configuration, most likely given by command line
                           --   parameters
-          -> IO Node
+          -> IO (Node, Async ()) -- ^ Own address, and the async of the master
+                                 --   thread
 startNode maybeSecret config = do
 
       let port = _serverPort config
@@ -65,16 +66,17 @@ startNode maybeSecret config = do
       let self = Node host port
       env <- initEnvironment self config { _secret = maybeSecret }
 
-      -- Fork entire node. Only here so this function can return early.
-      async $ bracket (listenOn $ PortNumber port) sClose $ \socket -> do
-       withAsync (serverLoop socket env) $ \server  -> do
-        withAsync (outputThread $ _io env) $ \_output -> do
-         withAsync (clientPool env) $ \_cPool  -> do
-          wait server
-            -- NB: When the server finishes, the other asyncs are canceled by
-            --     withAsync.
+      let initialize = listenOn $ PortNumber port
+          release = sClose
+          -- NB: When the server finishes, the other asyncs are canceled by
+          --     withAsync.
+          forkServices = bracket initialize release $ \socket -> do
+                          withAsync (serverLoop socket env) $ \server  -> do
+                           withAsync (outputThread $ _io env) $ \_output -> do
+                            withAsync (clientPool env) $ \_cPool  -> do
+                             wait server
 
-      return self
+      withAsync forkServices $ \thread -> return (self, thread)
 
 
 
