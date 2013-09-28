@@ -51,7 +51,7 @@ config = T.Config
      <*> tickRate "long"   T._longTickRate
      <*> poolTimeout
      <*> verbosity
-     <*> pure Nothing -- Secret can't be specified as parameter.
+     <*> pure (T._secret defaultConfig) -- Secret can't be specified as parameter.
 
 
 
