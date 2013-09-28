@@ -57,12 +57,6 @@ data Environment = Environment {
 
       , _config     :: Config          -- ^ Program start configuration
 
-      , _secret     :: Secret          -- ^ Secret chunk of data used to
-                                       --   bypass "is valid neighbour" checks,
-                                       --   for example used to allow bootstrap
-                                       --   servers to relay signals to a node
-                                       --   it isn't registered upstream of.
-
       }
 
 -- | Unifies everything the list of known nodes has to store
@@ -106,6 +100,12 @@ data Config = Config {
                                       --   gone
       , _verbosity      :: Verbosity  -- ^ Determines quantity of messages
                                       --   printed
+
+      , _secret     :: Maybe Secret   -- ^ Secret chunk of data used to
+                                      --   bypass "is valid neighbour" checks,
+                                      --   for example used to allow bootstrap
+                                      --   servers to relay signals to a node
+                                      --   it isn't registered upstream of.
       } deriving (Show)
 
 

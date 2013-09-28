@@ -52,15 +52,18 @@ import Types
 
 -- | Node main function. Bootstraps, launches server loop, client pool,
 --   terminal IO thread.
-startNode :: Config -> IO Node
-startNode config = do
+startNode :: Maybe Secret -- ^ Secret to overwrite the one in the config with
+          -> Config       -- ^ Configuration, most likely given by command line
+                          --   parameters
+          -> IO Node
+startNode maybeSecret config = do
 
       let port = _serverPort config
       putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
       host <- bootstrap config port
       putStrLn "Bootstrap finished" -- debugging
       let self = Node host port
-      env <- initEnvironment self config
+      env <- initEnvironment self config { _secret = maybeSecret }
 
       -- Fork entire node. Only here so this function can return early.
       async $ bracket (listenOn $ PortNumber port) sClose $ \socket -> do
@@ -90,7 +93,6 @@ initEnvironment node config = Environment -- TODO: unsafePerformIO might be safe
       <*> newTVarIO Set.empty -- Previously handled queries
       <*> pure node           -- Own server's address
       <*> pure config
-      <*> pure ""             -- Secret
 
       where size = _maxChanSize config
 

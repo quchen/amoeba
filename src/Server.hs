@@ -152,7 +152,7 @@ specialH env from (SharedSecret secret signal) =
       let accept = (, OK) <$> normalH' env from signal
           badSignal = (, Error) <$> badSecretRequestH env
           badSecret = (, Error) <$> badSecretH env
-      in case (checkSecret (_secret env) secret, signal) of
+      in case (checkSecret (_secret $ _config env) secret, signal) of
             (True, EdgeRequest {})            -> accept
             (True, Flood _ (NeighbourList _)) -> accept
             (True,  _)                        -> badSignal
@@ -193,10 +193,11 @@ illegalBootstrapSignalH env = do
 
 
 -- | Checks whether the specified secret
-checkSecret :: Secret  -- ^ Own secret
-            -> Secret  -- ^ Secret received by the client
+checkSecret :: Maybe Secret  -- ^ Own secret
+            -> Secret        -- ^ Secret received by the client
             -> Bool
-checkSecret selfSecret candidate = selfSecret == candidate
+checkSecret Nothing _ = False -- This server doesn't have a secret
+checkSecret (Just selfSecret) candidate = selfSecret == candidate
 -- TODO: Make this hash-based or something
 
 

@@ -7,4 +7,4 @@ import Node
 
 -- | Starts a single node.
 main :: IO ()
-main = parseArgs >>= startNode >> return ()
+main = parseArgs >>= startNode Nothing >> return ()

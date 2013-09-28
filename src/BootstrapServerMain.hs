@@ -32,8 +32,6 @@ import CmdArgParser as Node
 
 
 
-secret :: Secret
-secret = ""
 
 
 data BSEnv = BSEnv { _knownNodes :: TVar (Set To)
