@@ -96,8 +96,7 @@ normalH :: Environment
         -> IO (Proceed, ServerResponse)
 
 normalH env from signal = isRequestAllowed env from >>= \p -> if p
-      then do
-              (, OK) <$> normalH' env from signal
+      then (, OK) <$> normalH' env from signal
       else do atomically . toIO env Debug . putStrLn $
                     "Illegally contacted by " ++ show from ++ "; ignoring"
               return (Terminate, Ignore)
@@ -146,19 +145,18 @@ specialH :: Environment
          -> SpecialSignal -- ^ Signal type
          -> IO (Proceed, ServerResponse)
 
-specialH env from (BootstrapHelper signal@(EdgeRequest {})) = do
-      (, OK) <$> normalH' env from signal
-
-specialH env _ (BootstrapHelper _) =
-      (, Error) <$> illegalBootstrapSignalH env
-
 specialH env _ (BootstrapRequest {}) =
       (, Error) <$> illegalBootstrapSignalH env
 
-specialH env from (SharedSecret secret signal) = do
-      if checkSecret (_secret env) secret
-            then (, OK   ) <$> normalH' env from signal
-            else (, Error) <$> badSecretH env
+specialH env from (SharedSecret secret signal) =
+      let accept = (, OK) <$> normalH' env from signal
+          badSignal = (, Error) <$> badSecretRequestH env
+          badSecret = (, Error) <$> badSecretH env
+      in case (checkSecret (_secret env) secret, signal) of
+            (True, EdgeRequest {})            -> accept
+            (True, Flood _ (NeighbourList _)) -> accept
+            (True,  _)                        -> badSignal
+            (False, _)                        -> badSecret
 
 specialH env _ (YourHostIs {}) =
       (, Error) <$> illegalYourHostIsH env
@@ -203,11 +201,21 @@ checkSecret selfSecret candidate = selfSecret == candidate
 
 
 
+-- | 'SharedSecret' request received, secret checks out, but the associated
+--   signal is not permitted
+badSecretRequestH :: Environment -> IO Proceed
+badSecretRequestH env = do
+      atomically . toIO env Debug . putStrLn $
+            "Illegal SharedSecret signal (although valid secret); ignoring"
+      return Terminate
+
+
+
 -- | 'SharedSecret' request received, but the secret doesn't check out
 badSecretH :: Environment -> IO Proceed
 badSecretH env = do
       atomically . toIO env Debug . putStrLn $
-            "Illegal SharedSecret signal; ignoring"
+            "Secret of a SharedSecret signal wrong; ignoring"
       return Terminate
 
 

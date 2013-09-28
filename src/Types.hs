@@ -240,15 +240,9 @@ type Secret = String
 --   to be processed.
 data SpecialSignal =
 
-      -- | Sent from a bootstrap server to the network. Bypasses checks whether
-      --   it was issued from a registered upstream nodes, and is therefore
-      --   suitable for making an initial connection to the network.
-        BootstrapHelper NormalSignal
-        -- ^ To be deprecated in favour of 'SharedSecret'.
-
       -- | Normal signal equipped with a shared secret. If the secret checks
       --   out, bypass checking whether the sender is a valid neighbour.
-      | SharedSecret Secret NormalSignal
+        SharedSecret Secret NormalSignal
 
       -- | Initial request sent from a future client to a bootstrap server.
       --   While the reverse connection is provided by the request, the

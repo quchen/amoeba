@@ -32,6 +32,9 @@ import CmdArgParser as Node
 
 
 
+secret :: Secret
+secret = ""
+
 
 data BSEnv = BSEnv { _knownNodes :: TVar (Set To)
                    , _rng        :: TVar StdGen-- RNG or infinite stream of random numbers?
@@ -85,9 +88,8 @@ handleRequest env h host = (`finally` hClose h) $ do
 
       putStrLn "Receiving data ..."
       receive' h >>= \case
-            BootstrapRequest port -> print "-> Valid request" >> handleValidRequest env h host port
-            BootstrapHelper  {}   -> return () -- illegal action
-            YourHostIs       {}   -> return () -- illegal action
+            BootstrapRequest port -> putStrLn "-> Valid request" >> handleValidRequest env h host port
+            _                     -> return () -- illegal action
 
       putStrLn "Client served"
 
@@ -133,7 +135,7 @@ sendEdgeRequest env beneficiary dir = do
       -- could accept it.
       numKnownNodes <- atomically $ Set.size <$> readTVar (_knownNodes env)
       let p = 1 -- TODO: read this from some config
-          signal = Special . BootstrapHelper $ EdgeRequest beneficiary (EdgeData dir (Right (0,p)))
+          signal = Special . SharedSecret secret $ EdgeRequest beneficiary (EdgeData dir (Right (0,p)))
 
       targetNode <- atomically $ randomNode env
 
