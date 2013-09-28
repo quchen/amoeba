@@ -80,7 +80,7 @@ startNode config = do
 
 -- | Initializes node environment by setting up the communication channels etc.
 initEnvironment :: Node -> Config -> IO Environment
-initEnvironment node config = Environment
+initEnvironment node config = Environment -- TODO: unsafePerformIO might be safe here ..?
 
       <$> newTVarIO Map.empty -- Known nodes
       <*> newTVarIO Map.empty -- Nodes known by
@@ -90,6 +90,7 @@ initEnvironment node config = Environment
       <*> newTVarIO Set.empty -- Previously handled queries
       <*> pure node           -- Own server's address
       <*> pure config
+      <*> pure ""             -- Secret
 
       where size = _maxChanSize config
 

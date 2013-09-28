@@ -57,6 +57,12 @@ data Environment = Environment {
 
       , _config     :: Config          -- ^ Program start configuration
 
+      , _secret     :: Secret          -- ^ Secret chunk of data used to
+                                       --   bypass "is valid neighbour" checks,
+                                       --   for example used to allow bootstrap
+                                       --   servers to relay signals to a node
+                                       --   it isn't registered upstream of.
+
       }
 
 -- | Unifies everything the list of known nodes has to store
@@ -224,6 +230,9 @@ instance Binary ServerResponse
 
 
 
+-- | Used for shared secrets in the 'Passworded' 'SpecialSignal'.
+type Secret = String
+-- TODO: Make more secure than a plain-text string password
 
 
 -- | Classifies special signals in order to process them differently. For
@@ -235,6 +244,11 @@ data SpecialSignal =
       --   it was issued from a registered upstream nodes, and is therefore
       --   suitable for making an initial connection to the network.
         BootstrapHelper NormalSignal
+        -- ^ To be deprecated in favour of 'SharedSecret'.
+
+      -- | Normal signal equipped with a shared secret. If the secret checks
+      --   out, bypass checking whether the sender is a valid neighbour.
+      | SharedSecret Secret NormalSignal
 
       -- | Initial request sent from a future client to a bootstrap server.
       --   While the reverse connection is provided by the request, the

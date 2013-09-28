@@ -146,14 +146,19 @@ specialH :: Environment
          -> SpecialSignal -- ^ Signal type
          -> IO (Proceed, ServerResponse)
 
-specialH env from (BootstrapHelper sig@(EdgeRequest {})) = do
-      (, OK) <$> normalH' env from sig
+specialH env from (BootstrapHelper signal@(EdgeRequest {})) = do
+      (, OK) <$> normalH' env from signal
 
 specialH env _ (BootstrapHelper _) =
       (, Error) <$> illegalBootstrapSignalH env
 
 specialH env _ (BootstrapRequest {}) =
       (, Error) <$> illegalBootstrapSignalH env
+
+specialH env from (SharedSecret secret signal) = do
+      if checkSecret (_secret env) secret
+            then (, OK   ) <$> normalH' env from signal
+            else (, Error) <$> badSecretH env
 
 specialH env _ (YourHostIs {}) =
       (, Error) <$> illegalYourHostIsH env
@@ -185,6 +190,24 @@ illegalBootstrapSignalH :: Environment -> IO Proceed
 illegalBootstrapSignalH env = do
       atomically . toIO env Debug . putStrLn $
             "Illegal bootstrap signal; ignoring"
+      return Terminate
+
+
+
+-- | Checks whether the specified secret
+checkSecret :: Secret  -- ^ Own secret
+            -> Secret  -- ^ Secret received by the client
+            -> Bool
+checkSecret selfSecret candidate = selfSecret == candidate
+-- TODO: Make this hash-based or something
+
+
+
+-- | 'SharedSecret' request received, but the secret doesn't check out
+badSecretH :: Environment -> IO Proceed
+badSecretH env = do
+      atomically . toIO env Debug . putStrLn $
+            "Illegal SharedSecret signal; ignoring"
       return Terminate
 
 
