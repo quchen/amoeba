@@ -116,9 +116,12 @@ normalH env from signal = isRequestAllowed env from >>= \p -> if p
 isRequestAllowed :: Environment
                  -> From
                  -> IO Bool
-isRequestAllowed env from = makeTimestamp >>= \timestamp -> atomically $ do
-      updateKnownBy env from timestamp
-      Map.member from <$> readTVar (_upstream env)
+isRequestAllowed env from = do
+      timestamp <- makeTimestamp
+      atomically $ do
+            allowed <- Map.member from <$> readTVar (_upstream env)
+            when allowed $ updateKnownBy env from timestamp
+            return allowed
 
 
 
