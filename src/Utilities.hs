@@ -6,6 +6,7 @@ module Utilities (
       , connectToNode
       , whileM
       , isContinue
+      , timeout
 
       -- * Sending/receiving network signals
       , send'
@@ -25,6 +26,8 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Int
 import System.IO
 import Control.Concurrent.STM
+import Control.Concurrent.Async
+import Control.Concurrent
 import Network (connectTo, PortID(PortNumber))
 
 import Data.Binary
@@ -117,3 +120,9 @@ toIO env verbosity = when p . writeTBQueue (_io env)
 --   object.
 connectToNode :: To -> IO Handle
 connectToNode (To n) = connectTo (_host n) (PortNumber (_port n))
+
+
+-- | Kills an async after a certain amount of time
+timeout :: Int -> Async a -> IO ()
+timeout time thread = void . async $ threadDelay time >> cancel thread
+
