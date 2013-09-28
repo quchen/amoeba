@@ -83,21 +83,28 @@ data Config = Config {
                                       --   communication channels can hold
 
       , _bounces        :: Word       -- ^ Number of initial bounces
+
       , _acceptP        :: Double     -- ^ Edge request acceptance probability
                                       --   for the second bounce phase.
+
       , _maxSoftBounces :: Word       -- ^ How many times a soft-bounced request
                                       --   is maximally relayed before it is
                                       --   rejected
+
       , _shortTickRate  :: Int        -- ^ Tick interval in milliseconds for
                                       --   "short" loops.
+
       , _mediumTickRate :: Int        -- ^ Tick interval in milliseconds for
                                       --   "medium" loops, for example the
                                       --   client pool or the keep-alive loops.
+
       , _longTickRate   :: Int        -- ^ Tick interval in milliseconds for
                                       --   "long" loops.
+
       , _poolTimeout    :: Double     -- ^ Number of seconds before a
                                       --   non-responding node is considered
                                       --   gone
+
       , _verbosity      :: Verbosity  -- ^ Determines quantity of messages
                                       --   printed
 
@@ -106,6 +113,10 @@ data Config = Config {
                                       --   for example used to allow bootstrap
                                       --   servers to relay signals to a node
                                       --   it isn't registered upstream of.
+
+      , _bootstrapServers :: [To]     -- ^ Addresses of bootstrap servers
+                                      --   statically known
+
       } deriving (Show)
 
 

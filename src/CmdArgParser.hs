@@ -33,6 +33,7 @@ defaultConfig = T.Config {
       , T._poolTimeout       = 10
       , T._verbosity         = T.Default
       , T._secret            = Nothing
+      , T._bootstrapServers  = []
       }
 
 
@@ -52,6 +53,7 @@ config = T.Config
      <*> poolTimeout
      <*> verbosity
      <*> pure (T._secret defaultConfig) -- Secret can't be specified as parameter.
+     <*> pure [] -- TODO: specify bootstrap servers via command line
 
 
 
