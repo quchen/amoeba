@@ -135,8 +135,8 @@ normalH' :: Environment
 
 normalH' env _    (Flood tStamp fSignal) = floodSignalH  env (tStamp, fSignal)
 normalH' env _    (EdgeRequest to edge)  = edgeBounceH   env to edge
-normalH' env from (ShuttingDown to)      = shuttingDownH env from to
-normalH' env from (KeepAlive)            = keepAliveH    env from
+normalH' env from  ShuttingDown          = shuttingDownH env from
+normalH' env from  KeepAlive             = keepAliveH    env from
 
 
 
@@ -267,25 +267,17 @@ updateKnownBy env node timestamp =
 
 -- | Remove the issuing node from the database
 shuttingDownH :: Environment
-             -> From        -- ^ Shutdown node's incoming address as seen from
-                            --   this node (used to terminate downstream
-                            --   connections to it)
-             -> To          -- ^ Shutdown node's server address (used to
-                            --   terminate upstream connections to it)
-             -> IO Proceed
-shuttingDownH env from to = do
+              -> From -- ^ Shutdown node's incoming address as seen from
+                      --   this node (used to terminate downstream
+                      --   connections to it)
+              -> IO Proceed
+shuttingDownH env from = do
 
       atomically . toIO env Debug . putStrLn $
-            "Shutdown notice from %s:%s" ++ show to
+            "Shutdown notice from %s:%s" ++ show from
 
       -- Remove from lists of known nodes and nodes known by
       atomically $ modifyTVar (_upstream env) (Map.delete from)
-
-      -- Just in case there is also a downstream connection to the same node,
-      -- kill that one as well
-      downstream <- atomically $ Map.lookup to <$> readTVar (_downstream env)
-      maybe (return ()) (cancel._clientAsync) downstream
-      atomically $ modifyTVar (_downstream env) (Map.delete to)
 
       return Terminate
 

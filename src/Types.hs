@@ -166,9 +166,8 @@ data NormalSignal =
       | KeepAlive
 
       -- | Current node is shutting down, remove it from your upstream
-      --   neighbour pool. The 'To' address provided is the server address of
-      --   the terminating node.
-      | ShuttingDown To
+      --   neighbour pool.
+      | ShuttingDown
 
       -- | Signals meant to be considered by every node in the network.
       | Flood Timestamp FloodSignal

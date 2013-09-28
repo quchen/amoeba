@@ -59,9 +59,9 @@ newClient :: Environment
           -> IO ()
 newClient env node stsc =
 
-      let release h = do
+      let release h = (`finally` hClose h) $ do
             atomically . modifyTVar (_downstream env) $ Map.delete node
-            hClose h
+            void . request h $ Normal ShuttingDown
 
       in bracket (connectToNode node) release $ \h -> do
             response <- request h (Special IAddedYou)
