@@ -52,26 +52,26 @@ import Types
 
 -- | Node main function. Bootstraps, launches server loop, client pool,
 --   terminal IO thread.
-startNode :: Config -> IO ()
+startNode :: Config -> IO Node
 startNode config = do
 
       let port = _serverPort config
+      putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
+      host <- bootstrap config port
+      putStrLn "Bootstrap finished" -- debugging
+      let self = Node host port
+      env <- initEnvironment self config
 
-      bracket (listenOn $ PortNumber port) sClose $ \socket -> do
-
-            putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
-            host <- bootstrap config port
-            putStrLn "Bootstrap finished" -- debugging
-
-            -- Setup all the communication channels
-            env <- initEnvironment (Node host port) config
-
-            withAsync (serverLoop socket env)   $ \server  ->
-             withAsync (outputThread $ _io env) $ \_output ->
-             withAsync (clientPool env)         $ \_cPool  ->
-             wait server
+      -- Fork entire node. Only here so this function can return early.
+      async $ bracket (listenOn $ PortNumber port) sClose $ \socket -> do
+       withAsync (serverLoop socket env) $ \server  -> do
+        withAsync (outputThread $ _io env) $ \_output -> do
+         withAsync (clientPool env) $ \_cPool  -> do
+          wait server
             -- NB: When the server finishes, the other asyncs are canceled by
             --     withAsync.
+
+      return self
 
 
 
