@@ -35,14 +35,10 @@ startNodePool :: Word   -- ^ Number of nodes in the pool (also the port range)
                         --   in the range [port+1, port+range]).
               -> IO (Chan NormalSignal) -- ^ Communication channel to send signals
 startNodePool n config = do
-
       chan <- newChan
-
       forM_ [1..n] $ \portOffset ->
             let port = _serverPort config + fromIntegral portOffset
             in  do async $ janitor port config chan
-                   putStrLn $ "Starting on port " ++ show port -- DEBUG
-
       return chan
 
 

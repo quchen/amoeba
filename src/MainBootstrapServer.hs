@@ -54,7 +54,6 @@ dispatchSignal :: Config -> HostName -> PortNumber -> Chan NormalSignal -> IO ()
 dispatchSignal config host port chan = do
       let to = To $ Node host port
           order dir = forM_ [1.._minNeighbours config] $ \_ -> do
-                        putStrLn $ "NEW SIGNAL TO DISPATCH FROM " ++ show to
                         writeChan chan $ edgeRequest config to dir
       order Incoming
       order Outgoing
