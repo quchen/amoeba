@@ -13,6 +13,7 @@ module NodePool (startNodePool) where
 import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Concurrent.Chan
+import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
 import Data.Set as Set
@@ -33,7 +34,7 @@ startNodePool :: Word   -- ^ Number of nodes in the pool
                         --   importance are the port (which will be the start of
                         --   the port range used) and the secret (to send
                         --   signals to the nodes in the pool).
-              -> IO (Chan Signal) -- ^ Communication channel to send signals
+              -> IO (Chan NormalSignal) -- ^ Communication channel to send signals
 startNodePool n config = do
 
       chan <- newChan
@@ -48,28 +49,15 @@ startNodePool n config = do
 
 -- | Spawns a new node, restarts it should it crash, and listens for signals
 --   sent to it.
-janitor :: PortNumber -> Config -> Chan Signal -> IO ()
-janitor port config chan = do
-      withAsync (janitorLoop config) $ \a1 ->
-       withAsync (signalLoop port chan) $ \_a2 ->
-        wait a1
+janitor :: PortNumber -> Config -> Chan NormalSignal -> IO ()
+janitor port config fromPool = forever $ do
+      toNode <- newTBQueueIO (_maxChanSize config)
+      withAsync (startNode (Just toNode) config) $ \node ->
+       withAsync (signalLoop fromPool toNode) $ \_signal ->
+        wait node
+      -- TODO: catch
 
-
-
--- | Reincarnates dead nodes until the end of time.
-janitorLoop :: Config -> IO ()
-janitorLoop config =
-      forever $ withAsync (startNode config) wait
-      -- TODO: This will just crash when the node does, add catch
-
-
-
--- | Reads signals from the channel and sends them to the worker
-signalLoop :: PortNumber -> Chan Signal -> IO ()
-signalLoop port chan = forever $ do
-      signal <- readChan chan
-      let process = bracket (connectTo "localhost" (PortNumber port)) hClose $ \h -> do
-                          send' h signal
-                          void (receive' h :: IO ServerResponse)
-                          -- TODO: Debug to make sure the signals are actually relayed
-      async process -- TODO: Timeout?
+-- | Pipes everything from one channel to the
+signalLoop :: Chan NormalSignal -> TBQueue NormalSignal -> IO ()
+signalLoop incoming outgoing =
+      forever $ readChan incoming >>= atomically . writeTBQueue outgoing

@@ -32,7 +32,6 @@ defaultConfig = T.Config {
       , T._longTickRate      = 10^6
       , T._poolTimeout       = 10
       , T._verbosity         = T.Default
-      , T._secret            = Nothing
       , T._bootstrapServers  = []
       }
 
@@ -52,7 +51,6 @@ config = T.Config
      <*> tickRate "long"   T._longTickRate
      <*> poolTimeout
      <*> verbosity
-     <*> pure (T._secret defaultConfig) -- Secret can't be specified as parameter.
      <*> pure [] -- TODO: specify bootstrap servers via command line
 
 

@@ -10,9 +10,10 @@
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Server (
-      serverLoop
+      startServer
 ) where
 
 import           Control.Concurrent.Async
@@ -37,6 +38,9 @@ import Client
 
 
 
+startServer :: Socket -> Environment -> IO ()
+startServer s env = do void . async $ workerLdc env
+                       serverLoop s env
 
 
 -- | Forks off a worker for each incoming connection.
@@ -83,6 +87,25 @@ worker env h from = (`finally` hClose h) . whileM isContinue $ do
 
       send' h response
       return proceed
+
+
+
+-- | Listens on the direct connection or terminates immediately if there is
+--   none.
+workerLdc :: Environment -> IO ()
+workerLdc env@(_ldc -> Just tbq) = forever $
+      atomically (readTBQueue tbq) >>= ldcH env
+workerLdc _ = return ()
+
+
+
+-- | Local direct connection handler. Only accepts a couple of commands.
+ldcH :: Environment -> NormalSignal -> IO ()
+ldcH env (EdgeRequest to edge) = void $ edgeBounceH env to edge
+ldcH env (Flood tStamp fSignal) = void $ floodSignalH  env (tStamp, fSignal)
+ldcH env _ = atomically . toIO env Debug . putStrLn $
+                    "Bad local signal received"
+                    -- TODO DEBUG This should be red bold and underlined.
 
 
 
@@ -149,16 +172,6 @@ specialH :: Environment
 specialH env _ (BootstrapRequest {}) =
       (, Error) <$> illegalBootstrapSignalH env
 
-specialH env from (SharedSecret secret signal) =
-      let accept = (, OK) <$> normalH' env from signal
-          badSignal = (, Error) <$> badSecretRequestH env
-          badSecret = (, Error) <$> badSecretH env
-      in case (checkSecret (_secret $ _config env) secret, signal) of
-            (True, EdgeRequest {})            -> accept
-            (True, Flood _ (NeighbourList _)) -> accept
-            (True,  _)                        -> badSignal
-            (False, _)                        -> badSecret
-
 specialH env _ (YourHostIs {}) =
       (, Error) <$> illegalYourHostIsH env
 
@@ -189,35 +202,6 @@ illegalBootstrapSignalH :: Environment -> IO Proceed
 illegalBootstrapSignalH env = do
       atomically . toIO env Debug . putStrLn $
             "Illegal bootstrap signal; ignoring"
-      return Terminate
-
-
-
--- | Checks whether the specified secret
-checkSecret :: Maybe Secret  -- ^ Own secret
-            -> Secret        -- ^ Secret received by the client
-            -> Bool
-checkSecret Nothing _ = False -- This server doesn't have a secret
-checkSecret (Just selfSecret) candidate = selfSecret == candidate
--- TODO: Make this hash-based or something
-
-
-
--- | 'SharedSecret' request received, secret checks out, but the associated
---   signal is not permitted
-badSecretRequestH :: Environment -> IO Proceed
-badSecretRequestH env = do
-      atomically . toIO env Debug . putStrLn $
-            "Illegal SharedSecret signal (although valid secret); ignoring"
-      return Terminate
-
-
-
--- | 'SharedSecret' request received, but the secret doesn't check out
-badSecretH :: Environment -> IO Proceed
-badSecretH env = do
-      atomically . toIO env Debug . putStrLn $
-            "Secret of a SharedSecret signal wrong; ignoring"
       return Terminate
 
 

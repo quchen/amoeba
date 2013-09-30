@@ -55,6 +55,10 @@ data Environment = Environment {
 
       , _self       :: Node            -- ^ Own hostname/port
 
+      , _ldc        :: Maybe (TBQueue NormalSignal)
+                                       -- ^ Local direct connection (LDC) to a
+                                       --   node. Used by NodePool.
+
       , _config     :: Config          -- ^ Program start configuration
 
       }
@@ -108,12 +112,6 @@ data Config = Config {
       , _verbosity      :: Verbosity  -- ^ Determines quantity of messages
                                       --   printed
 
-      , _secret     :: Maybe Secret   -- ^ Secret chunk of data used to
-                                      --   bypass "is valid neighbour" checks,
-                                      --   for example used to allow bootstrap
-                                      --   servers to relay signals to a node
-                                      --   it isn't registered upstream of.
-
       , _bootstrapServers :: [To]     -- ^ Addresses of bootstrap servers
                                       --   statically known
 
@@ -157,9 +155,9 @@ data Signal =
 
         Normal NormalSignal
 
-      -- | Signals that are handled in a special way. For example bootstrap
-      --   servers are able to issue a special signal that is processed
-      --   despite them not being upstream neighbours of a node. -- TODO: Implement this behaviour
+      -- | Signals that are handled in a special way. For example 'IAddedYou'
+      --   signals have to be processed because when they are received the other
+      --   node is by definition not an upstream neighbour yet.
       | Special SpecialSignal
 
       deriving (Eq, Ord, Show, Generic)
@@ -241,24 +239,16 @@ instance Binary ServerResponse
 
 
 
--- | Used for shared secrets in the 'Passworded' 'SpecialSignal'.
-type Secret = String
--- TODO: Make more secure than a plain-text string password
-
 
 -- | Classifies special signals in order to process them differently. For
 --   example, many of them do not need the sending node to be known in order
 --   to be processed.
 data SpecialSignal =
 
-      -- | Normal signal equipped with a shared secret. If the secret checks
-      --   out, bypass checking whether the sender is a valid neighbour.
-        SharedSecret Secret NormalSignal
-
       -- | Initial request sent from a future client to a bootstrap server.
       --   While the reverse connection is provided by the request, the
       --   hostname will be deduced by the incoming connection by the server.
-      | BootstrapRequest PortNumber
+        BootstrapRequest PortNumber
 
       -- | Sent as a response to a Bootstrap to tell the node its hostname, so
       --   it can add it to its Environment.

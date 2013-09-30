@@ -8,7 +8,7 @@ import Types
 
 -- | Starts a single node.
 main :: IO ()
-main = parseArgs >>= startNode . setBootstrap >> return ()
+main = parseArgs >>= startNode Nothing . setBootstrap >> return ()
 
 -- | Hardcoded bootstrap servers
 setBootstrap x = x { _bootstrapServers = [To $ Node "localhost" 21000] }

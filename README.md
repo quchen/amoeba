@@ -68,21 +68,19 @@ Network description
 
 A central point in node design is that they reject signals from unregistered origins, so that spamming a single node from outside does not affect the network at all.
 
-However, this is sometimes too restrictive: for some services, it makes a lot of sense to be able to issue signals, although they are not part of the network. To solve this problem, signals can be equipped with a secret only known to the sender and a small set of nodes to bypass the neighbour check.
-
-A special service is typically an unrelated program that wants to issue some command to the network. It spawns a number of ordinary nodes with a shared secret, and can then inject certain signals with their help.
+However, this is sometimes too restrictive: for some services, it makes a lot of sense to be able to issue signals, although they are not part of the network. To solve this problem, nodes can be spawned with a special (concurrent, locally running) communication channel that can be used to send messages to it directly.
 
 
 
 #### Bootstrap server
 
-The bootstrap server is the first contact a node makes after startup, and issues edge requests on behalf of its client. It is not part of the network, but can relay the edge requests to its shared-secret nodes.
+The bootstrap server is the first contact a node makes after startup, and issues edge requests on behalf of its client.
 
 
 
 ### Drawing server
 
-The drawing server's purpose is creating a map of the network to study its structure. Via its shared-secret nodes, it issues a signal that makes every (willing) node of the network send it a list of its downstream neighbours.
+The drawing server's purpose is creating a map of the network to study its structure. Issues a signal that makes every (willing) node of the network send it a list of their downstream neighbours.
 
 
 
@@ -126,5 +124,6 @@ Terminology
 - DSN:  Downstream node, i.e. a neighbouring node the current sends commands do.
 - ST1C: Server to one (unspecified/arbitrary) client channel
 - STC:  Server to client channel
+- LDC:  Local direct connection. Used by the node pool to send signals directly to its nodes.
 - STSC: Server to specific client channel
 - USN:  Upstream node, i.e. a neighbouring node the current gets commands sent by.
