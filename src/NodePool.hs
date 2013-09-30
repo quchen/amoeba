@@ -29,18 +29,17 @@ import Utilities
 
 -- | Starts a node pool of a certain size, and provides a channel to
 --   communitcate with (random nodes in) it
-startNodePool :: Word   -- ^ Number of nodes in the pool
+startNodePool :: Word   -- ^ Number of nodes in the pool (also the port range)
               -> Config -- ^ Configuration for a single node. Of particular
-                        --   importance are the port (which will be the start of
-                        --   the port range used) and the secret (to send
-                        --   signals to the nodes in the pool).
+                        --   importance are the port (nodes will be spawned
+                        --   in the range [port+1, port+range]).
               -> IO (Chan NormalSignal) -- ^ Communication channel to send signals
 startNodePool n config = do
 
       chan <- newChan
 
-      forM_ [1..n] $ \portOffset ->
-            let port = _serverPort config + fromIntegral portOffset - 1
+      async $ forM_ [1..n] $ \portOffset ->
+            let port = _serverPort config + fromIntegral portOffset
             in  janitor port config chan
 
       return chan
@@ -53,7 +52,7 @@ janitor :: PortNumber -> Config -> Chan NormalSignal -> IO ()
 janitor port config fromPool = forever $ do
       toNode <- newTBQueueIO (_maxChanSize config)
       withAsync (startNode (Just toNode) config) $ \node ->
-       withAsync (signalLoop fromPool toNode) $ \_signal ->
+       withAsync (signalLoop fromPool toNode) $ \_signal -> do
         wait node
       -- TODO: catch
 

@@ -11,5 +11,5 @@ main :: IO ()
 main = parseArgs >>= startNode Nothing . setBootstrap >> return ()
 
 -- | Hardcoded bootstrap servers
-setBootstrap x = x { _bootstrapServers = [To $ Node "localhost" 21000] }
+setBootstrap x = x { _bootstrapServers = [To $ Node "localhost" 20000] }
 -- TODO: proper discovery

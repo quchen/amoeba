@@ -7,6 +7,7 @@ module Bootstrap (
 
 
 
+import Control.Concurrent
 import Network
 import Control.Exception
 import System.IO
@@ -30,7 +31,7 @@ bootstrap config port = do
       -- Don't recurse directly in case of failure so that bracket can close
       -- the handle properly. Instead, bind the result to an identifier, and
       -- check it after the bracketing.
-      result <- bracket (connectToNode  bNode) hClose $ \h -> do
+      result <- bracket (connectToNode bNode) hClose $ \h -> do
 
             -- See note [Why send port?]
             response <- request' h (BootstrapRequest port)
@@ -38,8 +39,6 @@ bootstrap config port = do
                   (YourHostIs host) -> Just host
                   _                 -> Nothing -- TODO: Error message "Bootstrap reply rubbish"
                      -- TODO: Handle timeouts, yell if pattern mismatch
-
-
 
       maybe (bootstrap config port) return result
 
