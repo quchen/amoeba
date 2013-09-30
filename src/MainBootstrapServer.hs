@@ -21,7 +21,7 @@ main = bootstrapServerMain
 bootstrapServerMain :: IO ()
 bootstrapServerMain = do
       config <- parseArgs
-      chan <- startNodePool 4 config
+      chan <- startNodePool 10 config
       putStrLn "Starting bootstrap server"
       bootstrapServer config chan
 
@@ -42,8 +42,9 @@ bootstrapServerLoop config socket chan = forever $ do
       putStrLn "New client"
       response <- receive' h >>= \case
             BootstrapRequest port -> do dispatchSignal config host port chan
-                                        return OK
-            _ -> putStrLn "Non-BootstrapRequest signal received" >> return Error
+                                        return $ YourHostIs host
+            _ -> do putStrLn "Non-BootstrapRequest signal received"
+                    return $ IAddedYou -- FIXME Nonsense, but makes the typechecker happy
       send' h response
       putStrLn "Client served"
 
@@ -52,15 +53,18 @@ bootstrapServerLoop config socket chan = forever $ do
 dispatchSignal :: Config -> HostName -> PortNumber -> Chan NormalSignal -> IO ()
 dispatchSignal config host port chan = do
       let to = To $ Node host port
-      forM_ [1..3] $ \_ -> writeChan chan $ edgeRequest config to Incoming
-      forM_ [1..3] $ \_ -> writeChan chan $ edgeRequest config to Outgoing
+          order dir = forM_ [1.._minNeighbours config] $ \_ -> do
+                        putStrLn $ "NEW SIGNAL TO DISPATCH FROM " ++ show to
+                        writeChan chan $ edgeRequest config to dir
+      order Incoming
+      order Outgoing
 
 
 
 edgeRequest :: Config -> To -> Direction -> NormalSignal
 edgeRequest config to dir = EdgeRequest to $
                             EdgeData dir $
-                            Left $ _minNeighbours config
+                            Left $ _bounces config
 
 
 

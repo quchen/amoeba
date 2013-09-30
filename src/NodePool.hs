@@ -38,9 +38,10 @@ startNodePool n config = do
 
       chan <- newChan
 
-      async $ forM_ [1..n] $ \portOffset ->
+      forM_ [1..n] $ \portOffset ->
             let port = _serverPort config + fromIntegral portOffset
-            in  janitor port config chan
+            in  do async $ janitor port config chan
+                   putStrLn $ "Starting on port " ++ show port -- DEBUG
 
       return chan
 
@@ -51,10 +52,20 @@ startNodePool n config = do
 janitor :: PortNumber -> Config -> Chan NormalSignal -> IO ()
 janitor port config fromPool = forever $ do
       toNode <- newTBQueueIO (_maxChanSize config)
-      withAsync (startNode (Just toNode) config) $ \node ->
-       withAsync (signalLoop fromPool toNode) $ \_signal -> do
-        wait node
+      let nodeConfig = config { _serverPort = port }
+      (_, nodeThread) <- delay >> startNode (Just toNode) nodeConfig
+      (`finally` cancel nodeThread) $ do
+            withAsync (signalLoop fromPool toNode) $ \_signal -> wait nodeThread
       -- TODO: catch
+
+
+
+-- | Gives the bootstrap server some time before its own node pool tries to
+--   concat it. FIXME: this should not be necessary by design
+delay :: IO ()
+delay = threadDelay (10^6)
+
+
 
 -- | Pipes everything from one channel to the
 signalLoop :: Chan NormalSignal -> TBQueue NormalSignal -> IO ()

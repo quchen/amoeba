@@ -15,6 +15,9 @@ module Utilities (
       , send
       , receive
       , request
+
+      -- * Debugging
+      , yell
 ) where
 
 import           Control.Concurrent.STM
@@ -129,3 +132,5 @@ catchAll :: IO a -> IO ()
 catchAll x = void x `catch` handler
       where handler :: SomeException -> IO ()
             handler e = return ()
+
+yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ text ++ "\ESC[0m"

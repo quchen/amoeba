@@ -71,10 +71,10 @@ startNode ldc config = do
           release = sClose
           -- NB: When the server finishes, the other asyncs are canceled by
           --     withAsync.
-          forkServices = bracket initialize release $ \socket -> do
-                          withAsync (startServer socket env) $ \server  -> do
-                           withAsync (outputThread $ _io env) $ \_output -> do
-                            withAsync (clientPool env) $ \_cPool  -> do
+          forkServices = bracket initialize release $ \socket ->
+                          withAsync (startServer socket env) $ \server  ->
+                           withAsync (outputThread $ _io env) $ \_output ->
+                            withAsync (clientPool env) $ \_cPool  ->
                              wait server
 
       thread <- async forkServices
