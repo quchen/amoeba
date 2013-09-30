@@ -1,11 +1,10 @@
-{-# LANGUAGE LambdaCase #-}
-
 module Utilities (
         makeTimestamp
       , toIO
       , connectToNode
       , whileM
       , isContinue
+      , catchAll
 
       -- * Sending/receiving network signals
       , send'
@@ -16,20 +15,26 @@ module Utilities (
       , send
       , receive
       , request
+
+      -- * Debugging
+      , yell
 ) where
 
-import Data.Functor
-import Control.Monad
+import           Control.Concurrent.STM
+import           Control.Exception (catch, SomeException)
+import           Control.Monad
+import           Data.Functor
+import           Data.Int
+import           Data.Time.Clock.POSIX (getPOSIXTime)
+import           Network (connectTo, PortID(PortNumber))
 import qualified Data.ByteString.Lazy as BS
-import Data.Time.Clock.POSIX (getPOSIXTime)
-import Data.Int
-import System.IO
-import Control.Concurrent.STM
-import Network (connectTo, PortID(PortNumber))
+import           System.IO
 
 import Data.Binary
 
 import Types
+
+
 
 -- | Creates a timestamp, which is a Double representation of the Unix time.
 makeTimestamp :: IO Timestamp
@@ -113,7 +118,19 @@ toIO env verbosity = when p . writeTBQueue (_io env)
       where p = verbosity >= _verbosity (_config env)
 
 
+
 -- | Like Network.connectTo, but extracts the connection data from a @Node@
 --   object.
 connectToNode :: To -> IO Handle
 connectToNode (To n) = connectTo (_host n) (PortNumber (_port n))
+
+
+
+-- | Mandatory silly catchall function. Intended to be used as a safety net
+--   only, not as a cpeap getaway :-)
+catchAll :: IO a -> IO ()
+catchAll x = void x `catch` handler
+      where handler :: SomeException -> IO ()
+            handler e = return ()
+
+yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ text ++ "\ESC[0m"

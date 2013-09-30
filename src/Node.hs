@@ -52,26 +52,33 @@ import Types
 
 -- | Node main function. Bootstraps, launches server loop, client pool,
 --   terminal IO thread.
-startNode :: Config -> IO ()
-startNode config = do
+startNode :: Maybe (TBQueue NormalSignal) -- ^ Local direct connection (LDC)
+          -> Config       -- ^ Configuration, most likely given by command line
+                          --   parameters
+
+          -> IO (Node, Async ()) -- ^ Own address, and the async of the master
+                                 --   thread
+startNode ldc config = do
 
       let port = _serverPort config
+      putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
+      host <- bootstrap config port
+      putStrLn "Bootstrap finished" -- debugging
+      let self = Node host port
+      env <- initEnvironment self ldc config
 
-      bracket (listenOn $ PortNumber port) sClose $ \socket -> do
+      let initialize = listenOn $ PortNumber port
+          release = sClose
+          -- NB: When the server finishes, the other asyncs are canceled by
+          --     withAsync.
+          forkServices = bracket initialize release $ \socket ->
+                          withAsync (startServer socket env) $ \server  ->
+                           withAsync (outputThread $ _io env) $ \_output ->
+                            withAsync (clientPool env) $ \_cPool  ->
+                             wait server
 
-            putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
-            host <- bootstrap config port
-            putStrLn "Bootstrap finished" -- debugging
-
-            -- Setup all the communication channels
-            env <- initEnvironment (Node host port) config
-
-            withAsync (serverLoop socket env)   $ \server  ->
-             withAsync (outputThread $ _io env) $ \_output ->
-             withAsync (clientPool env)         $ \_cPool  ->
-             wait server
-            -- NB: When the server finishes, the other asyncs are canceled by
-            --     withAsync.
+      thread <- async forkServices
+      return (self, thread)
 
 
 
@@ -79,8 +86,11 @@ startNode config = do
 
 
 -- | Initializes node environment by setting up the communication channels etc.
-initEnvironment :: Node -> Config -> IO Environment
-initEnvironment node config = Environment
+initEnvironment :: Node
+                -> Maybe (TBQueue NormalSignal)
+                -> Config
+                -> IO Environment
+initEnvironment node ldc config = Environment
 
       <$> newTVarIO Map.empty -- Known nodes
       <*> newTVarIO Map.empty -- Nodes known by
@@ -89,6 +99,7 @@ initEnvironment node config = Environment
       <*> newTBQueueIO size   -- Channel to the IO thread
       <*> newTVarIO Set.empty -- Previously handled queries
       <*> pure node           -- Own server's address
+      <*> pure ldc            -- (Maybe) local direct connection
       <*> pure config
 
       where size = _maxChanSize config

@@ -1,12 +1,15 @@
 -- | Provides functions for the client to connect to a Bootstrap server in order
 --   to make the initial connection to the network.
 
+{-# LANGUAGE LambdaCase #-}
+
 module Bootstrap (
       bootstrap
 ) where
 
 
 
+import Control.Concurrent
 import Network
 import Control.Exception
 import System.IO
@@ -27,19 +30,17 @@ bootstrap config port = do
       -- Send out signal to the bootstrap node
       bNode <- getBootstrapServer
 
+
       -- Don't recurse directly in case of failure so that bracket can close
       -- the handle properly. Instead, bind the result to an identifier, and
       -- check it after the bracketing.
-      result <- bracket (connectToNode  bNode) hClose $ \h -> do
+      result <- bracket (connectToNode bNode) hClose $ \h -> do
 
             -- See note [Why send port?]
-            response <- request' h (BootstrapRequest port)
-            return $ case response of
+            request' h (BootstrapRequest port) >>= return . \case
                   (YourHostIs host) -> Just host
                   _                 -> Nothing -- TODO: Error message "Bootstrap reply rubbish"
                      -- TODO: Handle timeouts, yell if pattern mismatch
-
-
 
       maybe (bootstrap config port) return result
 

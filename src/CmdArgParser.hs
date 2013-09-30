@@ -32,6 +32,7 @@ defaultConfig = T.Config {
       , T._longTickRate      = 10^6
       , T._poolTimeout       = 10
       , T._verbosity         = T.Default
+      , T._bootstrapServers  = []
       }
 
 
@@ -45,11 +46,12 @@ config = T.Config
      <*> bounces
      <*> acceptP
      <*> maxSoftBounces
-     <*> tickRate "short"  T._shortTickRate
-     <*> tickRate "medium" T._mediumTickRate
-     <*> tickRate "long"   T._longTickRate
+     <*> tickRate 's' "short"  T._shortTickRate
+     <*> tickRate 'm' "medium" T._mediumTickRate
+     <*> tickRate 'l' "long"   T._longTickRate
      <*> poolTimeout
      <*> verbosity
+     <*> pure [] -- TODO: specify bootstrap servers via command line
 
 
 
@@ -97,7 +99,7 @@ bounces = nullOption $ mconcat
       [ reader nonnegative
       , showDefault
       , value $ T._bounces defaultConfig
-      , long    "hbounce"
+      , long    "bounces"
       , metavar "<INT >= 0>"
       , help    "Maximum edge search hard bounces"
       ]
@@ -125,12 +127,12 @@ acceptP = nullOption $ mconcat
       , help    "Edge request soft bounce acceptance probability"
       ]
 
-tickRate :: String -> (T.Config -> Int) -> Parser Int
-tickRate name getter = nullOption $ mconcat
+tickRate :: Char -> String -> (T.Config -> Int) -> Parser Int
+tickRate shortName name getter = nullOption $ mconcat
       [ reader positive
-      , showDefaultWith $ \val -> show (val `quot` 10^6) ++ "e6"
+      , showDefaultWith $ \val -> show val
       , value $ getter defaultConfig
-      , long    "ptick"
+      , long  $ shortName : "tick"
       , metavar "MILLISECONDS"
       , help  $ "Tick rate of " ++ name ++ " loops"
       ]

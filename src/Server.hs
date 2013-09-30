@@ -10,9 +10,10 @@
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Server (
-      serverLoop
+      startServer
 ) where
 
 import           Control.Concurrent.Async
@@ -37,6 +38,9 @@ import Client
 
 
 
+startServer :: Socket -> Environment -> IO ()
+startServer s env = do void . async $ workerLdc env
+                       serverLoop s env
 
 
 -- | Forks off a worker for each incoming connection.
@@ -52,6 +56,7 @@ serverLoop socket env = forever $ do
       atomically . toIO env Debug . putStrLn $
             "New connection from " ++ show fromNode
       void . async $ worker env h fromNode
+      -- TODO: orchestrate
 
 
 
@@ -85,6 +90,25 @@ worker env h from = (`finally` hClose h) . whileM isContinue $ do
 
 
 
+-- | Listens on the direct connection or terminates immediately if there is
+--   none.
+workerLdc :: Environment -> IO ()
+workerLdc env@(_ldc -> Just tbq) = forever $
+      atomically (readTBQueue tbq) >>= ldcH env
+workerLdc _ = return ()
+
+
+
+-- | Local direct connection handler. Only accepts a couple of commands.
+ldcH :: Environment -> NormalSignal -> IO ()
+ldcH env (EdgeRequest to edge) = void $ edgeBounceH env to edge
+ldcH env (Flood tStamp fSignal) = void $ floodSignalH  env (tStamp, fSignal)
+ldcH env _ = atomically . toIO env Debug . putStrLn $
+                    "Bad local signal received"
+                    -- TODO DEBUG This should be red bold and underlined.
+
+
+
 -- | Handler for normally issued normal signals, as sent by an upstream
 --   neighbour. This handler will check whether the sender is a valid upstream
 --   neighbour, update timestamps etc. (An example for an abnormally issued
@@ -96,8 +120,7 @@ normalH :: Environment
         -> IO (Proceed, ServerResponse)
 
 normalH env from signal = isRequestAllowed env from >>= \p -> if p
-      then do
-              (, OK) <$> normalH' env from signal
+      then (, OK) <$> normalH' env from signal
       else do atomically . toIO env Debug . putStrLn $
                     "Illegally contacted by " ++ show from ++ "; ignoring"
               return (Terminate, Ignore)
@@ -148,12 +171,6 @@ specialH :: Environment
          -> From          -- ^ Signal origin
          -> SpecialSignal -- ^ Signal type
          -> IO (Proceed, ServerResponse)
-
-specialH env from (BootstrapHelper sig@(EdgeRequest {})) = do
-      (, OK) <$> normalH' env from sig
-
-specialH env _ (BootstrapHelper _) =
-      (, Error) <$> illegalBootstrapSignalH env
 
 specialH env _ (BootstrapRequest {}) =
       (, Error) <$> illegalBootstrapSignalH env
