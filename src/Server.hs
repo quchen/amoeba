@@ -52,6 +52,7 @@ serverLoop socket env = forever $ do
       atomically . toIO env Debug . putStrLn $
             "New connection from " ++ show fromNode
       void . async $ worker env h fromNode
+      -- TODO: orchestrate
 
 
 

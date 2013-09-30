@@ -45,17 +45,23 @@ startNodePool n config = do
       return chan
 
 
+
+-- | Spawns a new node, restarts it should it crash, and listens for signals
+--   sent to it.
 janitor :: PortNumber -> Config -> Chan Signal -> IO ()
 janitor port config chan = do
-      withAsync (signalLoop port chan) $ \_a1 ->
-       withAsync (janitorLoop config) $ \_a2 ->
-        return ()
+      withAsync (janitorLoop config) $ \a1 ->
+       withAsync (signalLoop port chan) $ \_a2 ->
+        wait a1
+
 
 
 -- | Reincarnates dead nodes until the end of time.
 janitorLoop :: Config -> IO ()
 janitorLoop config =
       forever $ withAsync (startNode config) wait
+      -- TODO: This will just crash when the node does, add catch
+
 
 
 -- | Reads signals from the channel and sends them to the worker
@@ -66,4 +72,4 @@ signalLoop port chan = forever $ do
                           send' h signal
                           void (receive' h :: IO ServerResponse)
                           -- TODO: Debug to make sure the signals are actually relayed
-      withAsync process $ \_a -> return ()
+      async process -- TODO: Timeout?

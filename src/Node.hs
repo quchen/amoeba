@@ -75,7 +75,8 @@ startNode config = do
                             withAsync (clientPool env) $ \_cPool  -> do
                              wait server
 
-      withAsync forkServices $ \thread -> return (self, thread)
+      thread <- async forkServices
+      return (self, thread)
 
 
 
