@@ -50,6 +50,7 @@ bootstrapServerLoop config socket chan = forever $ do
 
 
 
+-- | Send bootstrap requests on behalf of the new node to the node pool
 dispatchSignal :: Config -> HostName -> PortNumber -> Chan NormalSignal -> IO ()
 dispatchSignal config host port chan = do
       let to = To $ Node host port
@@ -60,6 +61,7 @@ dispatchSignal config host port chan = do
 
 
 
+-- | Construct an edge request
 edgeRequest :: Config -> To -> Direction -> NormalSignal
 edgeRequest config to dir = EdgeRequest to $
                             EdgeData dir $
