@@ -78,7 +78,7 @@ The bootstrap server is the first contact a node makes after startup, and issues
 
 
 
-### Drawing server
+#### Drawing server
 
 The drawing server's purpose is creating a map of the network to study its structure. Issues a signal that makes every (willing) node of the network send it a list of their downstream neighbours.
 
