@@ -46,13 +46,14 @@ clientPoolLoop env = forever $ do
 
       let lastDigitOnly (To node) = _port node `rem` 10 -- For DEBUGging
       ds <- atomically $ Map.keys <$> readTVar (_downstream env)
-      let dsPrint = printf "Downstream: [%d] %s\n"
+      let dsPrint = printf "    Downstream: [%d] %s\n"
                            (length ds)
                            (show $ map lastDigitOnly ds)
       us <- atomically $ Map.keys <$> readTVar (_upstream env)
-      let usPrint = printf "Upstream:   [%d]\n"
+      let usPrint = printf "    Upstream:   [%d]\n"
                            (length us)
-      atomically . toIO env Debug $ dsPrint >> usPrint
+      atomically . toIO env Chatty $
+            putStrLn "Node status: " >> dsPrint >> usPrint
 
       -- How many nodes does the current node know, how many is it known by?
       let dbSize db = fromIntegral . Map.size <$> readTVar (db env)
