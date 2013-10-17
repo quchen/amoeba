@@ -18,11 +18,14 @@ module Utilities (
 
       -- * Debugging
       , yell
+      , assertNotFull
 ) where
 
 import           Control.Concurrent.STM
 import           Control.Exception (catch, SomeException)
 import           Control.Monad
+import           Control.Applicative
+import           Control.Exception
 import           Data.Functor
 import           Data.Int
 import           Data.Time.Clock.POSIX (getPOSIXTime)
@@ -133,4 +136,15 @@ catchAll x = void x `catch` handler
       where handler :: SomeException -> IO ()
             handler e = return ()
 
+-- | Easily print colored text for debugging
 yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ text ++ "\ESC[0m"
+
+
+-- | Check whether a 'TBQueue' is full. Used for debugging. DEBUG
+isFullTBQueue :: TBQueue a -> STM Bool
+isFullTBQueue q = (unGetTBQueue q undefined >> readTBQueue q >> pure False) <|> pure True
+
+assertNotFull :: TBQueue a -> STM ()
+assertNotFull q = do
+      full <- isFullTBQueue q
+      assert (not full) $ return ()

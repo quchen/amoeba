@@ -52,10 +52,10 @@ bootstrap config port = do
                   _                 -> throwIO BadBootstrapResponse
 
       case result of
-            Left (SomeException _) -> do
-                  putStrLn "Bootstrap reply invalid. Retrying ..."
-                  putStrLn "  (If the bootstrap server is valid,\
-                              \this is likely a bug.)"
+            Left (SomeException e) -> do
+                  putStrLn $ "Bootstrap failed (" ++ show e ++ ")\
+                             \  (If the bootstrap server is valid,\
+                             \ this is likely a bug.)"
                   threadDelay (_mediumTickRate config)
                   bootstrap config port
             Right r -> return r

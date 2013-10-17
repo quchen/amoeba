@@ -6,6 +6,12 @@
 --   node pool to always keep up a certain amount of trusted nodes in the
 --   network that it can use to help other nodes make an initial connection.
 
+-- TODO: Implement special NodePool signals that allow changing its
+--       configuration. In particular, during a bootstrap launch, it may be
+--       beneficial to kill some of the initial nodes, so that the new
+--       ones connect to the entire network and not predominantly to the
+--       bootstrap-related nodes.
+
 module NodePool (startNodePool) where
 
 
@@ -17,6 +23,7 @@ import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
 import Data.Set as Set
+import Data.Functor
 import Data.Word
 import Network
 import System.IO
@@ -29,41 +36,58 @@ import Utilities
 
 -- | Starts a node pool of a certain size, and provides a channel to
 --   communitcate with (random nodes in) it
-startNodePool :: Word   -- ^ Number of nodes in the pool (also the port range)
-              -> Config -- ^ Configuration for a single node. Of particular
-                        --   importance are the port (nodes will be spawned
-                        --   in the range [port+1, port+range]).
-              -> IO (Chan NormalSignal) -- ^ Communication channel to send signals
-startNodePool n config = do
-      chan <- newChan
-      forM_ [1..n] $ \portOffset ->
-            let port = _serverPort config + fromIntegral portOffset
-            in  do async $ janitor port config chan
-      return chan
+startNodePool :: Word    -- ^ Number of nodes in the pool (also the port range)
+              -> Config  -- ^ Configuration for a single node. Of particular
+                         --   importance are the port (nodes will be spawned
+                         --   in the range [port+1, port+range]).
+              -> Chan NormalSignal
+                         -- ^ Local direct connection to one node (taking
+                         --   turns). 'Chan' instead of 'TQueue' because of the
+                         --   lack of fairness in STM.
+              -> MVar () -- ^ Termination lock. If the MVar is filled, the next
+                         --   node (due to fairness) is killed and restarted,
+                         --   see 'janitor'.
+              -> IO ()
+startNodePool n config ldc terminate = forM_ [1..n] $ \portOffset ->
+      let port = _serverPort config + fromIntegral portOffset
+          config' = config { _serverPort = port }
+      in  async $ janitor config' ldc terminate
 
 
 
 -- | Spawns a new node, restarts it should it crash, and listens for signals
 --   sent to it.
-janitor :: PortNumber -> Config -> Chan NormalSignal -> IO ()
-janitor port config fromPool = forever $ do
+--
+--   The termination parameter is useful to make the pool replace old nodes, for
+--   example the initial bootstrap nodes are very interconnected, which is not
+--   desirable. Restarting these nodes when there's an actual network leads to
+--   more natural neighbourships.
+janitor :: Config            -- ^ Node configuration
+        -> Chan NormalSignal -- ^ Local direct connection
+        -> MVar ()           -- ^ Termination MVar. If filled, a node is
+                             --   terminated (and replaced by a new one by the
+                             --   janitor). Also see 'terminationWatch'.
+        -> IO ()
+janitor config fromPool terminate = forever $ do
       toNode <- newTBQueueIO (_maxChanSize config)
-      let nodeConfig = config { _serverPort = port }
-      (_, nodeThread) <- delay >> startNode (Just toNode) nodeConfig
-      (`finally` cancel nodeThread) $ do
-            withAsync (signalLoop fromPool toNode) $ \_signal -> wait nodeThread
-      -- TODO: catch
+      let ignoreKill = handle $ \ThreadKilled -> return ()
+      ignoreKill $ bracket (startNode (Just toNode) config) cancel $ \node ->
+            withAsync (fromPool `pipeTo` toNode) $ \_signal ->
+             withAsync (terminationWatch terminate node) $ \_term ->
+              wait node
 
 
 
--- | Gives the bootstrap server some time before its own node pool tries to
---   concat it. FIXME: this should not be necessary by design
-delay :: IO ()
-delay = threadDelay (10^6)
+
+-- | Pipes everything from one channel to the other
+pipeTo :: Chan NormalSignal -> TBQueue NormalSignal -> IO ()
+pipeTo incoming outgoing = forever $ do
+      signal <- readChan incoming
+      atomically $ do
+            --assertNotFull outgoing
+            writeTBQueue outgoing signal
 
 
-
--- | Pipes everything from one channel to the
-signalLoop :: Chan NormalSignal -> TBQueue NormalSignal -> IO ()
-signalLoop incoming outgoing =
-      forever $ readChan incoming >>= atomically . writeTBQueue outgoing
+-- | Terminate a thread when an MVar is filled
+terminationWatch :: MVar () -> Async () -> IO ()
+terminationWatch mVar thread = takeMVar mVar >> cancel thread

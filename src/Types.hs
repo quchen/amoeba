@@ -40,7 +40,10 @@ data Environment = Environment {
                                        --   track of when the last signal was
                                        --   received.
 
-      , _stc        :: TChan NormalSignal    -- ^ Send messages to all clients
+      , _stc        :: TChan NormalSignal -- ^ Send messages to all clients.
+                                          --   TChan instead of TBQueue so it
+                                          --   can be duped and used as a
+                                          --   broadcast channel.
 
       , _st1c       :: TBQueue NormalSignal  -- ^ Send message to one client
 

@@ -5,8 +5,7 @@
 --   directly to an incoming signal's instructions. (Contrary to that, helper
 --   functions invoked inside handlers don't have a special name.)
 
--- TODO: Make the handlers return IO (Proceed, ServerResponse) so the server
---       cannot forget to answer each incoming request.
+-- TODO: Refactor the edge accepting functions, a lot of that code is duplicated
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
@@ -32,6 +31,7 @@ import qualified Data.Set as Set
 import Types
 import Utilities
 import Client
+import ClientPool (isRoomIn)
 
 
 
@@ -178,11 +178,17 @@ specialH env _ (BootstrapRequest {}) =
 specialH env _ (YourHostIs {}) =
       (, Error) <$> illegalYourHostIsH env
 
-specialH env _ (AddMe node) =
-      (, OK) <$> addMeReceivedH env (To node)
+specialH env _ (AddMe node) = do
+      result <- addMeReceivedH env (To node)
+      return $ case result of
+            Continue  -> (Continue, OK)
+            Terminate -> (Terminate, Error)
 
-specialH env from IAddedYou =
-      (, OK) <$> iAddedYouReceivedH env from
+specialH env from IAddedYou = do
+      result <- iAddedYouReceivedH env from
+      return $ case result of
+            Continue  -> (Continue, OK)
+            Terminate -> (Terminate, Error)
 
 
 
@@ -359,7 +365,10 @@ edgeBounceH env origin (EdgeData dir (Left n)) = do
 
       let buildSignal = EdgeRequest origin . EdgeData dir
           nMax = _bounces $ _config env
+
       atomically $ do
+
+            assertNotFull (_st1c env)
 
             writeTBQueue (_st1c env) . buildSignal $ Left $ min (n - 1) nMax
                                 -- Cap the number of hard    ^
@@ -392,20 +401,16 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
           bounceOn = if n >= (_maxSoftBounces $ _config env)
                 then let msg = "\ESC[31mToo many bounces, swallowing\ESC[0m"
                      in  atomically . toIO env Debug $ putStrLn msg
-                else atomically . writeTBQueue (_st1c env) . buildSignal $
-                                                             Right (n+1, p')
+                else atomically $ do
+                      assertNotFull (_st1c env)
+                      writeTBQueue (_st1c env) . buildSignal $ Right (n+1, p')
 
       -- Build "bounce again from the beginning" signal. This is invoked if
       -- an EdgeRequest reaches the issuing node again.
       let n = _bounces $ _config env
-          bounceReset = do
-                atomically . writeTBQueue (_st1c env) $ buildSignal $ Left n
-
-      -- Checks whether there's still room for another entry. The TVar can
-      -- either be the set of known or "known by" nodes.
-      let threshold = (_maxNeighbours._config) env
-          isRoomIn tVar = atomically $
-                (< threshold) . fromIntegral . Map.size <$> readTVar tVar
+          bounceReset = atomically $ do
+                assertNotFull (_st1c env)
+                writeTBQueue (_st1c env) . buildSignal $ Left n
 
       -- Make sure not to connect to itself or to already known nodes
       relationship <- nodeRelationship env origin
@@ -415,10 +420,14 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
       -- room. In case of failure, bounce on.
       acceptEdge <- (< p) <$> randomRIO (0, 1 :: Double)
       case (relationship, acceptEdge, dir) of
+
+            -- Don't connect to self
             (IsSelf, _, _) -> do
-                  let msg = "Edge to itself requested, bouncing"
+                  let msg = "Edge to self requested, bouncing"
                   atomically . toIO env Chatty $ putStrLn msg
                   bounceReset
+
+            -- Don't connect to the same node multiple times
             (IsDownstreamNeighbour, _, Incoming) -> do
                   -- In case you're wondering about the seemingly different
                   -- directions in that pattern (Incoming+Downstream): The
@@ -427,19 +436,25 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
                   let msg = "Edge downstream already exists, bouncing"
                   atomically . toIO env Chatty $ putStrLn msg
                   bounceOn
+
+            -- Request randomly denied
             (_, False, _) -> do
                   let msg = "Random bounce (accept: p = " ++ show p ++ ")"
                   atomically . toIO env Chatty $ putStrLn msg
                   bounceOn
+
+            -- Try accepting an Outgoing request
             (_, _, Outgoing) -> do -- TODO: Sub-method, running off screen here
-                  isRoom <- isRoomIn (_downstream env)
+                  isRoom <- atomically $ isRoomIn env _downstream
                   if isRoom then acceptOutgoingRequest env origin
                             else do let msg = "No room for incoming " ++
                                               "connections, bouncing"
                                     atomically . toIO env Chatty $ putStrLn msg
                                     bounceOn
+
+            -- Try accepting an Incoming request
             (_, _, Incoming) -> do -- TODO: Sub-method, running off screen here
-                  isRoom <- isRoomIn (_upstream env)
+                  isRoom <- atomically $ isRoomIn env _upstream
                   if isRoom then acceptIncomingRequest env origin
                             else do let msg = "No room for outgoing " ++
                                               "connections, bouncing"
@@ -468,16 +483,16 @@ acceptOutgoingRequest env node = do
 
 
 
--- | Invoked when an Incoming EdgeRequest is accepted by the current node.
+-- | Invoked when an Incoming 'EdgeRequest' is accepted by the current node.
 --   Spawns a new worker.
 --
---   Identical as 'addMeReceivedH', except that the initial request was issued
---   by another node.
+--   Identical to 'addMeReceivedH', except that the request was issued
+--   internally as the response to an 'EdgeRequest'.
 acceptIncomingRequest :: Environment -> To -> IO ()
 acceptIncomingRequest env node = do
-      forkNewClient env node
       atomically $ toIO env Debug . putStrLn $ "'Incoming' request from "
                                                    ++ show node ++ " accepted"
+      forkNewClient env node
 
 
 
@@ -486,15 +501,20 @@ acceptIncomingRequest env node = do
 --   sending out a Outgoing EdgeRequest, another node has given this node the
 --   permission to add it as a downstream neighbour. Spawns a new worker.
 --
---   Identical as 'acceptIncomingRequest', except that the initial request was
---   issued by another node.
+--   Identical to 'acceptIncomingRequest', except that the request came
+--   directly from another node (in particular, it is not the result of
+--   handling an EdgeRequest by this node).
 addMeReceivedH :: Environment -> To -> IO Proceed
 addMeReceivedH env node = do
-      -- NB: forkNewClient will take care of everything, this function is
-      --     just for printing a log message
-      forkNewClient env node
-      atomically $ toIO env Debug . putStrLn $ "'AddMe' from " ++ show node
-      return Continue
+      isRoom <- atomically $ isRoomIn env _downstream
+      if isRoom
+            then do atomically $ toIO env Debug . putStrLn $
+                          "New downstream neighbour: " ++ show node
+                    forkNewClient env node
+                    return Continue
+            else do atomically $ toIO env Debug . putStrLn $
+                          "Downstream full, rejecting request"
+                    return Terminate
 
 
 
@@ -503,11 +523,19 @@ addMeReceivedH env node = do
 --   bookkeeping for the new incoming connection.
 iAddedYouReceivedH :: Environment -> From -> IO Proceed
 iAddedYouReceivedH env node = do
-      timestamp <- makeTimestamp
-      atomically $ do
-            modifyTVar (_upstream env) (Map.insert node timestamp)
-            toIO env Debug $ putStrLn $ "New upstream neighbour: " ++ show node
-      return Continue
+      isRoom <- atomically $ isRoomIn env _upstream
+      if isRoom
+            then do
+                  timestamp <- makeTimestamp
+                  atomically $ do
+                        modifyTVar (_upstream env) (Map.insert node timestamp)
+                        toIO env Debug $ putStrLn $
+                              "New upstream neighbour: " ++ show node
+                  return Continue
+            else do
+                  atomically $ toIO env Debug . putStrLn $
+                        "Upstream full, rejecting request"
+                  return Terminate
 
       -- TODO: Check whether the previous 3 functions get all the directions
       --       right (i.e. do what they should)!

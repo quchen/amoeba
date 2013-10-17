@@ -10,7 +10,7 @@ import Types
 -- | Starts a single node.
 main :: IO ()
 main = do config <- parseArgs
-          (_, thread) <- startNode Nothing . setBootstrap $ config
+          thread <- startNode Nothing . setBootstrap $ config
           wait thread
 
 -- | Hardcoded bootstrap servers

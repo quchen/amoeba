@@ -30,7 +30,7 @@ defaultConfig = T.Config {
       , T._shortTickRate     = 1 * 10^5
       , T._mediumTickRate    = 3 * 10^5
       , T._longTickRate      = 10^6
-      , T._poolTimeout       = 10
+      , T._poolTimeout       = 5
       , T._verbosity         = T.Default
       , T._bootstrapServers  = []
       }
@@ -101,7 +101,7 @@ bounces = nullOption $ mconcat
       , value $ T._bounces defaultConfig
       , long    "bounces"
       , metavar "<INT >= 0>"
-      , help    "Maximum edge search hard bounces"
+      , help    "Minimum edge search hard bounces"
       ]
 
 maxSoftBounces :: Parser Word

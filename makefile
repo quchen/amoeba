@@ -1,10 +1,11 @@
 MAIN = amoeba
 BOOTSTRAP = bootstrap
 SRC = src
+HSFLAGS =
 
 all :
-	ghc -O -o $(MAIN) -i$(SRC) $(SRC)/Main.hs
-	ghc -O -o $(BOOTSTRAP) -i$(SRC) $(SRC)/MainBootstrapServer.hs
+	ghc -o $(MAIN)      $(HSFLAGS) -i$(SRC) $(SRC)/Main.hs
+	ghc -o $(BOOTSTRAP) $(HSFLAGS) -i$(SRC) $(SRC)/MainBootstrapServer.hs
 
 bootstrap : all
 	./$(BSMAIN)

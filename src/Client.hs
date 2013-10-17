@@ -15,6 +15,7 @@ import Control.Concurrent.STM
 import Control.Concurrent.Async
 import Control.Exception
 import System.IO
+import System.Timeout
 import Data.Functor
 import Control.Monad
 import qualified Data.Map as Map
@@ -61,7 +62,8 @@ newClient env node stsc =
 
       let release h = (`finally` hClose h) $ do
             atomically . modifyTVar (_downstream env) $ Map.delete node
-            void . request h $ Normal ShuttingDown
+            void . timeout (_longTickRate $ _config env) $
+                  request h $ Normal ShuttingDown
 
       in bracket (connectToNode node) release $ \h -> do
             response <- request h (Special IAddedYou)
@@ -72,6 +74,7 @@ newClient env node stsc =
                                                  , readTBQueue stsc
                                                  ]
                   _  -> return ()
+
 
 
 
@@ -135,6 +138,8 @@ genericError env = do
       atomically . toIO env Debug $
             putStrLn "Generic server error, terminating client"
       return Terminate
+
+
 
 -- | Server denied a valid request, see docs for 'Denied'
 denied :: Environment -> IO Proceed

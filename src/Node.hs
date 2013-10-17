@@ -47,6 +47,7 @@ import Bootstrap
 import ClientPool
 import Server
 import Types
+import Utilities
 
 
 
@@ -55,9 +56,7 @@ import Types
 startNode :: Maybe (TBQueue NormalSignal) -- ^ Local direct connection (LDC)
           -> Config       -- ^ Configuration, most likely given by command line
                           --   parameters
-
-          -> IO (Node, Async ()) -- ^ Own address, and the async of the master
-                                 --   thread
+          -> IO (Async ()) -- ^ Async of node thread
 startNode ldc config = do
 
       let port = _serverPort config
@@ -76,9 +75,7 @@ startNode ldc config = do
                            withAsync (outputThread $ _io env) $ \_output ->
                             withAsync (clientPool env) $ \_cPool  ->
                              wait server
-
-      thread <- async forkServices
-      return (self, thread)
+      async forkServices
 
 
 

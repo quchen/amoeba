@@ -2,7 +2,8 @@
 --   when there's a deficit, and cleans up terminated ones.
 
 module ClientPool (
-        clientPool
+          clientPool
+        , isRoomIn
 ) where
 
 import           Control.Applicative
@@ -44,6 +45,7 @@ clientPool env = withAsync (clientPoolLoop env) $ \cPool  ->
 clientPoolLoop :: Environment -> IO ()
 clientPoolLoop env = forever $ do
 
+      -- Print upstream/downstream node count
       let lastDigitOnly (To node) = _port node `rem` 10 -- For DEBUGging
       ds <- atomically $ Map.keys <$> readTVar (_downstream env)
       let dsPrint = printf "    Downstream: [%d] %s\n"
@@ -52,8 +54,12 @@ clientPoolLoop env = forever $ do
       us <- atomically $ Map.keys <$> readTVar (_upstream env)
       let usPrint = printf "    Upstream:   [%d]\n"
                            (length us)
-      atomically . toIO env Chatty $
-            putStrLn "Node status: " >> dsPrint >> usPrint
+      let nodeNumber :: Int
+          nodeNumber = (fromIntegral . _serverPort $ _config env) `rem` 10
+      atomically . toIO env Debug $ do
+            putStrLn $ "Node " ++ show nodeNumber ++ " status: "
+            dsPrint
+            usPrint
 
       -- How many nodes does the current node know, how many is it known by?
       let dbSize db = fromIntegral . Map.size <$> readTVar (db env)
@@ -134,7 +140,9 @@ sendKeepAlive env = do
           needsRefreshing client = lastHeard client >= threshold
           needKeepAlive = Map.filter needsRefreshing clients
           -- Sends a KeepAlive signal to the client's dedicated channel
-          sendSignal chan = atomically $ writeTBQueue chan KeepAlive
+          sendSignal chan = atomically $ do
+                --assertNotFull chan
+                writeTBQueue chan KeepAlive
 
       void $ T.traverse (sendSignal._clientQueue) needKeepAlive
 
@@ -169,7 +177,8 @@ removeTimedOutDsn env = do
 
       when (not $ Map.null kill') $
             atomically . toIO env Debug $
-                 putStrLn "\ESC[34mDowntream neighbour housekilled. Is this a bug?\ESC[0m\n"
+                 putStrLn "\ESC[34mDownstream neighbour housekilled. Is this\
+                          \ a bug?\ESC[0m\n"
 
       void $ T.traverse (cancel . _clientAsync) kill'
 -- TODO: Find out whether this function is useful, or whether
@@ -195,8 +204,39 @@ removeDeadClients env = do
 
       when (not $ Set.null deadNodes) $
             atomically . toIO env Debug $
-                 putStrLn "\ESC[34mClient housekilled. This is a bug (client should cleanup itself).\ESC[0m\n"
+                 putStrLn "\ESC[34mClient housekilled. This may be a bug\
+                          \ (client should cleanup itself).\ESC[0m\n"
 
       -- Finally, remove all dead nodes by their just found out keys
       atomically $ modifyTVar (_downstream env) $ \knownNodes ->
             F.foldr Map.delete knownNodes deadNodes
+
+
+-- | Checks whether a certain part of the pool is full. The second argument is
+--   supposed to be either '_upstream' or '_downstream'.
+--
+--   The third argument allows specifying a comparison function, and will be
+--   placed between the current size and the max size. For example 'isRoomIn'
+--   is implemented using '<', as the pool size has to be strictly smaller than
+--   the maximum size in order to allow another node.
+checkPoolSize :: Environment
+              -> (Environment -> TVar (Map.Map k a)) -- ^ Projector
+              -> (Int -> Int -> Bool) -- ^ Comparison function
+              -> STM Bool
+checkPoolSize env proj cmp = compareWithSize <$> db
+      where compareWithSize m = Map.size m `cmp` maxSize
+            maxSize = fromIntegral . _maxNeighbours $ _config env
+            db = readTVar (proj env)
+
+
+
+-- | Checks whether there is room to add another node to the pool. The second
+--   argument is supposed to be either '_upstream' or '_downstream'.
+isRoomIn :: Environment
+         -> (Environment -> TVar (Map.Map k a))
+         -> STM Bool
+isRoomIn env proj = checkPoolSize env proj (<)
+
+
+
+
