@@ -523,19 +523,19 @@ addMeReceivedH env node = do
 --   bookkeeping for the new incoming connection.
 iAddedYouReceivedH :: Environment -> From -> IO Proceed
 iAddedYouReceivedH env node = do
-      isRoom <- atomically $ isRoomIn env _upstream
-      if isRoom
-            then do
-                  timestamp <- makeTimestamp
-                  atomically $ do
+      timestamp <- makeTimestamp
+      atomically $ do
+            isRoom <- isRoomIn env _upstream
+            if isRoom
+                  then do
                         modifyTVar (_upstream env) (Map.insert node timestamp)
                         toIO env Debug $ putStrLn $
                               "New upstream neighbour: " ++ show node
-                  return Continue
-            else do
-                  atomically $ toIO env Debug . putStrLn $
-                        "Upstream full, rejecting request"
-                  return Terminate
+                        return Continue
+                  else do
+                        toIO env Debug . putStrLn $
+                              "Upstream full, rejecting request"
+                        return Terminate
 
       -- TODO: Check whether the previous 3 functions get all the directions
       --       right (i.e. do what they should)!
