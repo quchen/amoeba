@@ -74,9 +74,15 @@ janitor config fromPool terminate = forever $ do
       ignoreKill $ bracket (startNode (Just toNode) config) cancel $ \node ->
             withAsync (fromPool `pipeTo` toNode) $ \_signal ->
              withAsync (terminationWatch terminate node) $ \_term ->
-              wait node
+              withAsync (statusReport config) $ \_status ->
+               wait node
 
 
+-- | Periodically say hello for DEBUG
+statusReport :: Config -> IO ()
+statusReport config = forever $ do
+      threadDelay (10^7)
+      yell 35 $ "Janitor for " ++ show (_serverPort config) ++ " reporting in"
 
 
 -- | Pipes everything from one channel to the other

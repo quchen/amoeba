@@ -1,7 +1,7 @@
 MAIN = amoeba
 BOOTSTRAP = bootstrap
 SRC = src
-HSFLAGS =
+HSFLAGS = -O
 
 all :
 	ghc -o $(MAIN)      $(HSFLAGS) -i$(SRC) $(SRC)/Main.hs

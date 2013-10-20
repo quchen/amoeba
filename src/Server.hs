@@ -83,7 +83,7 @@ worker env h from = (`finally` hClose h) . whileM isContinue $ do
       --       -> Respond error, kill worker
       (proceed, response) <- receive h >>= \case
             Normal  normal  -> normalH  env from normal
-            Special special -> specialH env from special
+            Special special -> specialH env h from special
 
       send' h response
       return proceed
@@ -168,27 +168,21 @@ normalH' env from  KeepAlive             = keepAliveH    env from
 --   checks like whether the signal was sent from a registered upstream
 --   neighbour.
 specialH :: Environment
+         -> Handle        -- ^ Connection handle
          -> From          -- ^ Signal origin
          -> SpecialSignal -- ^ Signal type
          -> IO (Proceed, ServerResponse)
 
-specialH env _ (BootstrapRequest {}) =
+specialH env _ _ (BootstrapRequest {}) =
       (, Error) <$> illegalBootstrapSignalH env
 
-specialH env _ (YourHostIs {}) =
+specialH env _ _ (YourHostIs {}) =
       (, Error) <$> illegalYourHostIsH env
 
-specialH env _ (AddMe node) = do
-      result <- addMeReceivedH env (To node)
-      return $ case result of
-            Continue  -> (Continue, OK)
-            Terminate -> (Terminate, Error)
+specialH env _ _ (HandshakeRequest to) = do
+      (Terminate, ) <$> startHandshakeH env to
 
-specialH env from IAddedYou = do
-      result <- iAddedYouReceivedH env from
-      return $ case result of
-            Continue  -> (Continue, OK)
-            Terminate -> (Terminate, Error)
+specialH env h from Handshake = handshakeH env h from
 
 
 
@@ -423,8 +417,8 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
 
             -- Don't connect to self
             (IsSelf, _, _) -> do
-                  let msg = "Edge to self requested, bouncing"
-                  atomically . toIO env Chatty $ putStrLn msg
+                  atomically . toIO env Chatty . putStrLn $
+                        "Edge to self requested, bouncing"
                   bounceReset
 
             -- Don't connect to the same node multiple times
@@ -433,115 +427,105 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
                   -- directions in that pattern (Incoming+Downstream): The
                   -- direction is from the viewpoint of the requestee, while the
                   -- relationship to that node is seen from the current node.
-                  let msg = "Edge downstream already exists, bouncing"
-                  atomically . toIO env Chatty $ putStrLn msg
+                  atomically . toIO env Chatty . putStrLn $
+                        "Edge downstream already exists, bouncing"
                   bounceOn
 
             -- Request randomly denied
             (_, False, _) -> do
-                  let msg = "Random bounce (accept: p = " ++ show p ++ ")"
-                  atomically . toIO env Chatty $ putStrLn msg
+                  atomically . toIO env Chatty . putStrLn $
+                        "Random bounce (accept: p = " ++ show p ++ ")"
                   bounceOn
 
             -- Try accepting an Outgoing request
-            (_, _, Outgoing) -> do -- TODO: Sub-method, running off screen here
-                  isRoom <- atomically $ isRoomIn env _downstream
-                  if isRoom then acceptOutgoingRequest env origin
-                            else do let msg = "No room for incoming " ++
-                                              "connections, bouncing"
-                                    atomically . toIO env Chatty $ putStrLn msg
-                                    bounceOn
+            (_, _, Outgoing) -> void $ sendHandshakeRequest env origin
 
             -- Try accepting an Incoming request
-            (_, _, Incoming) -> do -- TODO: Sub-method, running off screen here
-                  isRoom <- atomically $ isRoomIn env _upstream
-                  if isRoom then acceptIncomingRequest env origin
-                            else do let msg = "No room for outgoing " ++
-                                              "connections, bouncing"
-                                    atomically . toIO env Chatty $ putStrLn msg
-                                    bounceOn
+            (_, _, Incoming) -> void $ startHandshakeH env origin
 
       return Continue
 
 
 
+-- | Prompts another node to start a handshake in order to be added as its
+--   downstream neighbour.
+sendHandshakeRequest :: Environment
+                     -> To
+                     -> IO ()
+sendHandshakeRequest env target = do
+      -- TODO: Timeout
+      bracket (connectToNode target) hClose $ \h -> do
+            let signal = Special . HandshakeRequest . To $ _self env
+            request h signal >>= \case
+                  OK -> return ()
+                  _  -> return ()
 
 
--- | Invoked when an Outgoing EdgeRequest is accepted by the current node. Sends
---   the originally issuing node the message "yes, you may add me as your new
---   neighbour".
-acceptOutgoingRequest :: Environment -> To -> IO ()
-acceptOutgoingRequest env node = do
-      -- TODO: Await confirmation of the AddMe signal (-> proper handshake)
-      bracket (connectToNode node) hClose $ \h -> do
-            send h (Special . AddMe $ _self env)
-            -- TODO: receive/handle server response
-            atomically $
-                  toIO env Debug . putStrLn $ "'Outgoing' request from "
-                                                     ++ show node ++ " accepted"
-
-
-
-
--- | Invoked when an Incoming 'EdgeRequest' is accepted by the current node.
---   Spawns a new worker.
+-- | Handles an incoming handshake, i.e. a remote node wants to add this node
+--   as its downstream neighbour.
 --
---   Identical to 'addMeReceivedH', except that the request was issued
---   internally as the response to an 'EdgeRequest'.
-acceptIncomingRequest :: Environment -> To -> IO ()
-acceptIncomingRequest env node = do
-      atomically $ toIO env Debug . putStrLn $ "'Incoming' request from "
-                                                   ++ show node ++ " accepted"
-      forkNewClient env node
-
-
-
-
--- | Invoked on an incoming "Outgoing request successful" signal, i.e. after
---   sending out a Outgoing EdgeRequest, another node has given this node the
---   permission to add it as a downstream neighbour. Spawns a new worker.
+--   The procedure is as follows:
 --
---   Identical to 'acceptIncomingRequest', except that the request came
---   directly from another node (in particular, it is not the result of
---   handling an EdgeRequest by this node).
-addMeReceivedH :: Environment -> To -> IO Proceed
-addMeReceivedH env node = do
-      isRoom <- atomically $ isRoomIn env _downstream
-      if isRoom
-            then do atomically $ toIO env Debug . putStrLn $
-                          "New downstream neighbour: " ++ show node
-                    forkNewClient env node
-                    return Continue
-            else do atomically $ toIO env Debug . putStrLn $
-                          "Downstream full, rejecting request"
-                    return Terminate
-
-
-
--- | IAddedYou is sent to a new downstream neighbour as the result of a
---   successful Incoming request. When received, this handler does the
---   bookkeeping for the new incoming connection.
-iAddedYouReceivedH :: Environment -> From -> IO Proceed
-iAddedYouReceivedH env node = do
+--   1. Check whether there is space for another upstream neighbour; if yes,
+--      then add it to the pool temporarily.
+--   2. Send back an OK signal, "I'm ready to take your connection".
+--   3. If the upstream node acknowledged this OK signal, it responds with an OK
+--      on its own. The function terminates, the temporary neighbourship is made
+--      permanent, and the connection can stay open and both parties know that
+--      the other one has done their part.
+--   4. If something goes wrong, remove the temporary partner and terminate.
+handshakeH :: Environment
+           -> Handle      -- ^ Incoming connection
+           -> From        -- ^ Connection origin
+           -> IO (Proceed, ServerResponse)
+handshakeH env h from = do
       timestamp <- makeTimestamp
-      atomically $ do
+      proceed <- atomically $ do
             isRoom <- isRoomIn env _upstream
             if isRoom
-                  then do
-                        modifyTVar (_upstream env) (Map.insert node timestamp)
-                        toIO env Debug $ putStrLn $
-                              "New upstream neighbour: " ++ show node
-                        return Continue
-                  else do
-                        toIO env Debug . putStrLn $
-                              "Upstream full, rejecting request"
-                        return Terminate
+                  then do modifyTVar (_upstream env) (Map.insert from timestamp)
+                          return Continue
+                  else return Terminate
+      case proceed of
+            Terminate -> return (Terminate, Error)
+            Continue  -> do
+                  request' h OK >>= \case
+                        OK -> return (Continue, OK)
+                              -- This leaves the connection open, as it will be
+                              -- used further by the client on the other side.
+                        _  -> atomically $ do
+                                    modifyTVar (_upstream env) (Map.delete from)
+                                    return (Terminate, Error)
 
-      -- TODO: Check whether the previous 3 functions get all the directions
-      --       right (i.e. do what they should)!
 
 
+startHandshakeH :: Environment
+                -> To
+                -> IO ServerResponse
+startHandshakeH env to = do
+      h <- connectToNode to -- Client will close this handle
+      result <- request h (Special Handshake) >>= \case
+            OK -> do
+                  stsc      <- newTBQueueIO (_maxChanSize $ _config env)
+                  thread    <- async $ newClient env h to stsc
+                  timestamp <- makeTimestamp
+                  let client = Client timestamp thread stsc
+                  atomically $ do
+                        isRoom <- isRoomIn env _downstream
+                        if isRoom
+                              then do
+                                    modifyTVar (_downstream env) $
+                                          Map.insert to client
+                                    return OK
+                              else do
+                                    return Error
+            _  -> return Error
 
+      -- TODO: Make sure this is always evaluated so the handle is guaranteed
+      --       to be closed
+      case result of
+            OK    -> return OK
+            Error -> hClose h >> return Error
 
 
 
@@ -563,3 +547,10 @@ nodeRelationship env node@(To to) = do
             (_, True) -> return IsDownstreamNeighbour
             _         -> return IsUnrelated
 -- TODO: Solve the upstream neighbour checking issue
+
+
+
+
+
+
+

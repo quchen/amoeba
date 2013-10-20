@@ -68,16 +68,16 @@ bootstrapServerLoop config numServed socket ldc = do
       putStrLn "Waiting for clients"
       (h, host, port) <- accept socket
       putStrLn "New client"
-      response <- receive' h >>= \case
-            BootstrapRequest port -> do dispatchSignal config' host port ldc
-                                        return $ YourHostIs host
-            _ -> do putStrLn "Non-BootstrapRequest signal received"
-                    return $ IAddedYou -- FIXME Nonsense, but makes the typechecker happy.
-                                       -- Added here to allow the above putStrLn; in
-                                       -- production this case should simply be ignored.
-      send' h response
-      putStrLn $ "Client " ++ show (numServed + 1) ++ " served"
-      bootstrapServerLoop config (numServed + 1) socket ldc
+      receive' h >>= \case
+            BootstrapRequest port -> do
+                  dispatchSignal config' host port ldc
+                  send' h $ YourHostIs host
+                  putStrLn $ "Client " ++ show (numServed + 1) ++ " served"
+                  bootstrapServerLoop config (numServed + 1) socket ldc
+            _ -> do putStrLn "Non-BootstrapRequest signal received,\
+                             \ Server terminating"
+
+
 
 
 

@@ -115,6 +115,8 @@ This is a list of known and feasible attacks on the current design:
 
 - Malicious swarms - right now it's trivial to spawn thousands of new nodes simultaneously, even from within a single program. No matter how many honest nodes there are, it is very easy to drown them in a network controlled by a few actors behaving like they are many.
 
+- Killing all bootstrap servers makes it impossible to discover the network
+
 
 
 Terminology

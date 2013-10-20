@@ -1,26 +1,19 @@
--- TODO: Lots of status/logging messages
 -- TODO: The wire protocol uses Int64 length headers. Make the program robust
 --       against too long messages that exceed the size. Maybe use
 --       hGetContents after all?
--- TODO: Randomly replace downstream neighbours
+-- TODO: Randomly replace downstream neighbours?
 -- TODO: Randomly kick nodes if the maximum capacity is reached
 -- TODO: Create a new signal that makes every node send a list of neighbours to
 --       a specific node, which then constructs a GraphViz representation of the
 --       network
--- TODO: Error handling. Right now any exception kills everything because it's
---       rethrown in the parent thread (thanks to Async).
--- TODO: When there are no clients, the chans will be filled up with edge
---       requests all the way. GHC 7.8 can easily generate an error using the
---       new "isFullTBQueue" function.
+-- TODO: Error handling. Right now many exceptions kill the entire process
+--       because there are no catches.
 -- TODO: Restart bootstrapping process if all downstream neighbours are lost
 --       (Wait some time for incoming edge requests though? They may contain
 --       potential new downstream neighbours.)
--- TODO: Upstream neighbours are not rejected (enough?) when the pool is full
 -- TODO: Instead of having the client pool clean up dead workers, each worker
 --       should have an individual dead man switch thread. This should a) be
 --       quicker to react and b) more in the spirit of something decentralized.
--- TODO: Make the timers slow/medium/fast instead of having an individual tick
---       rate for each process
 -- TODO: Configuration sanity checks:
 --           neighbours  -->  max >= min
 --           tickrates   -->  short <= medium <= long

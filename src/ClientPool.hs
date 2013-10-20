@@ -16,6 +16,7 @@ import qualified Data.Foldable as F
 import qualified Data.Traversable as T
 import           Data.Maybe (isJust)
 import           Text.Printf
+import           Data.List (sort)
 import qualified Data.Set as Set
 
 
@@ -46,11 +47,11 @@ clientPoolLoop :: Environment -> IO ()
 clientPoolLoop env = forever $ do
 
       -- Print upstream/downstream node count
-      let lastDigitOnly (To node) = _port node `rem` 10 -- For DEBUGging
+      let getPort (To node) = _port node
       ds <- atomically $ Map.keys <$> readTVar (_downstream env)
       let dsPrint = printf "    Downstream: [%d] %s\n"
                            (length ds)
-                           (show $ map lastDigitOnly ds)
+                           (show . sort $ map getPort ds)
       us <- atomically $ Map.keys <$> readTVar (_upstream env)
       let usPrint = printf "    Upstream:   [%d]\n"
                            (length us)

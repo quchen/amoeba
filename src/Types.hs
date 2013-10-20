@@ -232,7 +232,7 @@ data ServerResponse =
 
         -- | Signal OK, but can't be accepted for some reason. This is the
         --   equivalent of 'Ignore' for commands that do not need an existing
-        --   neighbourship, such as 'IAddedYou'.
+        --   neighbourship, such as 'Handshake'.
       | Denied
 
       deriving (Eq, Ord, Show, Generic)
@@ -256,12 +256,12 @@ data SpecialSignal =
       --   it can add it to its Environment.
       | YourHostIs HostName
 
-      -- | Sent to the new downstream neighbour node so it can keep track of
-      --   how many times it's referenced.
-      | IAddedYou
+      -- | Ask another node to initiate a handshake
+      | HandshakeRequest To
 
-      -- | Sent to the requesting node: "I have upstream neighbour space free"
-      | AddMe Node
+      -- | Initiates a handshake, with the goal of adding the recipient as a
+      --   downstream neighbour.
+      | Handshake
 
       deriving (Eq, Ord, Show, Generic)
 
