@@ -68,30 +68,37 @@ janitor :: Config            -- ^ Node configuration
                              --   terminated (and replaced by a new one by the
                              --   janitor). Also see 'terminationWatch'.
         -> IO ()
-janitor config fromPool terminate = forever $ do
+janitor config fromPool terminate = (handle $ \(SomeException e) -> yell 41 ("Janitor crashed! Exception: " ++ show e)) $
+  forever $ do
       toNode <- newTBQueueIO (_maxChanSize config)
-      let ignoreKill = handle $ \ThreadKilled -> return ()
-      ignoreKill $ bracket (startNode (Just toNode) config) cancel $ \node ->
-            withAsync (fromPool `pipeTo` toNode) $ \_signal ->
-             withAsync (terminationWatch terminate node) $ \_term ->
-              withAsync (statusReport config) $ \_status ->
-               wait node
+      let handlers = [ Handler $ \ThreadKilled -> return ()
+                     ]
+      (`catches` handlers) $
+            bracket (startNode (Just toNode) config) cancel $ \node ->
+             withAsync (fromPool `pipeTo` toNode) $ \_signal ->
+              withAsync (terminationWatch terminate node) $ \_term ->
+               withAsync (statusReport config) $ \_status ->
+                wait node
 
 
 -- | Periodically say hello for DEBUG
 statusReport :: Config -> IO ()
-statusReport config = forever $ do
+statusReport config = yellAndRethrow "status killed" $ forever $ do
       threadDelay (10^7)
       yell 35 $ "Janitor for " ++ show (_serverPort config) ++ " reporting in"
 
 
 -- | Pipes everything from one channel to the other
 pipeTo :: Chan NormalSignal -> TBQueue NormalSignal -> IO ()
-pipeTo incoming outgoing = forever $ do
+pipeTo incoming outgoing = yellAndRethrow "pipe killed" $ forever $ do
       signal <- readChan incoming
       atomically $ do
             --assertNotFull outgoing
             writeTBQueue outgoing signal
+
+yellAndRethrow msg = handle handler
+      where handler :: SomeException -> IO ()
+            handler e = yell 41 msg >> throw e
 
 
 -- | Terminate a thread when an MVar is filled
