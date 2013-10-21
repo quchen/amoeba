@@ -3,6 +3,7 @@
 module Main where
 
 import Network
+import System.IO
 import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Exception
@@ -64,18 +65,26 @@ bootstrapServerLoop config numServed socket ldc = do
       let config' = if numServed <= fromIntegral (_minNeighbours config)
                 then config { _bounces = 0 }
                 else config
+          acquire = accept socket
+          release (h, _, _) = hClose h
+          action (h, host, port) = do
+                receive' h >>= \case
+                      BootstrapRequest port -> do
+                            dispatchSignal config' host port ldc
+                            send' h $ YourHostIs host
+                            return True
+                      _ -> return False
 
-      putStrLn "Waiting for clients"
-      (h, host, port) <- accept socket
-      putStrLn "New client"
-      receive' h >>= \case
-            BootstrapRequest port -> do
-                  dispatchSignal config' host port ldc
-                  send' h $ YourHostIs host
+      success <- bracket acquire release action
+
+      if success
+            then do
                   putStrLn $ "Client " ++ show (numServed + 1) ++ " served"
                   bootstrapServerLoop config (numServed + 1) socket ldc
-            _ -> do putStrLn "Non-BootstrapRequest signal received,\
-                             \ Server terminating"
+            else do
+                  putStrLn "Non-BootstrapRequest signal received"
+                  bootstrapServerLoop config (numServed + 1) socket ldc
+
 
 
 
