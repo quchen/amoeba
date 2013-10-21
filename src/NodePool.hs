@@ -83,14 +83,14 @@ janitor config fromPool terminate = (handle $ \(SomeException e) -> yell 41 ("Ja
 
 -- | Periodically say hello for DEBUG
 statusReport :: Config -> IO ()
-statusReport config = yellAndRethrow "status killed" $ forever $ do
+statusReport config = forever $ do
       threadDelay (10^7)
       yell 35 $ "Janitor for " ++ show (_serverPort config) ++ " reporting in"
 
 
 -- | Pipes everything from one channel to the other
 pipeTo :: Chan NormalSignal -> TBQueue NormalSignal -> IO ()
-pipeTo incoming outgoing = yellAndRethrow "pipe killed" $ forever $ do
+pipeTo incoming outgoing = forever $ do
       signal <- readChan incoming
       atomically $ do
             --assertNotFull outgoing

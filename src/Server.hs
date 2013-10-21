@@ -536,7 +536,7 @@ startHandshakeH env to = bracketOnError acquire release action `catch` handler
                                             Map.insert to client
                         return isRoom
                   if added then return OK
-                           else cancel thread >> yell 41 "CRAP" >> return Error
+                           else cancel thread >> return Error
 
 
 
