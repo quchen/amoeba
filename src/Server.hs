@@ -421,7 +421,7 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
                 writeTBQueue (_st1c env) . buildSignal $ Left n
 
       -- Make sure not to connect to itself or to already known nodes
-      relationship <- nodeRelationship env origin
+      relationship <- atomically $ nodeRelationship env origin
 
 
       -- Roll whether to accept the query first, then check whether there's
@@ -538,18 +538,25 @@ startHandshakeH env to = bracketOnError acquire release action `catch` handler
                                            yell 41 "<<<"
                                            return Error
 
-            -- Prepare the system to add a new client.
+            -- Prepare the system to add a new client
             launchClient h = do
                   timestamp <- makeTimestamp
                   stsc      <- newTBQueueIO (_maxChanSize $ _config env)
                   thread    <- async $ newClient env h to stsc
                   let client = Client timestamp thread stsc
-                  added <- atomically $ do
-                        isRoom <- isRoomIn env _downstream
-                        when isRoom $ modifyTVar (_downstream env) $
-                                            Map.insert to client
-                        return isRoom
-                  if added then return OK
+
+                  -- Add node if it is unrelated and there is room
+                  keepClient <- atomically $ do
+                        let allowed IsUnrelated = True
+                            allowed _else       = False
+                        keep <- liftA2 (&&)
+                              (allowed <$> nodeRelationship env to)
+                              (isRoomIn env _downstream)
+                        when keep $ modifyTVar (_downstream env) $
+                                                            Map.insert to client
+                        return keep
+
+                  if keepClient then return OK
                            else cancel thread >> return Error
 
 
@@ -561,17 +568,14 @@ startHandshakeH env to = bracketOnError acquire release action `catch` handler
 --   of the connection to be established, it cannot be checked whether the node
 --   is already an upstream neighbour directly; timeouts will have to take care
 --   of that.
-nodeRelationship :: Environment -> To -> IO NodeRelationship
+nodeRelationship :: Environment -> To -> STM NodeRelationship
 nodeRelationship env node@(To to) = do
-      let self = to == _self env
-      isAlreadyDownstream <- atomically $
-            Map.member node <$> readTVar (_downstream env)
-
-      case (self, isAlreadyDownstream) of
+      let isSelf = to == _self env
+      isAlreadyDownstream <- Map.member node <$> readTVar (_downstream env)
+      case (isSelf, isAlreadyDownstream) of
             (True, _) -> return IsSelf
             (_, True) -> return IsDownstreamNeighbour
             _         -> return IsUnrelated
--- TODO: Solve the upstream neighbour checking issue
 
 
 
