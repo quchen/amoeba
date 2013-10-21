@@ -137,7 +137,7 @@ catchAll x = void x `catch` handler
             handler e = return ()
 
 -- | Easily print colored text for debugging
-yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ text ++ "\ESC[0m"
+yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ "\ESC[0m"
 
 
 -- | Check whether a 'TBQueue' is full. Used for debugging. DEBUG

@@ -46,11 +46,10 @@ newClient :: Environment
           -> IO ()
 newClient env h node stsc = do
 
-      let cleanup = do
+      let cleanup = (`finally` hClose h) $ do
             atomically . modifyTVar (_downstream env) $ Map.delete node
             void . timeout (_longTickRate $ _config env) $
                   request h $ Normal ShuttingDown
-            hClose h
 
       stc <- atomically $ dupTChan (_stc env)
 

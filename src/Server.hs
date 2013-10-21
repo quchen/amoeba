@@ -17,7 +17,7 @@ module Server (
 
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
-import           Control.Exception (finally, bracket)
+import           Control.Exception
 import           Control.Monad
 import           Data.Functor
 import           Network
@@ -439,9 +439,13 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
 
             -- Try accepting an Outgoing request
             (_, _, Outgoing) -> void $ sendHandshakeRequest env origin
+                  -- TODO: Bounce on if failed, otherwise an almost saturated
+                  --       network won't allow new nodes
 
             -- Try accepting an Incoming request
             (_, _, Incoming) -> void $ startHandshakeH env origin
+                  -- TODO: Bounce on if failed, otherwise an almost saturated
+                  --       network won't allow new nodes
 
       return Continue
 
@@ -459,6 +463,8 @@ sendHandshakeRequest env target = do
             request h signal >>= \case
                   OK -> return ()
                   _  -> return ()
+                  -- Nothing to do here, the handshake is a one-way command,
+                  -- waiting for response is just a courtesy
 
 
 -- | Handles an incoming handshake, i.e. a remote node wants to add this node
@@ -502,30 +508,35 @@ handshakeH env h from = do
 startHandshakeH :: Environment
                 -> To
                 -> IO ServerResponse
-startHandshakeH env to = do
-      h <- connectToNode to -- Client will close this handle
-      result <- request h (Special Handshake) >>= \case
-            OK -> do
+startHandshakeH env to = bracketOnError acquire release action `catch` handler
+      where acquire = do
+                  h <- connectToNode to
+                  result <- request h (Special Handshake) >>= \case
+                        OK    -> launchClient h
+                        _else -> return Error
+                  return (h, result)
+            release (h, _)    = hClose h >> return Error
+            action (_, OK)    = return OK -- Client will close the handle when
+            action (h, Error) = hClose h >> return Error
+
+            handler (SomeException e) = do yell 41 ">>>"
+                                           print e
+                                           yell 41 "<<<"
+                                           return Error
+
+            -- Prepare the system to add a new client.
+            launchClient h = do
+                  timestamp <- makeTimestamp
                   stsc      <- newTBQueueIO (_maxChanSize $ _config env)
                   thread    <- async $ newClient env h to stsc
-                  timestamp <- makeTimestamp
                   let client = Client timestamp thread stsc
-                  atomically $ do
+                  added <- atomically $ do
                         isRoom <- isRoomIn env _downstream
-                        if isRoom
-                              then do
-                                    modifyTVar (_downstream env) $
-                                          Map.insert to client
-                                    return OK
-                              else do
-                                    return Error
-            _  -> return Error
-
-      -- TODO: Make sure this is always evaluated so the handle is guaranteed
-      --       to be closed
-      case result of
-            OK    -> return OK
-            Error -> hClose h >> return Error
+                        when isRoom $ modifyTVar (_downstream env) $
+                                            Map.insert to client
+                        return isRoom
+                  if added then return OK
+                           else cancel thread >> yell 41 "CRAP" >> return Error
 
 
 
