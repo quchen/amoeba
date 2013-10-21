@@ -1,20 +1,31 @@
 -- | Provides functions for the client to connect to a Bootstrap server in order
 --   to make the initial connection to the network.
 
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+
 module Bootstrap (
       bootstrap
 ) where
 
 
 
+import Control.Concurrent
 import Network
 import Control.Exception
 import System.IO
+import Data.Either
+import Data.Typeable
 
 import Types
 import Utilities (request', connectToNode)
 
 
+
+data BadBootstrapResponse = BadBootstrapResponse
+      deriving (Show, Typeable)
+
+instance Exception BadBootstrapResponse
 
 
 
@@ -27,21 +38,27 @@ bootstrap config port = do
       -- Send out signal to the bootstrap node
       bNode <- getBootstrapServer
 
+
       -- Don't recurse directly in case of failure so that bracket can close
       -- the handle properly. Instead, bind the result to an identifier, and
       -- check it after the bracketing.
-      result <- bracket (connectToNode  bNode) hClose $ \h -> do
+      --let try' :: IO a -> IO (Either BadBootstrapResponse a)
+      --    try' = try
+      result <- try $ bracket (connectToNode bNode) hClose $ \h -> do
 
             -- See note [Why send port?]
-            response <- request' h (BootstrapRequest port)
-            return $ case response of
-                  (YourHostIs host) -> Just host
-                  _                 -> Nothing -- TODO: Error message "Bootstrap reply rubbish"
-                     -- TODO: Handle timeouts, yell if pattern mismatch
+            request' h (BootstrapRequest port) >>= \case
+                  (YourHostIs host) -> return host
+                  _                 -> throwIO BadBootstrapResponse
 
-
-
-      maybe (bootstrap config port) return result
+      case result of
+            Left (SomeException e) -> do
+                  putStrLn $ "Bootstrap failed (" ++ show e ++ ")\
+                             \  (If the bootstrap server is valid,\
+                             \ this is likely a bug.)"
+                  threadDelay (_mediumTickRate config)
+                  bootstrap config port
+            Right r -> return r
 
 -- [Why send port?]
 --
@@ -49,6 +66,7 @@ bootstrap config port = do
 -- has to be aware of a return address. While it can deduce the hostname from
 -- the incoming connection, the port of the new node's server is unknown.
 -- for that reason, the node has to provide it explicitly.
+
 
 
 -- | Finds the address of a suitable bootstrap server.

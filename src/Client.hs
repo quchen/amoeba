@@ -5,7 +5,7 @@
 
 
 module Client  (
-      forkNewClient
+      newClient
 ) where
 
 
@@ -15,6 +15,7 @@ import Control.Concurrent.STM
 import Control.Concurrent.Async
 import Control.Exception
 import System.IO
+import System.Timeout
 import Data.Functor
 import Control.Monad
 import qualified Data.Map as Map
@@ -32,51 +33,37 @@ import Utilities
 
 
 
--- Starts a new client in a separate thread.
-forkNewClient :: Environment -> To -> IO ()
-forkNewClient env targetNode = do
-
-      -- Setup queue for talking directly to the speicif client created here.
-      -- STSC = Server to Single Client
-      stsc      <- newTBQueueIO (_maxChanSize $ _config env)
-      thread    <- async $ newClient env targetNode stsc
-      timestamp <- makeTimestamp
-      let client = Client timestamp thread stsc
-      atomically . modifyTVar (_downstream env) $ Map.insert targetNode client
-
-      -- GO ON: Client loop seems to terminate too early
 
 
-
-
-
--- Initializes a new client, and then starts the client loop. Does not check
--- whether there is any space in the client pool; that's the job of the function
--- that sends the newClient command (i.e. the server).
+-- | Initializes a new client, and then starts the client loop. Does not check
+--   whether there is any space in the client pool; that's the job of the
+--   function that sends the newClient command (i.e. the server).
 newClient :: Environment
+          -> Handle               -- ^ Connection to use (setup by the handshake
+                                  --   process)
           -> To                   -- ^ Target downstream neighbour
           -> TBQueue NormalSignal -- ^ This client's private signal channel
           -> IO ()
-newClient env node stsc =
+newClient env h node stsc = do
 
-      let release h = do
+      let cleanup = do
             atomically . modifyTVar (_downstream env) $ Map.delete node
+            void . timeout (_longTickRate $ _config env) $
+                  request h $ Normal ShuttingDown
             hClose h
 
-      in bracket (connectToNode node) release $ \h -> do
-            response <- request h (Special IAddedYou)
-            case response of
-                  OK -> do stc <- atomically $ dupTChan (_stc env)
-                           clientLoop env h node [ readTChan stc
-                                                 , readTBQueue (_st1c env)
-                                                 , readTBQueue stsc
-                                                 ]
-                  _  -> return ()
+      stc <- atomically $ dupTChan (_stc env)
+
+      (`finally` cleanup) $ clientLoop env h node [ readTChan stc
+                                                  , readTBQueue (_st1c env)
+                                                  , readTBQueue stsc
+                                                  ]
 
 
 
--- Listens to a TChan (signals broadcast to all nodes) and a TBQueue (signals
--- meant to be handled by only one client), and executes their orders.
+
+-- | Listens to a TChan (signals broadcast to all nodes) and a TBQueue (signals
+--   meant to be handled by only one client), and executes their orders.
 clientLoop :: Environment
            -> Handle             -- ^ Network connection
            -> To                 -- ^ Target downstream neighbour
@@ -113,14 +100,14 @@ ok env node = do
 --   in its list of upstream neighbours. A a result, it tells the issuing client
 --   that it will ignore its requests.
 --
--- The purpose of this is twofold:
+--   The purpose of this is twofold:
 --
---   - Nodes can only be contacted by other registered nodes. A malicious
---     network of other nodes cannot nuke a node with illegal requests, because
---     it will just ignore all the illegally created ones.
+--     - Nodes can only be contacted by other registered nodes. A malicious
+--       network of other nodes cannot nuke a node with illegal requests,
+--       because it will just ignore all the illegally created ones.
 --
---   - If a node doesn't send a signal for too long, it will time out. When it
---     starts sending new signals, it will be told that it was dropped.
+--     - If a node doesn't send a signal for too long, it will time out. When it
+--       starts sending new signals, it will be told that it was dropped.
 ignore :: Environment -> IO Proceed
 ignore env = do
       atomically . toIO env Debug $
@@ -135,6 +122,8 @@ genericError env = do
       atomically . toIO env Debug $
             putStrLn "Generic server error, terminating client"
       return Terminate
+
+
 
 -- | Server denied a valid request, see docs for 'Denied'
 denied :: Environment -> IO Proceed

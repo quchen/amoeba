@@ -40,7 +40,10 @@ data Environment = Environment {
                                        --   track of when the last signal was
                                        --   received.
 
-      , _stc        :: TChan NormalSignal    -- ^ Send messages to all clients
+      , _stc        :: TChan NormalSignal -- ^ Send messages to all clients.
+                                          --   TChan instead of TBQueue so it
+                                          --   can be duped and used as a
+                                          --   broadcast channel.
 
       , _st1c       :: TBQueue NormalSignal  -- ^ Send message to one client
 
@@ -54,6 +57,10 @@ data Environment = Environment {
                                        --   they come in again.
 
       , _self       :: Node            -- ^ Own hostname/port
+
+      , _ldc        :: Maybe (TBQueue NormalSignal)
+                                       -- ^ Local direct connection (LDC) to a
+                                       --   node. Used by NodePool.
 
       , _config     :: Config          -- ^ Program start configuration
 
@@ -83,23 +90,34 @@ data Config = Config {
                                       --   communication channels can hold
 
       , _bounces        :: Word       -- ^ Number of initial bounces
+
       , _acceptP        :: Double     -- ^ Edge request acceptance probability
                                       --   for the second bounce phase.
+
       , _maxSoftBounces :: Word       -- ^ How many times a soft-bounced request
                                       --   is maximally relayed before it is
                                       --   rejected
+
       , _shortTickRate  :: Int        -- ^ Tick interval in milliseconds for
                                       --   "short" loops.
+
       , _mediumTickRate :: Int        -- ^ Tick interval in milliseconds for
                                       --   "medium" loops, for example the
                                       --   client pool or the keep-alive loops.
+
       , _longTickRate   :: Int        -- ^ Tick interval in milliseconds for
                                       --   "long" loops.
+
       , _poolTimeout    :: Double     -- ^ Number of seconds before a
                                       --   non-responding node is considered
                                       --   gone
+
       , _verbosity      :: Verbosity  -- ^ Determines quantity of messages
                                       --   printed
+
+      , _bootstrapServers :: [To]     -- ^ Addresses of bootstrap servers
+                                      --   statically known
+
       } deriving (Show)
 
 
@@ -140,9 +158,9 @@ data Signal =
 
         Normal NormalSignal
 
-      -- | Signals that are handled in a special way. For example bootstrap
-      --   servers are able to issue a special signal that is processed
-      --   despite them not being upstream neighbours of a node. -- TODO: Implement this behaviour
+      -- | Signals that are handled in a special way. For example 'IAddedYou'
+      --   signals have to be processed because when they are received the other
+      --   node is by definition not an upstream neighbour yet.
       | Special SpecialSignal
 
       deriving (Eq, Ord, Show, Generic)
@@ -166,9 +184,8 @@ data NormalSignal =
       | KeepAlive
 
       -- | Current node is shutting down, remove it from your upstream
-      --   neighbour pool. The 'To' address provided is the server address of
-      --   the terminating node.
-      | ShuttingDown To
+      --   neighbour pool.
+      | ShuttingDown
 
       -- | Signals meant to be considered by every node in the network.
       | Flood Timestamp FloodSignal
@@ -215,7 +232,7 @@ data ServerResponse =
 
         -- | Signal OK, but can't be accepted for some reason. This is the
         --   equivalent of 'Ignore' for commands that do not need an existing
-        --   neighbourship, such as 'IAddedYou'.
+        --   neighbourship, such as 'Handshake'.
       | Denied
 
       deriving (Eq, Ord, Show, Generic)
@@ -225,32 +242,26 @@ instance Binary ServerResponse
 
 
 
-
 -- | Classifies special signals in order to process them differently. For
 --   example, many of them do not need the sending node to be known in order
 --   to be processed.
 data SpecialSignal =
 
-      -- | Sent from a bootstrap server to the network. Bypasses checks whether
-      --   it was issued from a registered upstream nodes, and is therefore
-      --   suitable for making an initial connection to the network.
-        BootstrapHelper NormalSignal
-
       -- | Initial request sent from a future client to a bootstrap server.
       --   While the reverse connection is provided by the request, the
       --   hostname will be deduced by the incoming connection by the server.
-      | BootstrapRequest PortNumber
+        BootstrapRequest PortNumber
 
       -- | Sent as a response to a Bootstrap to tell the node its hostname, so
       --   it can add it to its Environment.
       | YourHostIs HostName
 
-      -- | Sent to the new downstream neighbour node so it can keep track of
-      --   how many times it's referenced.
-      | IAddedYou
+      -- | Ask another node to initiate a handshake
+      | HandshakeRequest To
 
-      -- | Sent to the requesting node: "I have upstream neighbour space free"
-      | AddMe Node
+      -- | Initiates a handshake, with the goal of adding the recipient as a
+      --   downstream neighbour.
+      | Handshake
 
       deriving (Eq, Ord, Show, Generic)
 

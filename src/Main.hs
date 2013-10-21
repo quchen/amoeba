@@ -1,10 +1,18 @@
 -- | Main module for an ordinary node.
 
-module Main where
+module Main (main) where
 
+import Control.Concurrent.Async
 import CmdArgParser
 import Node
+import Types
 
 -- | Starts a single node.
 main :: IO ()
-main = parseArgs >>= startNode
+main = do config <- parseArgs
+          thread <- startNode Nothing . setBootstrap $ config
+          wait thread
+
+-- | Hardcoded bootstrap servers
+setBootstrap x = x { _bootstrapServers = [To $ Node "localhost" 20000] }
+-- TODO: proper discovery

@@ -1,12 +1,10 @@
-{-# LANGUAGE LambdaCase #-}
-
 module Utilities (
         makeTimestamp
       , toIO
       , connectToNode
       , whileM
       , isContinue
-      , timeout
+      , catchAll
 
       -- * Sending/receiving network signals
       , send'
@@ -17,22 +15,29 @@ module Utilities (
       , send
       , receive
       , request
+
+      -- * Debugging
+      , yell
+      , assertNotFull
 ) where
 
-import Data.Functor
-import Control.Monad
+import           Control.Concurrent.STM
+import           Control.Exception (catch, SomeException)
+import           Control.Monad
+import           Control.Applicative
+import           Control.Exception
+import           Data.Functor
+import           Data.Int
+import           Data.Time.Clock.POSIX (getPOSIXTime)
+import           Network (connectTo, PortID(PortNumber))
 import qualified Data.ByteString.Lazy as BS
-import Data.Time.Clock.POSIX (getPOSIXTime)
-import Data.Int
-import System.IO
-import Control.Concurrent.STM
-import Control.Concurrent.Async
-import Control.Concurrent
-import Network (connectTo, PortID(PortNumber))
+import           System.IO
 
 import Data.Binary
 
 import Types
+
+
 
 -- | Creates a timestamp, which is a Double representation of the Unix time.
 makeTimestamp :: IO Timestamp
@@ -116,13 +121,31 @@ toIO env verbosity = when p . writeTBQueue (_io env)
       where p = verbosity >= _verbosity (_config env)
 
 
+
 -- | Like Network.connectTo, but extracts the connection data from a @Node@
 --   object.
 connectToNode :: To -> IO Handle
 connectToNode (To n) = connectTo (_host n) (PortNumber (_port n))
 
 
--- | Kills an async after a certain amount of time
-timeout :: Int -> Async a -> IO ()
-timeout time thread = void . async $ threadDelay time >> cancel thread
 
+
+-- | Mandatory silly catchall function. Intended to be used as a safety net
+--   only, not as a cpeap getaway :-)
+catchAll :: IO a -> IO ()
+catchAll x = void x `catch` handler
+      where handler :: SomeException -> IO ()
+            handler e = return ()
+
+-- | Easily print colored text for debugging
+yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ text ++ "\ESC[0m"
+
+
+-- | Check whether a 'TBQueue' is full. Used for debugging. DEBUG
+isFullTBQueue :: TBQueue a -> STM Bool
+isFullTBQueue q = (unGetTBQueue q undefined >> readTBQueue q >> pure False) <|> pure True
+
+assertNotFull :: TBQueue a -> STM ()
+assertNotFull q = do
+      full <- isFullTBQueue q
+      assert (not full) $ return ()
