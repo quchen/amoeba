@@ -31,7 +31,7 @@ defaultConfig = T.Config {
       , T._mediumTickRate    = 3 * 10^5
       , T._longTickRate      = 10^6
       , T._poolTimeout       = 5
-      , T._verbosity         = T.Default
+      , T._verbosity         = T.Debug -- TODO: Change back to Default for production
       , T._bootstrapServers  = []
       }
 
