@@ -15,11 +15,14 @@ module Server (
       startServer
 ) where
 
+import           Control.Concurrent
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
+import           Control.Applicative
 import           Data.Functor
+import           Data.Maybe
 import           Network
 import           System.IO
 import           System.Random
@@ -48,16 +51,27 @@ serverLoop :: Socket
            -> Environment
            -> IO ()
 serverLoop socket env = forever $ do
-
-      -- NB: h is closed by the worker, bracketing here would close it
-      --     immediately after forking
       (h, host, port) <- accept socket
       let fromNode = From $ Node host port
       atomically . toIO env Debug . putStrLn $
             "New connection from " ++ show fromNode
-      void . async $ worker env h fromNode
-      -- TODO: orchestrate
+      thread <- async $ worker env h fromNode `finally` hClose h
+      async $ workerWatcher env h thread
 
+
+
+-- | Cancels the 'Async' in case the handle closes. Safety net in case a worker
+--   goes down dirty.
+workerWatcher :: Environment -> Handle -> Async a -> IO ()
+workerWatcher env h a = whileM isContinue $ do
+      threadDelay (_longTickRate $ _config env)
+      isRunning <- isNothing <$> poll a
+      if isRunning
+            then do open <- hIsOpen h
+                    if not open
+                          then cancel a >> return Terminate
+                          else return Continue
+            else return Terminate
 
 
 
@@ -69,7 +83,7 @@ worker :: Environment
        -> Handle      -- ^ Incoming connection handle
        -> From        -- ^ Incoming connection address
        -> IO ()
-worker env h from = (`finally` hClose h) . whileM isContinue $ do
+worker env h from = whileM isContinue $ do
 
       -- TODO: Ignore signals sent by nodes not registered as upstream.
       --       Open issues:
