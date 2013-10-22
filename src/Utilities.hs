@@ -65,27 +65,24 @@ isContinue _        = False
 --   Inverse of 'send'.
 --
 --   **Note:** receiving limits individual incoming requests with a hard cutoff,
---   currently Int64 bytes.
+--   currently (maxBound :: Int64) bytes.
 receive' :: Binary a => Handle -> IO a
 receive' h = do
 
       -- TODO: Add timeout to prevent Slowloris
 
-      let -- Convert Int64 to Int. Since the messages are (hopefully) shorter
-          -- than maxBound::Int, this should not be a problem.
-          -- TODO: Ensure the above
-          int64toInt = fromIntegral :: Int64 -> Int
-          -- Size of an encoded Int64 in bytes
-          int64Size :: Int
-          int64Size = int64toInt . BS.length $ encode (maxBound :: Int64)
-
       -- Read message header = length of the incoming signal
-      mLength <- int64toInt . decode <$> BS.hGet h int64Size
+      let decodeToInt = (fromIntegral :: Int64 -> Int) . decode
+      mLength <- decodeToInt <$> BS.hGet h int64Size
 
       -- Read the previously determined amount of data
       decode <$> BS.hGet h mLength
 
       -- TODO: Handle decoding errors (Maybe?)
+
+-- | Size of an encoded Int64 in bytes.
+int64Size :: Int
+int64Size = fromIntegral . BS.length $ encode (maxBound :: Int64)
 
 -- | Sends a Signal/ServerResponse, encoded as Binary with a size header, to a
 --   Handle. Inverse of 'receive'.
