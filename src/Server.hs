@@ -484,6 +484,8 @@ sendHandshakeRequest env target = do
 -- | Handles an incoming handshake, i.e. a remote node wants to add this node
 --   as its downstream neighbour.
 --
+--   Counterpart of 'startHandshakeH'.
+--
 --   The procedure is as follows:
 --
 --   1. Check whether there is space for another upstream neighbour; if yes,
@@ -519,18 +521,34 @@ handshakeH env h from = do
 
 
 
+-- | Initiates a handshake with a remote node, with the purpose of adding it as
+--   a downstream neighbour.
+--
+--   Counterpart of 'handshakeH'.
+--
+--   The procedure is as follows:
+--
+--   1. Open a connection to the new node and send it the 'Handshake' signal.
+--   2. When the answer is 'OK', attempt to launch a new client. If not, close
+--      the connection and stop.
+--   3. With its 'OK', the downstream node stated that it has space and reserved
+--      a slot for the new connection. Therefore, a new client can be spawned,
+--      but will only done so if this node has room for it, and the downstream
+--      neighbour is not yet known.
+--   4. Spawn a new client with the connection just opened.
 startHandshakeH :: Environment
-                -> To
+                -> To -- ^ Node to add
                 -> IO ServerResponse
 startHandshakeH env to = bracketOnError acquire release action `catch` handler
       where acquire = do
                   h <- connectToNode to
                   result <- request h (Special Handshake) >>= \case
-                        OK    -> launchClient h
+                        OK    -> tryLaunchClient h
                         _else -> return Error
                   return (h, result)
             release (h, _)    = hClose h >> return Error
             action (_, OK)    = return OK -- Client will close the handle when
+                                          -- it terminates in this case
             action (h, Error) = hClose h >> return Error
 
             handler (SomeException e) = do yell 41 ">>>"
@@ -539,7 +557,7 @@ startHandshakeH env to = bracketOnError acquire release action `catch` handler
                                            return Error
 
             -- Prepare the system to add a new client
-            launchClient h = do
+            tryLaunchClient h = do
                   timestamp <- makeTimestamp
                   stsc      <- newTBQueueIO (_maxChanSize $ _config env)
                   thread    <- async $ newClient env h to stsc

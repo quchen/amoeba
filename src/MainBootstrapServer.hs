@@ -1,3 +1,10 @@
+-- | Starts a bootstrap server, which is the entry point for new nodes into the
+--   network.
+--
+--   The configuration is set like an ordinary node. The server port is what
+--   will become the bootstrap server's port, and the rest of the configuration
+--   is passed over to the node pool, which will open nodes at successive ports.
+
 {-# LANGUAGE LambdaCase #-}
 
 module Main where

@@ -6,12 +6,6 @@
 --   node pool to always keep up a certain amount of trusted nodes in the
 --   network that it can use to help other nodes make an initial connection.
 
--- TODO: Implement special NodePool signals that allow changing its
---       configuration. In particular, during a bootstrap launch, it may be
---       beneficial to kill some of the initial nodes, so that the new
---       ones connect to the entire network and not predominantly to the
---       bootstrap-related nodes.
-
 module NodePool (startNodePool) where
 
 
