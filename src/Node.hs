@@ -72,6 +72,7 @@ startNode ldc config = do
                       , outputThread $ _io env
                       , clientPool env
                       ]
+                      wait
 
 
 

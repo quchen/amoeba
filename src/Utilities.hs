@@ -173,17 +173,27 @@ sealP (PChan _ _ s) = s
 --   one. Useful to fork many threads that should all be terminated if one of
 --   them fails.
 --
+--   Runs the waiting function even if the action list is empty.
+--
 -- @
---   asyncMany a [b, c]
+--   asyncMany [a, b, c] wait'
 --   =
 --   withAsync a $ \thread ->
 --    withAsync b $ \_ ->
 --     withAsync c $ \_ ->
---      wait thread
+--      wait' thread
+--
+--   asyncMany [] wait'
+--   =
+--   withAsync (return ()) wait'
 -- @
-asyncMany :: [IO ()] -> IO ()
-asyncMany [] = return ()
-asyncMany (x:xs) = withAsync x $ \t -> asyncMany' xs >> wait t
+asyncMany :: [IO ()] -- ^ Actions to run asynchronously
+          -> (Async () -> IO ()) -- ^ "Waiting action" to apply to the first
+                                 --   asynchronous action of the list in the
+                                 --   end. Typically involves 'wait'.
+          -> IO ()
+asyncMany []     wait' = withAsync (return ()) wait'
+asyncMany (x:xs) wait' = withAsync x $ \t -> asyncMany' xs >> wait' t
       where asyncMany' = foldr asyncForget (return ())
             -- Fork a thread and "forget" about it. Safety comes from the
             -- outermost wrapper: if it fails, the whole hierarchy collapses.
