@@ -4,6 +4,10 @@
 -- TODO: Print status periodically like in the pre-pipes version (i.e. current
 --       neighbours in both directions)
 -- TODO: Refactor the housekeeping part, it's fugly
+-- FIXME: If the db sizes don't change and the transaction in 'balanceEdges'
+--        is retrying, the function will lock. This could be avoided by having
+--        a periodically changed nonsense TVar in the transaction, but that
+--        seems a bit hacky. Are there better solutions?
 
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RankNTypes #-}
@@ -69,7 +73,7 @@ fillPool env =
 -- | Watch the database of upstream and downstream neighbours. If there is a
 --   deficit in one of them, generate the 'Direction' of the new edge to
 --   construct.
-balanceEdges :: Environment -> Producer' Direction IO ()
+balanceEdges :: Environment -> Producer' Direction IO r
 balanceEdges env =
 
       forever $ do
