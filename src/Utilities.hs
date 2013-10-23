@@ -7,6 +7,7 @@ module Utilities (
       , catchAll
 
       -- * Concurrency
+      , asyncMany
       , toIO
 
       -- * Sending/receiving network signals
@@ -168,3 +169,22 @@ sealP (PChan _ _ s) = s
 
 
 
+-- | Fork a number of IO actions using 'withAsync', and wait for the initial
+--   one. Useful to fork many threads that should all be terminated if one of
+--   them fails.
+--
+-- @
+--   asyncMany a [b, c]
+--   =
+--   withAsync a $ \thread ->
+--    withAsync b $ \_ ->
+--     withAsync c $ \_ ->
+--      wait thread
+-- @
+asyncMany :: [IO ()] -> IO ()
+asyncMany [] = return ()
+asyncMany (x:xs) = withAsync x $ \t -> asyncMany' xs >> wait t
+      where asyncMany' = foldr asyncForget (return ())
+            -- Fork a thread and "forget" about it. Safety comes from the
+            -- outermost wrapper: if it fails, the whole hierarchy collapses.
+            asyncForget x xs = withAsync x $ \_ -> xs

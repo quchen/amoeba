@@ -66,13 +66,12 @@ startNode ldc config = do
 
       let listen' node = P.listen (P.Host $ _host node)
                                   (show   $ _port node)
-
       listen' self $ \(socket, serverAddr) -> do
             yell 32 $ "Server listening on " ++ show serverAddr
-            withAsync (server env socket) $ \server  ->
-             withAsync (outputThread $ _io env) $ \_output ->
-              withAsync (clientPool env) $ \_cPool  ->
-               wait server
+            asyncMany [ server env socket
+                      , outputThread $ _io env
+                      , clientPool env
+                      ]
 
 
 

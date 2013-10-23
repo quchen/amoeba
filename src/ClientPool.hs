@@ -29,9 +29,9 @@ import Utilities
 --
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
-clientPool env = withAsync (clientPoolLoop env) $ \cPool  ->
-                  withAsync (housekeeping env)   $ \_hkeep ->
-                   wait cPool
+clientPool env = asyncMany [ clientPoolLoop env
+                           , housekeeping env
+                           ]
 
 
 
