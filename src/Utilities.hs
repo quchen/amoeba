@@ -2,10 +2,11 @@
 
 module Utilities (
         makeTimestamp
-      , connectToNode
       , whileM
       , isContinue
       , catchAll
+
+      -- * Concurrency
       , toIO
 
       -- * Sending/receiving network signals
@@ -29,6 +30,7 @@ module Utilities (
 ) where
 
 import           Control.Concurrent.STM
+import           Control.Concurrent.Async
 import           Control.Exception (catch, SomeException)
 import           Control.Monad
 import           Control.Applicative
@@ -127,11 +129,7 @@ toIO env verbosity = when p . writeTBQueue (_io env)
       where p = verbosity >= _verbosity (_config env)
 
 
-
--- | Like Network.connectTo, but extracts the connection data from a @Node@
---   object.
-connectToNode :: To -> IO Handle
-connectToNode (To n) = connectTo (_host n) (PortNumber (_port n))
+-- connectToNode REMOVED in pipes-rewrite
 
 
 
@@ -167,3 +165,6 @@ toOut (PChan o _ _) = P.toOutput o
 -- | 'PChan'-based version of 'P.seal\''
 sealP :: PChan a -> STM ()
 sealP (PChan _ _ s) = s
+
+
+

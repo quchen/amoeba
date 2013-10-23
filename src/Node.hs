@@ -33,9 +33,10 @@ import           Control.Exception
 import           Control.Monad
 import           Data.Maybe (fromMaybe)
 import qualified Data.Map as Map
-import           Network
 import qualified Data.Set as Set
+
 import qualified Pipes.Concurrent as P
+import qualified Pipes.Network.TCP as P
 
 --import Bootstrap
 --import ClientPool
@@ -43,15 +44,18 @@ import qualified Pipes.Concurrent as P
 import Types
 import Utilities
 
-{- REFACTOR FOR PIPES
 
 -- | Node main function. Bootstraps, launches server loop, client pool,
 --   IO thread.
-startNode :: Maybe (TBQueue NormalSignal) -- ^ Local direct connection (LDC)
-          -> Config       -- ^ Configuration, most likely given by command line
-                          --   parameters
-          -> IO (Async ()) -- ^ Async of node thread
+startNode :: Maybe (PChan NormalSignal) -- ^ Local direct connection (LDC)
+          -> Config -- ^ Configuration, most likely given by command line
+                    --   parameters
+          -> IO ()
 startNode ldc config = do
+
+      let bootstrap  = undefined -- TODO
+          server     = undefined -- TODO. New version of Server.startServer.
+          clientPool = undefined
 
       let port = _serverPort config
       putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
@@ -60,19 +64,15 @@ startNode ldc config = do
       let self = Node host port
       env <- initEnvironment self ldc config
 
-      let initialize = listenOn $ PortNumber port
-          release = sClose
-          -- NB: When the server finishes, the other asyncs are canceled by
-          --     withAsync.
-          forkServices = bracket initialize release $ \socket ->
-                          withAsync (startServer socket env) $ \server  ->
-                           withAsync (outputThread $ _io env) $ \_output ->
-                            withAsync (clientPool env) $ \_cPool  ->
-                             wait server
-      async forkServices
+      let listen' node = P.listen (P.Host $ _host node)
+                                  (show   $ _port node)
 
--}
-
+      listen' self $ \(socket, serverAddr) -> do
+            yell 32 $ "Server listening on " ++ show serverAddr
+            withAsync (server env socket) $ \server  ->
+             withAsync (outputThread $ _io env) $ \_output ->
+              withAsync (clientPool env) $ \_cPool  ->
+               wait server
 
 
 

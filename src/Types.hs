@@ -13,7 +13,9 @@ import Data.Map
 import Network
 import GHC.Generics (Generic)
 import Data.Functor
+
 import qualified Pipes.Concurrent as P
+import qualified Pipes.Network.TCP as P
 
 import Data.Binary
 
@@ -75,7 +77,7 @@ data Client = Client { _clientTimestamp :: Timestamp
 -- | Configuration parameters accessible before anything goes online.
 data Config = Config {
 
-        _serverPort     :: PortNumber -- ^ Port to open the server socket on
+        _serverPort     :: Int        -- ^ Port to open the server socket on
 
       , _maxNeighbours  :: Word       -- ^ The maximum number of neighbours. No
                                       --   new ones will be accepted once it's
@@ -124,9 +126,9 @@ data Config = Config {
 
 -- | Uniquely identifies a node in a network by providing the address of its
 --   server.
-data Node = Node { _host :: HostName
-                 , _port :: PortNumber
-                 }
+data Node = Node { _host :: String -- ^ Hostname
+                 , _port :: Int    -- ^ Port
+                 } -- See Network.Simple.TCP for docs
                  deriving (Eq, Ord, Generic)
 
 instance Show Node where
