@@ -1,13 +1,20 @@
 -- | The client pool keeps track of running clients, requests new connections
 --   when there's a deficit, and cleans up terminated ones.
 
+-- TODO: Print status periodically like in the pre-pipes version (i.e. current
+--       neighbours in both directions)
+-- TODO: Refactor the housekeeping part, it's fugly
+
+{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE RankNTypes #-}
+
 module ClientPool (
           clientPool
         , isRoomIn
 ) where
 
+import           Control.Concurrent (threadDelay)
 import           Control.Applicative
-import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
 import qualified Data.Map as Map
@@ -19,6 +26,9 @@ import           Text.Printf
 import           Data.List (sort)
 import qualified Data.Set as Set
 
+import Pipes
+import qualified Pipes.Prelude as P
+
 
 import Types
 import Utilities
@@ -29,81 +39,60 @@ import Utilities
 --
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
-clientPool env = asyncMany [ clientPoolLoop env
-                           , housekeeping env
-                           ]
+clientPool env = withAsync (housekeeping env) $ \_ -> fillPool env
+
+
+-- | Watches the count of nodes in the database, and issues 'EdgeRequest's
+--   to fill the ranks if necessary.
+fillPool :: Environment -> IO ()
+fillPool env =
+
+      runEffect $ balanceEdges env
+              >-> P.map edgeRequest
+              >-> dispatch
+
+      where
+            -- Send signal to the single worker channel
+            dispatch :: Consumer' NormalSignal IO ()
+            dispatch = toOut (_st1c env)
+
+            -- Create an 'EdgeRequest' from a 'Direction'
+            edgeRequest :: Direction
+                        -> NormalSignal
+            edgeRequest dir = EdgeRequest (To $ _self env) $
+                              EdgeData dir $
+                              Left $ -- Left = "bounce at least n times"
+                              (_bounces._config) env
 
 
 
+-- | Watch the database of upstream and downstream neighbours. If there is a
+--   deficit in one of them, generate the 'Direction' of the new edge to
+--   construct.
+balanceEdges :: Environment -> Producer' Direction IO ()
+balanceEdges env =
 
--- | The client pool makes sure the client count isn't too low. It does this by
---   periodically checking the current values, and issuing announces/requests if
---   necessary. The actual client threads will be spawned by the server when it
---   receives an according acceptance signal.
---
---   The goal is to know and be known by the minimum amount of nodes specified
---   by the configuration.
-clientPoolLoop :: Environment -> IO ()
-clientPoolLoop env = forever $ do
+      forever $ do
 
-      -- Print upstream/downstream node count
-      let getPort (To node) = _port node
-      ds <- atomically $ Map.keys <$> readTVar (_downstream env)
-      let dsPrint = printf "    Downstream: [%d] %s\n"
-                           (length ds)
-                           (show . sort $ map getPort ds)
-      us <- atomically $ Map.keys <$> readTVar (_upstream env)
-      let usPrint = printf "    Upstream:   [%d]\n"
-                           (length us)
-      let nodeNumber :: Int
-          nodeNumber = (fromIntegral . _serverPort $ _config env) `rem` 10
-      atomically . toIO env Debug $ do
-            putStrLn $ "Node " ++ show nodeNumber ++ " status: "
-            dsPrint
-            usPrint
+            (yield =<<) . lift . atomically $ do
 
-      -- How many nodes does the current node know, how many is it known by?
-      let dbSize db = fromIntegral . Map.size <$> readTVar (db env)
-                        -- ^ fromIntegral :: Int -> Word
-      (numDownstream, numUpstream) <- atomically $
-            liftA2 (,) (dbSize _downstream) (dbSize _upstream)
+                  usnCount <- dbSize _upstream
+                  dsnCount <- dbSize _downstream
 
-      let minNeighbours = _minNeighbours (_config env)
+                  if | dsnCount < minNeighbours -> deficitAction Outgoing
+                     | usnCount < minNeighbours -> deficitAction Incoming
+                     | otherwise                -> retry
 
-      -- Enough downstream neighbours?
-      when (numDownstream < minNeighbours) $ do  -- Send out requests
-            let deficit = minNeighbours - numDownstream
-            atomically . toIO env Debug $
-                 printf "\ESC[32mDeficit of %d outgoing connections detected\ESC[0m\n" deficit
-            forM_ [1..deficit] $ \_ -> sendEdgeRequest env Outgoing
+      where
 
-      -- Enough upstream neighbours?
-      when (numUpstream < minNeighbours) $ do
-            -- Send out announces
-            let deficit = minNeighbours - numUpstream
-            atomically . toIO env Debug $
-                 printf "\ESC[32mDeficit of %d incoming connections detected\ESC[0m\n" deficit
-            forM_ [1..deficit] $ \_ -> sendEdgeRequest env Incoming
+            minNeighbours = _minNeighbours (_config env)
 
-      threadDelay $ _mediumTickRate (_config env)
+            dbSize db = fromIntegral . Map.size <$> readTVar (db env)
 
-
-
-
-
--- | Sends out a request for either an incoming  or outgoing edge to the
---   network.
-sendEdgeRequest :: Environment
-                -> Direction
-                -> IO ()
-sendEdgeRequest env dir = atomically $
-                          writeTBQueue (_st1c env) $
-                          EdgeRequest (To $ _self env) $
-                          EdgeData dir $
-                          Left $ -- Left = hard bounces, i.e. "at least n times"
-                          (_bounces._config) env
-
-
+            deficitAction dir = do
+                  toIO env Debug $
+                        printf "Deficit of %s edges detected" (show dir)
+                  return dir
 
 
 
