@@ -46,7 +46,7 @@ import Utilities
 {- REFACTOR FOR PIPES
 
 -- | Node main function. Bootstraps, launches server loop, client pool,
---   terminal IO thread.
+--   IO thread.
 startNode :: Maybe (TBQueue NormalSignal) -- ^ Local direct connection (LDC)
           -> Config       -- ^ Configuration, most likely given by command line
                           --   parameters
@@ -87,13 +87,14 @@ initEnvironment node ldc config = Environment
       <*> newTVarIO Map.empty -- Nodes known by
       <*> spawnP buffer       -- Channel to all clients
       <*> spawnP buffer       -- Channel to one client
-      <*> spawnP buffer       -- Channel to the IO thread
+      <*> newTBQueueIO size   -- Channel to the IO thread
       <*> newTVarIO Set.empty -- Previously handled queries
       <*> pure node           -- Own server's address
       <*> pure ldc            -- (Maybe) local direct connection
       <*> pure config
 
-      where buffer = P.Bounded (_maxChanSize config)
+      where size = _maxChanSize config
+            buffer = P.Bounded size
 
 
 

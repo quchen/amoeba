@@ -45,9 +45,9 @@ data Environment = Environment {
 
       , _st1c       :: PChan NormalSignal -- ^ Send message to one client
 
-      , _io         :: PChan (IO ()) -- ^ Send action to the output thread
-                                     --   (so that concurrent prints don't
-                                     --   get interleaved)
+      , _io         :: TBQueue (IO ()) -- ^ Send action to the output thread
+                                       --   (so that concurrent prints don't
+                                       --   get interleaved)
 
       , _handledFloods :: TVar (Set (Timestamp, FloodSignal))
                                        -- ^ Timestamped signals that have

@@ -6,6 +6,7 @@ module Utilities (
       , whileM
       , isContinue
       , catchAll
+      , toIO
 
       -- * Sending/receiving network signals
       , send'
@@ -19,7 +20,6 @@ module Utilities (
 
       -- * Debugging
       , yell
-      , assertNotFull
 
       -- * Pipe-based communication channels
       , spawnP
@@ -118,6 +118,13 @@ send = send'
 
 request :: Handle -> Signal -> IO ServerResponse
 request = request'
+
+
+
+-- | Sends an IO action, depending on the verbosity level.
+toIO :: Environment -> Verbosity -> IO () -> STM ()
+toIO env verbosity = when p . writeTBQueue (_io env)
+      where p = verbosity >= _verbosity (_config env)
 
 
 
