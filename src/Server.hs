@@ -85,12 +85,6 @@ worker :: Environment
        -> IO ()
 worker env h from = whileM isContinue $ do
 
-      -- TODO: Ignore signals sent by nodes not registered as upstream.
-      --       Open issues:
-      --         - Do this here or in the server loop?
-      --         - How do the ignored nodes find out they're being ignored?
-      --             --> Solution: timeouts
-
       -- TODO: Housekeeping to delete already handled messages
 
       -- TODO: Error handling: What to do if rubbish data comes in?

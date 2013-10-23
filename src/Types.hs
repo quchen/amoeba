@@ -13,6 +13,7 @@ import Data.Map
 import Network
 import GHC.Generics (Generic)
 import Data.Functor
+import qualified Pipes.Concurrent as P
 
 import Data.Binary
 
@@ -31,7 +32,7 @@ data Environment = Environment {
                                        --   and when they have last been sent
                                        --   a signal
 
-      , _upstream    :: TVar (Map From Timestamp)
+      , _upstream   :: TVar (Map From Timestamp)
                                        -- ^ Nodes the current node knows it's
                                        --   a downstream neighbour of, or
                                        --   equivalently the set of upstream
@@ -40,15 +41,13 @@ data Environment = Environment {
                                        --   track of when the last signal was
                                        --   received.
 
-      , _stc        :: TChan NormalSignal -- ^ Send messages to all clients.
-                                          --   TChan instead of TBQueue so it
-                                          --   can be duped and used as a
-                                          --   broadcast channel.
+      , _stc        :: PChan NormalSignal -- ^ Send messages to all clients.
 
-      , _st1c       :: TBQueue NormalSignal  -- ^ Send message to one client
+      , _st1c       :: PChan NormalSignal -- ^ Send message to one client
 
-      , _io         :: TBQueue (IO ()) -- ^ Send action to the dedicated local
-                                       --   IO thread
+      , _io         :: PChan (IO ()) -- ^ Send action to the output thread
+                                     --   (so that concurrent prints don't
+                                     --   get interleaved)
 
       , _handledFloods :: TVar (Set (Timestamp, FloodSignal))
                                        -- ^ Timestamped signals that have
@@ -58,7 +57,7 @@ data Environment = Environment {
 
       , _self       :: Node            -- ^ Own hostname/port
 
-      , _ldc        :: Maybe (TBQueue NormalSignal)
+      , _ldc        :: Maybe (PChan NormalSignal)
                                        -- ^ Local direct connection (LDC) to a
                                        --   node. Used by NodePool.
 
@@ -354,3 +353,11 @@ data NodeRelationship = IsSelf
                       | IsDownstreamNeighbour
                       | IsUnrelated
                    -- | IsUpstreamNeighbour -- Currently unused
+
+-- | Pipe-based concurrent chan. Unifies read/write ends and sealing operation.
+--   Used as a better wrapper around them than the default @(,,)@ returned from
+--   'P.spawn\''.
+data PChan a = PChan { _pOutput :: P.Output a
+                     , _pInput  :: P.Input  a
+                     , _pSeal   :: STM ()
+                     }

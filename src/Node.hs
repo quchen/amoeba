@@ -21,8 +21,8 @@
 
 
 
-
-module Node (startNode) where
+-- TODO export list
+module Node where
 
 
 
@@ -35,14 +35,15 @@ import           Data.Maybe (fromMaybe)
 import qualified Data.Map as Map
 import           Network
 import qualified Data.Set as Set
+import qualified Pipes.Concurrent as P
 
-import Bootstrap
-import ClientPool
-import Server
+--import Bootstrap
+--import ClientPool
+--import Server
 import Types
 import Utilities
 
-
+{- REFACTOR FOR PIPES
 
 -- | Node main function. Bootstraps, launches server loop, client pool,
 --   terminal IO thread.
@@ -70,29 +71,29 @@ startNode ldc config = do
                              wait server
       async forkServices
 
-
+-}
 
 
 
 
 -- | Initializes node environment by setting up the communication channels etc.
 initEnvironment :: Node
-                -> Maybe (TBQueue NormalSignal)
+                -> Maybe (PChan NormalSignal)
                 -> Config
                 -> IO Environment
 initEnvironment node ldc config = Environment
 
       <$> newTVarIO Map.empty -- Known nodes
       <*> newTVarIO Map.empty -- Nodes known by
-      <*> newBroadcastTChanIO -- Channel to all clients
-      <*> newTBQueueIO size   -- Channel to one client
-      <*> newTBQueueIO size   -- Channel to the IO thread
+      <*> spawnP buffer       -- Channel to all clients
+      <*> spawnP buffer       -- Channel to one client
+      <*> spawnP buffer       -- Channel to the IO thread
       <*> newTVarIO Set.empty -- Previously handled queries
       <*> pure node           -- Own server's address
       <*> pure ldc            -- (Maybe) local direct connection
       <*> pure config
 
-      where size = _maxChanSize config
+      where buffer = P.Bounded (_maxChanSize config)
 
 
 

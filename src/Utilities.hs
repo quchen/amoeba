@@ -1,6 +1,7 @@
+{-# LANGUAGE RankNTypes #-}
+
 module Utilities (
         makeTimestamp
-      , toIO
       , connectToNode
       , whileM
       , isContinue
@@ -19,6 +20,12 @@ module Utilities (
       -- * Debugging
       , yell
       , assertNotFull
+
+      -- * Pipe-based communication channels
+      , spawnP
+      , fromIn
+      , toOut
+      , sealP
 ) where
 
 import           Control.Concurrent.STM
@@ -32,6 +39,8 @@ import           Data.Time.Clock.POSIX (getPOSIXTime)
 import           Network (connectTo, PortID(PortNumber))
 import qualified Data.ByteString.Lazy as BS
 import           System.IO
+import qualified Pipes as P
+import qualified Pipes.Concurrent as P
 
 import Data.Binary
 
@@ -112,13 +121,6 @@ request = request'
 
 
 
--- | Sends an IO action, depending on the verbosity level.
-toIO :: Environment -> Verbosity -> IO () -> STM ()
-toIO env verbosity = when p . writeTBQueue (_io env)
-      where p = verbosity >= _verbosity (_config env)
-
-
-
 -- | Like Network.connectTo, but extracts the connection data from a @Node@
 --   object.
 connectToNode :: To -> IO Handle
@@ -137,11 +139,24 @@ catchAll x = void x `catch` handler
 yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ "\ESC[0m"
 
 
--- | Check whether a 'TBQueue' is full. Used for debugging. DEBUG
-isFullTBQueue :: TBQueue a -> STM Bool
-isFullTBQueue q = (unGetTBQueue q undefined >> readTBQueue q >> pure False) <|> pure True
+-- TODO: How to check whether a PChan is full?
 
-assertNotFull :: TBQueue a -> STM ()
-assertNotFull q = do
-      full <- isFullTBQueue q
-      assert (not full) $ return ()
+
+
+-- | Identical to 'P.spawn\'', but uses the typesfe 'PChan' type instead of
+--   '(,,)'.
+spawnP :: P.Buffer a -> IO (PChan a)
+spawnP buffer = toPChan <$> P.spawn' buffer
+      where toPChan (output, input, seal) = PChan output input seal
+
+-- | 'PChan'-based version of 'P.fromInput'
+fromIn :: P.MonadIO m => PChan a -> P.Producer' a m ()
+fromIn (PChan _ i _) = P.fromInput i
+
+-- | 'PChan'-based version of 'P.toOutput'
+toOut :: P.MonadIO m => PChan a -> P.Consumer' a m ()
+toOut (PChan o _ _) = P.toOutput o
+
+-- | 'PChan'-based version of 'P.seal\''
+sealP :: PChan a -> STM ()
+sealP (PChan _ _ s) = s
