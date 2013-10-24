@@ -24,10 +24,7 @@ module Utilities (
       , yell
 
       -- * Pipe-based communication channels
-      , spawnP
-      , fromIn
-      , toOut
-      , seal
+      , spawn
 ) where
 
 import           Control.Concurrent.STM
@@ -55,8 +52,8 @@ import Types
 
 
 -- | Creates a timestamp, which is a Double representation of the Unix time.
-makeTimestamp :: IO Timestamp
-makeTimestamp = Timestamp . realToFrac <$> getPOSIXTime
+makeTimestamp :: (MonadIO m) => m Timestamp
+makeTimestamp = liftIO $ Timestamp . realToFrac <$> getPOSIXTime
 --   Since Haskell's Time library is borderline retarded, this seems to be the
 --   cleanest way to get something that is easily an instance of Binary and
 --   comparable to seconds.
@@ -107,30 +104,26 @@ request' s x =
 
 
 
--- | Specialized alias of 'receive\''
+-- | Specialized alias of 'receive\'' that sends only 'Signal's.
 receive :: (MonadIO m)
         => P.Socket
         -> Producer Signal m ()
 receive = receive'
 
--- | Specialized alias of 'send\''
+-- | Specialized alias of 'send\'' that receives only 'Signal's.
 send :: (MonadIO m)
      => P.Socket
      -> Signal -- ^ Data to send
      -> Effect m ()
 send = send'
 
--- | Specialized alias of 'request\''
+-- | Specialized alias of 'request\''. Types match what a typical communication
+--   of a client with a downstream neighbour would involve.
 request :: (MonadIO m)
         => P.Socket
         -> Signal
         -> m (Maybe ServerResponse)
 request = request'
-
-{-# WARNING receive, send, request
-      "Not sure how sensible the types for this one are, maybe a
-      different specialization would be useful"
-      #-}
 
 
 
@@ -158,21 +151,10 @@ yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ 
 
 -- | Identical to 'P.spawn\'', but uses the typesfe 'PChan' type instead of
 --   '(,,)'.
-spawnP :: P.Buffer a -> IO (PChan a)
-spawnP buffer = toPChan <$> P.spawn' buffer
+spawn :: P.Buffer a -> IO (PChan a)
+spawn buffer = toPChan <$> P.spawn' buffer
       where toPChan (output, input, seal) = PChan output input seal
 
--- | 'PChan'-based version of 'P.fromInput'
-fromIn :: MonadIO m => PChan a -> Producer' a m ()
-fromIn (PChan _ i _) = P.fromInput i
-
--- | 'PChan'-based version of 'P.toOutput'
-toOut :: MonadIO m => PChan a -> Consumer' a m ()
-toOut (PChan o _ _) = P.toOutput o
-
--- | 'PChan'-based version of 'P.seal\''
-seal :: PChan a -> STM ()
-seal (PChan _ _ s) = s
 
 
 
