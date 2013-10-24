@@ -40,10 +40,13 @@ import           Data.Functor
 import           Data.Int
 import           Data.Time.Clock.POSIX (getPOSIXTime)
 import           Network (connectTo, PortID(PortNumber))
-import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString as BS
 import           System.IO
-import qualified Pipes as P
+import           Pipes
+import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
+import qualified Pipes.Network.TCP as P
+import qualified Pipes.Binary as P
 
 import Data.Binary
 
@@ -73,54 +76,61 @@ isContinue _        = False
 
 
 
--- | Receives a Signal, encoded as Binary with a size header, from a Handle.
---   Inverse of 'send'.
---
---   **Note:** receiving limits individual incoming requests with a hard cutoff,
---   currently (maxBound :: Int64) bytes.
-receive' :: Binary a => Handle -> IO a
-receive' h = do
-
-      -- TODO: Add timeout to prevent Slowloris
-
-      -- Read message header = length of the incoming signal
-      let decodeToInt = (fromIntegral :: Int64 -> Int) . decode
-      mLength <- decodeToInt <$> BS.hGet h int64Size
-
-      -- Read the previously determined amount of data
-      decode <$> BS.hGet h mLength
-
-      -- TODO: Handle decoding errors (Maybe?)
-
--- | Size of an encoded Int64 in bytes.
-int64Size :: Int
-int64Size = fromIntegral . BS.length $ encode (maxBound :: Int64)
-
--- | Sends a Signal/ServerResponse, encoded as Binary with a size header, to a
---   Handle. Inverse of 'receive'.
-send' :: Binary a => Handle -> a -> IO ()
-send' h message = do
-      let mSerialized = encode message
-          mLength = encode (BS.length mSerialized :: Int64)
-      BS.hPut h mLength
-      BS.hPut h mSerialized
-      hFlush h
-
--- | Sends out a signal and waits for an answer. Combines 'send\'' and
---   'receive\'' in order to avoid unhandled server responses.
-request' :: (Binary a, Binary b) => Handle -> a -> IO b
-request' h message = send' h message >> receive' h
+-- | Continuously receive and decode data.
+receive' :: (MonadIO m, Binary a)
+         => P.Socket
+         -> Producer a m ()
+receive' s = void (P.decodeMany (P.fromSocket s 4096)) >-> dataOnly
+      where dataOnly = P.map snd
 
 
 
-receive :: Handle -> IO Signal
+-- | Encode and send a single piece of data.
+send' :: (MonadIO m, Binary a)
+      => P.Socket
+      -> a -- ^ Data to send
+      -> Effect m ()
+send' s x= P.encode x >-> P.toSocket s
+
+
+
+-- | Encode and send a single piece of data, and receive and decode the
+--   response.
+request' :: (MonadIO m, Binary a, Binary b)
+         => P.Socket
+         -> a
+         -> m (Maybe b)
+request' s x =
+      do runEffect (send' s x)
+         P.head (receive' s)
+
+
+
+
+-- | Specialized alias of 'receive\''
+receive :: (MonadIO m)
+        => P.Socket
+        -> Producer Signal m ()
 receive = receive'
 
-send :: Handle -> Signal -> IO ()
+-- | Specialized alias of 'send\''
+send :: (MonadIO m)
+     => P.Socket
+     -> Signal -- ^ Data to send
+     -> Effect m ()
 send = send'
 
-request :: Handle -> Signal -> IO ServerResponse
+-- | Specialized alias of 'request\''
+request :: (MonadIO m)
+        => P.Socket
+        -> Signal
+        -> m (Maybe ServerResponse)
 request = request'
+
+{-# WARNING receive, send, request
+      "Not sure how sensible the types for this one are, maybe a
+      different specialization would be useful"
+      #-}
 
 
 
@@ -128,9 +138,6 @@ request = request'
 toIO :: Environment -> Verbosity -> IO () -> STM ()
 toIO env verbosity = when p . writeTBQueue (_io env)
       where p = verbosity >= _verbosity (_config env)
-
-
--- connectToNode REMOVED in pipes-rewrite
 
 
 
@@ -156,11 +163,11 @@ spawnP buffer = toPChan <$> P.spawn' buffer
       where toPChan (output, input, seal) = PChan output input seal
 
 -- | 'PChan'-based version of 'P.fromInput'
-fromIn :: P.MonadIO m => PChan a -> P.Producer' a m ()
+fromIn :: MonadIO m => PChan a -> Producer' a m ()
 fromIn (PChan _ i _) = P.fromInput i
 
 -- | 'PChan'-based version of 'P.toOutput'
-toOut :: P.MonadIO m => PChan a -> P.Consumer' a m ()
+toOut :: MonadIO m => PChan a -> Consumer' a m ()
 toOut (PChan o _ _) = P.toOutput o
 
 -- | 'PChan'-based version of 'P.seal\''
