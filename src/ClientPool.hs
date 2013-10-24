@@ -8,6 +8,7 @@
 --        is retrying, the function will lock. This could be avoided by having
 --        a periodically changed nonsense TVar in the transaction, but that
 --        seems a bit hacky. Are there better solutions?
+-- TODO: >-> is pull-based. Would push-based composition be more appropriate?
 
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RankNTypes #-}

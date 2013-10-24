@@ -27,7 +27,7 @@ module Utilities (
       , spawnP
       , fromIn
       , toOut
-      , sealP
+      , seal
 ) where
 
 import           Control.Concurrent.STM
@@ -164,8 +164,8 @@ toOut :: P.MonadIO m => PChan a -> P.Consumer' a m ()
 toOut (PChan o _ _) = P.toOutput o
 
 -- | 'PChan'-based version of 'P.seal\''
-sealP :: PChan a -> STM ()
-sealP (PChan _ _ s) = s
+seal :: PChan a -> STM ()
+seal (PChan _ _ s) = s
 
 
 
