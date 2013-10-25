@@ -124,7 +124,7 @@ Terminology
 
 - _foo: Accessor functions that don't do any computation otherwise
 - DSN:  Downstream node, i.e. a neighbouring node the current sends commands do.
-- LDC:  Local direct connection. Used by the node pool to send signals directly to its nodes.
+- LDC:  Local direct connection. Used by the node pool to send signals directly to its nodes instead of taking a detour over the network.
 - ST1C: Server to one (unspecified/arbitrary) client channel
 - STC:  Server to client channel
 - STSC: Server to specific client channel
