@@ -18,7 +18,7 @@ import Data.Either
 import Data.Typeable
 
 import Types
-import Utilities (request', connectToNode)
+import Utilities
 
 
 
@@ -39,7 +39,7 @@ bootstrap config port = do
       bNode <- getBootstrapServer
 
       result <- connectToNode bNode $ \(socket, _) -> do
-            request' socket (BootstrapRequest port) >>= \case
+            request socket (BootstrapRequest port) >>= \case
                   Just (YourHostIs host) -> return (Just host)
                   Just _ -> putStrLn "Bad bootstrap server response. Bug!" >> return Nothing
                   Nothing -> return Nothing
