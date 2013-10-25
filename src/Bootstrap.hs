@@ -11,10 +11,7 @@ module Bootstrap (
 
 
 import Control.Concurrent
-import Network
 import Control.Exception
-import System.IO
-import Data.Either
 import Data.Typeable
 import Control.Monad
 

@@ -18,11 +18,7 @@ import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
 import           Control.Applicative
-import           Data.Functor
 import           Data.IORef
-import           Data.Maybe
-import           Network
-import           System.IO
 import           System.Random
 import           Text.Printf
 import qualified Data.Map as Map
@@ -446,7 +442,7 @@ sendHandshakeRequest :: (MonadIO io, MonadCatch io)
                      -> To
                      -> io ()
 sendHandshakeRequest env to =
-      connectToNode to $ \(socket, addr) -> do
+      connectToNode to $ \(socket, _addr) -> do
             request socket signal >>= \case
                   Just OK -> return ()
                   _else   -> return ()
@@ -516,7 +512,7 @@ startHandshakeH :: (MonadIO io)
                 -> To -- ^ Node to add
                 -> io ServerResponse
 startHandshakeH env to = liftIO $
-      connectToNode to $ \(socket, addr) ->
+      connectToNode to $ \(socket, _addr) ->
             request socket (Special Handshake) >>= \case
                   Just OK -> tryLaunchClient socket
                   _else   -> return Error

@@ -12,17 +12,10 @@ module Client  (
 
 
 import Control.Concurrent.STM
-import Control.Concurrent.Async
-import Control.Exception
-import System.IO
-import System.Timeout
-import Data.Functor
 import Data.Monoid
-import Control.Monad
 import qualified Data.Map as Map
 
 import Pipes
-import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
 import Pipes.Network.TCP (Socket)
 
@@ -61,11 +54,12 @@ signalH env socket to = go
             go = do signal <- await
                     response <- request socket (Normal signal)
                     case response of
-                          Just OK     -> ok           env to >> go
-                          Just Error  -> genericError env    >> terminate
-                          Just Ignore -> ignore       env    >> terminate
-                          Just Denied -> denied       env    >> terminate
-                          Nothing     -> noResponse   env    >> terminate
+                          Just OK      -> ok           env to >> go
+                          Just Error   -> genericError env    >> terminate
+                          Just Ignore  -> ignore       env    >> terminate
+                          Just Denied  -> denied       env    >> terminate
+                          Just Illegal -> illegal      env    >> terminate
+                          Nothing      -> noResponse   env    >> terminate
 
 
 
@@ -82,6 +76,11 @@ ok env node = liftIO $ do
             Map.adjust updateTimestamp node
 
 
+errorPrint :: (MonadIO io)
+           => Environment
+           -> String
+           -> io ()
+errorPrint env = liftIO . atomically . toIO env Debug . putStrLn
 
 -- | A downstream node has received a signal from this node without having it
 --   in its list of upstream neighbours. A a result, it tells the issuing client
@@ -98,9 +97,7 @@ ok env node = liftIO $ do
 ignore :: (MonadIO io)
        => Environment
        -> io ()
-ignore env = liftIO $ do
-      atomically . toIO env Debug $
-            putStrLn "Server ignores this node, terminating client"
+ignore env = errorPrint env "Server ignores this node, terminating client"
 
 
 
@@ -108,9 +105,7 @@ ignore env = liftIO $ do
 genericError :: (MonadIO io)
              => Environment
              -> io ()
-genericError env = liftIO $ do
-      atomically . toIO env Debug $
-            putStrLn "Generic server error, terminating client"
+genericError env = errorPrint env "Generic server error, terminating client"
 
 
 
@@ -118,9 +113,15 @@ genericError env = liftIO $ do
 denied :: (MonadIO io)
        => Environment
        -> io ()
-denied env = liftIO $ do
-      atomically . toIO env Debug $
-            putStrLn "Server denied the request"
+denied env = errorPrint env "Server denied the request"
+
+
+
+-- | Server denied a valid request, see docs for 'Denied'
+illegal :: (MonadIO io)
+        => Environment
+        -> io ()
+illegal env = errorPrint env "Signal illegal"
 
 
 
@@ -128,6 +129,4 @@ denied env = liftIO $ do
 noResponse :: (MonadIO io)
            => Environment
            -> io ()
-noResponse env = liftIO $ do
-      atomically . toIO env Debug $
-            putStrLn "Server did not respond"
+noResponse env = errorPrint env "Server did not respond"

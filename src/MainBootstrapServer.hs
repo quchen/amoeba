@@ -9,23 +9,16 @@
 
 module Main where
 
-import System.IO
 import Data.IORef
 import Control.Concurrent hiding (yield)
 import Control.Concurrent.Async
-import Control.Exception
 import Control.Monad
 
-import Pipes
-import qualified Pipes.Prelude as P
-import qualified Pipes.Concurrent as P
 import Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
-import Control.Monad.Catch (MonadCatch)
 
 import NodePool
 import CmdArgParser
-import Node
 import Types
 import Utilities
 
@@ -87,7 +80,7 @@ bootstrapServerLoop config counter serverSock ldc = forever $ do
                 dispatchSignal config' node ldc
                 send socket OK
 
-      success <- PN.accept serverSock $ \(clientSock, clientAddr) ->
+      success <- PN.accept serverSock $ \(clientSock, _clientAddr) ->
             receive clientSock >>= \case
                   Just (BootstrapRequest benefactor) -> do
                         bootstrapRequestH clientSock benefactor

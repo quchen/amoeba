@@ -20,9 +20,7 @@ module Node (startNode) where
 import           Control.Applicative
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
-import           Control.Exception
 import           Control.Monad
-import           Data.Maybe (fromMaybe)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import           Data.Maybe (fromJust)

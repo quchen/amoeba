@@ -28,7 +28,6 @@ import qualified Data.Foldable as F
 import qualified Data.Traversable as T
 import           Data.Maybe (isJust)
 import           Text.Printf
-import           Data.List (sort)
 import qualified Data.Set as Set
 
 import Pipes

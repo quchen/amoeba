@@ -14,14 +14,9 @@ import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async
 import Control.Concurrent.MVar
 import Control.Concurrent.Chan
-import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
-import Data.Set as Set
-import Data.Functor
 import Data.Word
-import Network
-import System.IO
 
 import Pipes
 import qualified Pipes.Concurrent as P
@@ -66,7 +61,7 @@ janitor :: Config             -- ^ Node configuration
                               --   terminated (and replaced by a new one by the
                               --   janitor). Also see 'terminationWatch'.
         -> IO ()
-janitor config fromPool terminate = (handle $ \(SomeException e) -> yell 41 ("Janitor crashed! Exception: " ++ show e)) $
+janitor config fromPool terminate = handle (\(SomeException e) -> yell 41 ("Janitor crashed! Exception: " ++ show e)) $
   forever $ do
       toNode <- spawn (P.Bounded $ _maxChanSize config)
       let handlers = [ Handler $ \ThreadKilled -> return ()
@@ -99,12 +94,6 @@ pipeTo input output =
       where fromChan chan = forever $ do
                   signal <- liftIO $ readChan chan
                   yield signal
-
-
-
-yellAndRethrow msg = handle handler
-      where handler :: SomeException -> IO ()
-            handler e = yell 41 msg >> throw e
 
 
 

@@ -23,6 +23,7 @@ module Utilities (
 
       -- * Debugging
       , yell
+      , yellAndRethrow
 
       -- * Pipe-based communication channels
       , spawn
@@ -32,16 +33,11 @@ module Utilities (
 
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
-import           Control.Exception (catch, SomeException)
 import           Control.Monad
 import           Control.Applicative
 import           Control.Exception
-import           Data.Functor
-import           Data.Int
 import           Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteString as BS
-import           Data.Binary (Binary)
-import           System.IO
 import qualified Data.Foldable as F
 
 import           Pipes
@@ -166,7 +162,7 @@ toIO env verbosity = when p . writeTBQueue (_io env)
 catchAll :: IO a -> IO ()
 catchAll x = void x `catch` handler
       where handler :: SomeException -> IO ()
-            handler e = return ()
+            handler _ = return ()
 
 -- | Easily print colored text for debugging
 yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ "\ESC[0m"
@@ -227,3 +223,9 @@ getBroadcastOutput env =
 --   IO actions from a queue and executes them.
 outputThread :: TBQueue (IO ()) -> IO ()
 outputThread = forever . join . atomically . readTBQueue
+
+
+-- | Catches all exceptions, 'yell's their contents, and rethrows them.
+yellAndRethrow msg = handle handler
+      where handler :: SomeException -> IO ()
+            handler e = yell 41 msg >> throw e

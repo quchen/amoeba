@@ -1,7 +1,6 @@
 module CmdArgParser (parseArgs) where
 
 import Options.Applicative
-import Network
 import Data.Word
 import Data.Monoid
 import Data.Char (toLower)

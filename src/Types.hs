@@ -12,7 +12,6 @@ import GHC.Generics (Generic)
 import Data.Functor
 
 import qualified Pipes.Concurrent as P
-import qualified Pipes.Network.TCP as P
 
 import Data.Binary
 
@@ -332,7 +331,7 @@ newtype From = From { getFrom :: Integer }
       deriving (Eq, Ord)
 
 instance Show From where
-      show (From i) = "#" ++ show i
+      show (From i) = '#' : show i
 
 
 -- | Node address clients can send data to. Used to ensure downstream data is
