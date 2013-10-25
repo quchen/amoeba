@@ -33,18 +33,15 @@ instance Exception BadBootstrapResponse
 bootstrap :: Config -> PortNumber -> IO HostName -- TODO: Make it an Either Error Hostname so the problem can be printed
 bootstrap config port = do
 
-      -- TODO: Add a function to find a random bootstrap nodes
-
       -- Send out signal to the bootstrap node
-      bNode <- getBootstrapServer
-
+      let bsServer = getBootstrapServer config
 
       -- Don't recurse directly in case of failure so that bracket can close
       -- the handle properly. Instead, bind the result to an identifier, and
       -- check it after the bracketing.
       --let try' :: IO a -> IO (Either BadBootstrapResponse a)
       --    try' = try
-      result <- try $ bracket (connectToNode bNode) hClose $ \h -> do
+      result <- try $ bracket (connectToNode bsServer) hClose $ \h -> do
 
             -- See note [Why send port?]
             request' h (BootstrapRequest port) >>= \case
@@ -69,7 +66,7 @@ bootstrap config port = do
 
 
 
--- | Finds the address of a suitable bootstrap server.
-getBootstrapServer :: IO To
-getBootstrapServer = return . To $ Node "localhost" 20000
+-- | Find the address of a suitable bootstrap server.
+getBootstrapServer :: Config -> To
+getBootstrapServer = head . _bootstrapServers
 -- TODO: Make bootstrap server selection a little more complex :-)
