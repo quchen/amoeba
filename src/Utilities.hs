@@ -200,17 +200,17 @@ spawn buffer = toPChan <$> P.spawn' buffer
 --   =
 --   withAsync (return ()) wait'
 -- @
-asyncMany :: [IO ()] -- ^ Actions to run asynchronously
-          -> (Async () -> IO ()) -- ^ "Waiting action" to apply to the first
+asyncMany :: (Async () -> IO ()) -- ^ "Waiting action" to apply to the first
                                  --   asynchronous action of the list in the
                                  --   end. Typically involves 'wait'.
+          -> [IO ()] -- ^ Actions to run asynchronously
           -> IO ()
-asyncMany []     wait' = withAsync (return ()) wait'
-asyncMany (x:xs) wait' = withAsync x $ \t -> asyncMany' xs >> wait' t
+asyncMany wait' []     = withAsync (return ()) wait'
+asyncMany wait' (x:xs) = withAsync x $ \t -> asyncMany' xs >> wait' t
       where asyncMany' = foldr asyncForget (return ())
             -- Fork a thread and "forget" about it. Safety comes from the
             -- outermost wrapper: if it fails, the whole hierarchy collapses.
-            asyncForget x xs = withAsync x $ \_ -> xs
+            asyncForget x xs = withAsync x (const xs)
 
 
 
