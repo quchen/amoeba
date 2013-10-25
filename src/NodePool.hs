@@ -6,12 +6,13 @@
 --   node pool to always keep up a certain amount of trusted nodes in the
 --   network that it can use to help other nodes make an initial connection.
 
-module NodePool (startNodePool) where
+module NodePool (nodePool) where
 
 
 
-import Control.Concurrent
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async
+import Control.Concurrent.MVar
 import Control.Concurrent.Chan
 import Control.Concurrent.STM
 import Control.Exception
@@ -22,6 +23,9 @@ import Data.Word
 import Network
 import System.IO
 
+import Pipes
+import qualified Pipes.Concurrent as P
+
 import Node
 import Types
 import Utilities
@@ -30,19 +34,19 @@ import Utilities
 
 -- | Starts a node pool of a certain size, and provides a channel to
 --   communitcate with (random nodes in) it
-startNodePool :: Word    -- ^ Number of nodes in the pool (also the port range)
-              -> Config  -- ^ Configuration for a single node. Of particular
-                         --   importance are the port (nodes will be spawned
-                         --   in the range [port+1, port+range]).
-              -> Chan NormalSignal
-                         -- ^ Local direct connection to one node (taking
-                         --   turns). 'Chan' instead of 'TQueue' because of the
-                         --   lack of fairness in STM.
-              -> MVar () -- ^ Termination lock. If the MVar is filled, the next
-                         --   node (due to fairness) is killed and restarted,
-                         --   see 'janitor'.
-              -> IO ()
-startNodePool n config ldc terminate = forM_ [1..n] $ \portOffset ->
+nodePool :: Word    -- ^ Number of nodes in the pool (also the port range)
+         -> Config  -- ^ Configuration for a single node. Of particular
+                    --   importance are the port (nodes will be spawned
+                    --   in the range [port+1, port+range]).
+         -> Chan NormalSignal
+                    -- ^ Local direct connection to one node (taking
+                    --   turns). 'Chan' instead of 'TQueue' because of the
+                    --   lack of fairness in STM.
+         -> MVar () -- ^ Termination lock. If the MVar is filled, the next
+                    --   node (due to fairness) is killed and restarted,
+                    --   see 'janitor'.
+         -> IO ()
+nodePool n config ldc terminate = forM_ [1..n] $ \portOffset ->
       let port = _serverPort config + fromIntegral portOffset
           config' = config { _serverPort = port }
       in  async $ janitor config' ldc terminate
@@ -56,23 +60,25 @@ startNodePool n config ldc terminate = forM_ [1..n] $ \portOffset ->
 --   example the initial bootstrap nodes are very interconnected, which is not
 --   desirable. Restarting these nodes when there's an actual network leads to
 --   more natural neighbourships.
-janitor :: Config            -- ^ Node configuration
+janitor :: Config             -- ^ Node configuration
         -> Chan NormalSignal -- ^ Local direct connection
-        -> MVar ()           -- ^ Termination MVar. If filled, a node is
-                             --   terminated (and replaced by a new one by the
-                             --   janitor). Also see 'terminationWatch'.
+        -> MVar ()            -- ^ Termination MVar. If filled, a node is
+                              --   terminated (and replaced by a new one by the
+                              --   janitor). Also see 'terminationWatch'.
         -> IO ()
 janitor config fromPool terminate = (handle $ \(SomeException e) -> yell 41 ("Janitor crashed! Exception: " ++ show e)) $
   forever $ do
-      toNode <- newTBQueueIO (_maxChanSize config)
+      toNode <- spawn (P.Bounded $ _maxChanSize config)
       let handlers = [ Handler $ \ThreadKilled -> return ()
                      ]
       (`catches` handlers) $
-            bracket (startNode (Just toNode) config) cancel $ \node ->
-             asyncMany [ fromPool `pipeTo` toNode
-                       , terminationWatch terminate node
-                       , statusReport config
-                       ]
+            withAsync (startNode (Just toNode) config) $ \node ->
+                  asyncMany [ fromPool `pipeTo` toNode
+                            , terminationWatch terminate node
+                            , statusReport config
+                            ]
+                            (const (wait node))
+
 
 
 -- | Periodically say hello for DEBUG
@@ -82,17 +88,23 @@ statusReport config = forever $ do
       yell 35 $ "Janitor for " ++ show (_serverPort config) ++ " reporting in"
 
 
+
 -- | Pipes everything from one channel to the other
-pipeTo :: Chan NormalSignal -> TBQueue NormalSignal -> IO ()
-pipeTo incoming outgoing = forever $ do
-      signal <- readChan incoming
-      atomically $ do
-            --assertNotFull outgoing
-            writeTBQueue outgoing signal
+pipeTo :: Chan NormalSignal -> PChan NormalSignal -> IO ()
+pipeTo input output =
+
+      runEffect $ fromChan input >-> P.toOutput (_pOutput output)
+
+      where fromChan chan = forever $ do
+                  signal <- liftIO $ readChan chan
+                  yield signal
+
+
 
 yellAndRethrow msg = handle handler
       where handler :: SomeException -> IO ()
             handler e = yell 41 msg >> throw e
+
 
 
 -- | Terminate a thread when an MVar is filled

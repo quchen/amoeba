@@ -85,8 +85,7 @@ initEnvironment node ldc config = Environment
 
       <$> newTVarIO Map.empty -- Known nodes
       <*> newTVarIO Map.empty -- Nodes known by
-      <*> spawnP buffer       -- Channel to all clients
-      <*> spawnP buffer       -- Channel to one client
+      <*> spawn buffer        -- Channel read by all clients
       <*> newTBQueueIO size   -- Channel to the IO thread
       <*> newTVarIO Set.empty -- Previously handled queries
       <*> pure node           -- Own server's address
