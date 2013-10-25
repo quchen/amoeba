@@ -36,9 +36,9 @@ bootstrap :: Config
           -> IO HostName -- ^ Own hostname
 bootstrap config port = do
 
-      bNode <- getBootstrapServer
+      let bsServer = getBootstrapServer config
 
-      result <- connectToNode bNode $ \(socket, _) -> do
+      result <- connectToNode bsServer $ \(socket, _) -> do
             request socket (BootstrapRequest port) >>= \case
                   Just (YourHostIs host) -> return (Just host)
                   Just _ -> putStrLn "Bad bootstrap server response. Bug!" >> return Nothing
@@ -54,8 +54,7 @@ bootstrap config port = do
 
 
 
-
 -- | Find the address of a suitable bootstrap server.
-getBootstrapServer :: IO To
-getBootstrapServer = return . To $ Node "localhost" 20000
+getBootstrapServer :: Config -> To
+getBootstrapServer = head . _bootstrapServers
 -- TODO: Make bootstrap server selection a little more complex :-)
