@@ -71,10 +71,10 @@ worker :: (MonadIO io)
        -> From        -- ^ Unique worker ID
        -> Socket      -- ^ Incoming connection
        -> io ()
-worker env from socket = runEffect $ input >-> dispatch >-> respond
+worker env from socket = runEffect $ input >-> dispatch >-> output
 
       where input :: (MonadIO io) => Producer Signal io ()
-            input = receive socket
+            input = receiver socket
 
             dispatch :: (MonadIO io) => Pipe Signal ServerResponse io r
             dispatch = P.mapM $ \case
@@ -85,11 +85,11 @@ worker env from socket = runEffect $ input >-> dispatch >-> respond
             -- bad signal (not "OK") is received.
 
             -- TODO: Maybe the termination rule should be relaxed to "n strikes"
-            respond :: (MonadIO io) => Consumer ServerResponse io ()
-            respond = do
+            output :: (MonadIO io) => Consumer ServerResponse io ()
+            output = do
                   response <- await
                   case response of
-                        OK -> send' socket
+                        OK -> sender socket
                         _  -> return ()
 
 
@@ -456,8 +456,7 @@ sendHandshakeRequest :: (MonadIO io, MonadCatch io)
                      -> io ()
 sendHandshakeRequest env to =
       connectToNode to $ \(socket, addr) -> do
-            response <- request socket signal
-            case response of
+            request socket signal >>= \case
                   Just OK -> return ()
                   _else   -> return ()
                   -- Nothing to do here, the handshake is a one-way command,
@@ -495,7 +494,7 @@ handshakeH env from socket = do
             return isRoom
       if isRoom'
             then do
-                  request' socket OK >>= \case
+                  request socket OK >>= \case
                         Just OK -> return OK
                               -- This leaves the connection open, as it will be
                               -- used further by the client on the other side.
@@ -539,6 +538,8 @@ startHandshakeH env to = liftIO $
                   timestamp <- makeTimestamp
                   stsc      <- spawn buffer
                   thread    <- async $ client env socket to stsc
+                  -- TODO: If there's an exception right now, the client async
+                  --       is never cancelled.
                   let client = Client timestamp thread stsc
 
                   -- Add node if it is unrelated and there is room

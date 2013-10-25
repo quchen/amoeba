@@ -12,14 +12,10 @@ module Utilities (
       , asyncMany
       , toIO
 
-      -- * Sending/receiving network signals
+      -- * Networking
       , connectToNode
-      , send'
-      , receive'
-      , request'
-      , encodeMany
-
-      -- * Monomorphic aliases for type safety
+      , sender
+      , receiver
       , send
       , receive
       , request
@@ -90,55 +86,50 @@ connectToNode (To node) = P.connect (_host node) (show $ _port node)
 
 
 
+-- | Continuously encode and send data to a 'P.Socket'.
+sender :: (MonadIO io, Binary b)
+       => P.Socket
+       -> Consumer b io ()
+sender s = encodeMany >-> P.toSocket s
 
 
--- | Continuously receive and decode data.
-receive' :: (MonadIO m, Binary a)
+
+-- | Continuously receive and decode data from a 'P.Socket'.
+receiver :: (MonadIO io, Binary b)
          => P.Socket
-         -> Producer a m ()
-receive' s = void (P.decodeMany (P.fromSocket s 4096)) >-> dataOnly
+         -> Producer b io ()
+receiver s = void (P.decodeMany (P.fromSocket s 4096)) >-> dataOnly
       where dataOnly = P.map snd
 
 
 
--- | Continuously encode and send data.
-send' :: (MonadIO io, Binary a)
-      => P.Socket
-      -> Consumer a io ()
-send' s = encodeMany >-> P.toSocket s
+-- TODO: Requester. Continuously send data downstream and gather results.
 
 
 
--- | Encode and send a single piece of data, and receive and decode the
---   response.
-request' :: (MonadIO io, Binary a, Binary b)
-         => P.Socket
-         -> a
-         -> io (Maybe b)
-request' s x = runEffect (yield x >-> send' s) >> P.head (receive' s)
-
-
-
-
--- | Specialized alias of 'receive\'' that receives only 'Signal's.
-receive :: (MonadIO m)
+-- | Receives a single piece of data from a 'P.Socket'.
+receive :: (MonadIO io, Binary b)
         => P.Socket
-        -> Producer Signal m ()
-receive = receive'
+        -> io (Maybe b)
+receive s = runEffect $ P.head (receiver s)
 
--- | Specialized alias of 'send\'' that sends only 'Signal's.
-send :: (MonadIO m)
+
+
+-- | Sends a single piece of data to a 'P.Socket'.
+send :: (MonadIO io, Binary b)
      => P.Socket
-     -> Consumer Signal m ()
-send = send'
+     -> b
+     -> io ()
+send s x = runEffect $ yield x >-> sender s
 
--- | Specialized alias of 'request\''. Types match what a typical communication
---   of a client with a downstream neighbour would involve.
-request :: (MonadIO m)
+
+
+-- | Sends a single piece of data to a 'P.Socket', and waits for a response.
+request :: (MonadIO io, Binary a, Binary b)
         => P.Socket
-        -> Signal
-        -> m (Maybe ServerResponse)
-request = request'
+        -> a
+        -> io (Maybe b)
+request s x = send s x >> receive s
 
 
 
@@ -151,7 +142,7 @@ encodeMany = for cat P.encode
 
 
 
--- | Sends an IO action, depending on the verbosity level.
+-- | Send an IO action depending on the verbosity level.
 toIO :: Environment -> Verbosity -> IO () -> STM ()
 toIO env verbosity = when p . writeTBQueue (_io env)
       where p = verbosity >= _verbosity (_config env)
