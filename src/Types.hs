@@ -1,6 +1,3 @@
--- TODO: Put types only needed by single modules in their respective locations
-
-
 {-# LANGUAGE DeriveGeneric #-}
 
 

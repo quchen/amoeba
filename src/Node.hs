@@ -1,19 +1,11 @@
--- TODO: The wire protocol uses Int64 length headers. Make the program robust
---       against too long messages that exceed the size. Maybe use
---       hGetContents after all?
 -- TODO: Randomly replace downstream neighbours?
 -- TODO: Randomly kick nodes if the maximum capacity is reached
--- TODO: Create a new signal that makes every node send a list of neighbours to
---       a specific node, which then constructs a GraphViz representation of the
---       network
--- TODO: Error handling. Right now many exceptions kill the entire process
---       because there are no catches.
+-- TODO: Exception handling
 -- TODO: Restart bootstrapping process if all downstream neighbours are lost
 --       (Wait some time for incoming edge requests though? They may contain
 --       potential new downstream neighbours.)
--- TODO: Instead of having the client pool clean up dead workers, each worker
---       should have an individual dead man switch thread. This should a) be
---       quicker to react and b) more in the spirit of something decentralized.
+-- TODO: Try to make clients clean up better after themselves. Housekeeping is
+--       a hack.
 -- TODO: Configuration sanity checks:
 --           neighbours  -->  max >= min
 --           tickrates   -->  short <= medium <= long
@@ -21,8 +13,7 @@
 
 
 
--- TODO export list
-module Node where
+module Node (startNode) where
 
 
 
@@ -38,9 +29,9 @@ import qualified Data.Set as Set
 import qualified Pipes.Concurrent as P
 import qualified Pipes.Network.TCP as P
 
---import Bootstrap
---import ClientPool
---import Server
+import Bootstrap
+import ClientPool
+import Server
 import Types
 import Utilities
 
@@ -52,10 +43,6 @@ startNode :: Maybe (PChan NormalSignal) -- ^ Local direct connection (LDC)
                     --   parameters
           -> IO ()
 startNode ldc config = do
-
-      let bootstrap  = undefined -- TODO
-          server     = undefined -- TODO. New version of Server.startServer.
-          clientPool = undefined
 
       let port = _serverPort config
       putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
@@ -94,19 +81,6 @@ initEnvironment node ldc config = Environment
 
       where size = _maxChanSize config
             buffer = P.Bounded size
-
-
-
-
-
-
--- | Dedicated (I)O thread to make sure messages aren't scrambled up. Reads
---   IO actions from a queue and executes them.
-outputThread :: TBQueue (IO ()) -> IO ()
-outputThread = forever . join . atomically . readTBQueue
-
-
-
 
 
 

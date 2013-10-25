@@ -26,6 +26,7 @@ module Utilities (
       -- * Pipe-based communication channels
       , spawn
       , getBroadcastOutput
+      , outputThread
 ) where
 
 import           Control.Concurrent.STM
@@ -208,3 +209,10 @@ getBroadcastOutput :: Environment
                    -> STM (P.Output NormalSignal)
 getBroadcastOutput env =
       F.foldMap (_pOutput . _stsc) <$> readTVar (_downstream env)
+
+
+
+-- | Dedicated (I)O thread to make sure messages aren't scrambled up. Reads
+--   IO actions from a queue and executes them.
+outputThread :: TBQueue (IO ()) -> IO ()
+outputThread = forever . join . atomically . readTBQueue
