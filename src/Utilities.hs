@@ -17,6 +17,7 @@ module Utilities (
       , send'
       , receive'
       , request'
+      , encodeMany
 
       -- * Monomorphic aliases for type safety
       , send
@@ -41,6 +42,7 @@ import           Data.Functor
 import           Data.Int
 import           Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteString as BS
+import           Data.Binary (Binary)
 import           System.IO
 import qualified Data.Foldable as F
 
@@ -99,12 +101,11 @@ receive' s = void (P.decodeMany (P.fromSocket s 4096)) >-> dataOnly
 
 
 
--- | Encode and send a single piece of data.
+-- | Continuously encode and send data.
 send' :: (MonadIO io, Binary a)
       => P.Socket
-      -> a -- ^ Data to send
-      -> io ()
-send' s x = runEffect $ P.encode x >-> P.toSocket s
+      -> Consumer a io ()
+send' s = encodeMany >-> P.toSocket s
 
 
 
@@ -114,7 +115,7 @@ request' :: (MonadIO io, Binary a, Binary b)
          => P.Socket
          -> a
          -> io (Maybe b)
-request' s x = send' s x >> P.head (receive' s)
+request' s x = runEffect (yield x >-> send' s) >> P.head (receive' s)
 
 
 
@@ -128,8 +129,7 @@ receive = receive'
 -- | Specialized alias of 'send\'' that sends only 'Signal's.
 send :: (MonadIO m)
      => P.Socket
-     -> Signal -- ^ Data to send
-     -> Effect m ()
+     -> Consumer Signal m ()
 send = send'
 
 -- | Specialized alias of 'request\''. Types match what a typical communication
@@ -139,6 +139,15 @@ request :: (MonadIO m)
         -> Signal
         -> m (Maybe ServerResponse)
 request = request'
+
+
+
+-- | Continuously encodes the given 'Bin.Binary' instance and sends each result
+--   downstream in 'BS.ByteString' chunks.
+--
+--   (Sent a pull request to Pipes-Binary for adding this.)
+encodeMany :: (Monad m, Binary x) => Pipe x BS.ByteString m r
+encodeMany = for cat P.encode
 
 
 

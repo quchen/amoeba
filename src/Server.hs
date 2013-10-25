@@ -88,9 +88,8 @@ worker env from socket = runEffect $ input >-> dispatch >-> respond
             respond :: (MonadIO io) => Consumer ServerResponse io ()
             respond = do
                   response <- await
-                  send' socket response
                   case response of
-                        OK -> respond
+                        OK -> send' socket
                         _  -> return ()
 
 
