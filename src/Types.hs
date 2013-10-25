@@ -43,9 +43,9 @@ data Environment = Environment {
                                        --   track of when the last signal was
                                        --   received.
 
-      , _stc        :: PChan NormalSignal -- ^ Send messages to all clients.
-
-      , _st1c       :: PChan NormalSignal -- ^ Send message to one client
+      , _st1c       :: PChan NormalSignal -- ^ Channel read by all clients.
+                                          --   Sending a signal here will
+                                          --   semi-randomly reach one of them.
 
       , _io         :: TBQueue (IO ()) -- ^ Send action to the output thread
                                        --   (so that concurrent prints don't
@@ -70,7 +70,7 @@ data Environment = Environment {
 -- | Unifies everything the list of known nodes has to store
 data Client = Client { _clientTimestamp :: Timestamp
                      , _clientAsync     :: Async ()
-                     , _clientQueue     :: TBQueue NormalSignal
+                     , _stsc            :: PChan NormalSignal
                      }
 
 
@@ -236,6 +236,10 @@ data ServerResponse =
         --   neighbourship, such as 'Handshake'.
       | Denied
 
+        -- | Signal not allowed. Issued for example when an ordinary node
+        --   receives a 'BootstrapRequest'.
+      | Illegal
+
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary ServerResponse
@@ -301,12 +305,13 @@ data Direction = Outgoing | Incoming
 instance Binary Direction
 
 
-
+-- REMOVED IN PIPE REWRITE
+{-
 -- | Used in loops that may end. Continue means looping, Terminate hops out.
 --   Functions will typically have the return type @IO Proceed@, indicating that
 --   they are part of a loop that may terminate under certain conditions.
 data Proceed = Continue | Terminate
-
+-}
 
 
 -- | Signifies a question, or a positive/negative answer to one.
@@ -330,13 +335,12 @@ data Verbosity = Chatty  -- ^ *Everything*, e.g. passing bounces, keep-alive
 
 
 
--- | Node address clients can send data to. Used to ensure upstream nodes aren't
---   sent downstream data.
-newtype From = From { getFrom :: Node }
+-- | Unique identifier for upstream nodes.
+newtype From = From { getFrom :: Integer }
       deriving (Eq, Ord)
 
 instance Show From where
-      show (From node) = "From " ++ show node
+      show (From i) = "#" ++ show i
 
 
 -- | Node address clients can send data to. Used to ensure downstream data is

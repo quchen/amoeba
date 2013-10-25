@@ -1,9 +1,11 @@
 {-# LANGUAGE RankNTypes #-}
 
 module Utilities (
+
+      -- * Various utilities
         makeTimestamp
+      , whenM
       , whileM
-      , isContinue
       , catchAll
 
       -- * Concurrency
@@ -11,6 +13,7 @@ module Utilities (
       , toIO
 
       -- * Sending/receiving network signals
+      , connectToNode
       , send'
       , receive'
       , request'
@@ -25,6 +28,7 @@ module Utilities (
 
       -- * Pipe-based communication channels
       , spawn
+      , getBroadcastOutput
 ) where
 
 import           Control.Concurrent.STM
@@ -36,14 +40,16 @@ import           Control.Exception
 import           Data.Functor
 import           Data.Int
 import           Data.Time.Clock.POSIX (getPOSIXTime)
-import           Network (connectTo, PortID(PortNumber))
 import qualified Data.ByteString as BS
 import           System.IO
+import qualified Data.Foldable as F
+
 import           Pipes
 import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
 import qualified Pipes.Network.TCP as P
 import qualified Pipes.Binary as P
+import Control.Monad.Catch (MonadCatch)
 
 import Data.Binary
 
@@ -60,6 +66,12 @@ makeTimestamp = liftIO $ Timestamp . realToFrac <$> getPOSIXTime
 
 
 
+-- | Monadic version of 'when'.
+whenM :: Monad m => m Bool -> m () -> m ()
+whenM mp m = mp >>= \p -> when p m
+
+
+
 -- | Repeatedly executes a monadic action until its contents evaluate to False.
 whileM :: Monad m => (a -> Bool) -> m a -> m ()
 whileM p m = go
@@ -67,9 +79,14 @@ whileM p m = go
 
 
 
-isContinue :: Proceed -> Bool
-isContinue Continue = True
-isContinue _        = False
+-- | 'Node'-based version of 'P.connect'
+connectToNode :: (MonadIO m, MonadCatch m)
+              => To
+              -> ((P.Socket, P.SockAddr) -> m r)
+              -> m r
+connectToNode (To node) = P.connect (_host node) (show $ _port node)
+
+
 
 
 
@@ -83,34 +100,32 @@ receive' s = void (P.decodeMany (P.fromSocket s 4096)) >-> dataOnly
 
 
 -- | Encode and send a single piece of data.
-send' :: (MonadIO m, Binary a)
+send' :: (MonadIO io, Binary a)
       => P.Socket
       -> a -- ^ Data to send
-      -> Effect m ()
-send' s x= P.encode x >-> P.toSocket s
+      -> io ()
+send' s x = runEffect $ P.encode x >-> P.toSocket s
 
 
 
 -- | Encode and send a single piece of data, and receive and decode the
 --   response.
-request' :: (MonadIO m, Binary a, Binary b)
+request' :: (MonadIO io, Binary a, Binary b)
          => P.Socket
          -> a
-         -> m (Maybe b)
-request' s x =
-      do runEffect (send' s x)
-         P.head (receive' s)
+         -> io (Maybe b)
+request' s x = send' s x >> P.head (receive' s)
 
 
 
 
--- | Specialized alias of 'receive\'' that sends only 'Signal's.
+-- | Specialized alias of 'receive\'' that receives only 'Signal's.
 receive :: (MonadIO m)
         => P.Socket
         -> Producer Signal m ()
 receive = receive'
 
--- | Specialized alias of 'send\'' that receives only 'Signal's.
+-- | Specialized alias of 'send\'' that sends only 'Signal's.
 send :: (MonadIO m)
      => P.Socket
      -> Signal -- ^ Data to send
@@ -143,9 +158,6 @@ catchAll x = void x `catch` handler
 
 -- | Easily print colored text for debugging
 yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ "\ESC[0m"
-
-
--- TODO: How to check whether a PChan is full?
 
 
 
@@ -187,3 +199,12 @@ asyncMany (x:xs) wait' = withAsync x $ \t -> asyncMany' xs >> wait' t
             -- Fork a thread and "forget" about it. Safety comes from the
             -- outermost wrapper: if it fails, the whole hierarchy collapses.
             asyncForget x xs = withAsync x $ \_ -> xs
+
+
+
+-- | Retrieves all STSC (server-to-single-client) 'P.Output's and concatenates
+--   them to a single broadcast channel.
+getBroadcastOutput :: Environment
+                   -> STM (P.Output NormalSignal)
+getBroadcastOutput env =
+      F.foldMap (_pOutput . _stsc) <$> readTVar (_downstream env)

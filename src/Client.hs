@@ -17,6 +17,7 @@ import Control.Exception
 import System.IO
 import System.Timeout
 import Data.Functor
+import Data.Monoid
 import Control.Monad
 import qualified Data.Map as Map
 
@@ -37,12 +38,13 @@ client :: (MonadIO io)
        -> Socket -- ^ Connection to use (created by the handshake process)
        -> To -- ^ Node the Socket connects to. Only used for bookkeeping, in
              --   order to keep the client pool up to date.
+       -> PChan NormalSignal
        -> io ()
-client env socket to = runEffect $
+client env socket to stsc = runEffect $
       P.fromInput input >-> signalH env socket to
 
-      where st1c   = _st1c    env
-            input  = _pInput  st1c
+      where st1c   = _st1c   env
+            input  = mconcat [_pInput st1c, _pInput stsc]
             -- TODO: Implement stc to support flood messages
 -- TODO: send shutdown notice on termination
 
@@ -55,22 +57,15 @@ signalH :: (MonadIO io)
         -> To
         -> Consumer NormalSignal io ()
 signalH env socket to = go
-      where go = do
-
-            signal <- await
-
-            proceed <- lift $ do
-                  response <- request socket (Normal signal)
-                  case response of
-                        Just OK     -> ok           env to
-                        Just Error  -> genericError env
-                        Just Ignore -> ignore       env
-                        Just Denied -> denied       env
-                        Nothing     -> noResponse   env
-
-            case proceed of
-                  Terminate -> return ()
-                  Continue  -> go
+      where terminate = return ()
+            go = do signal <- await
+                    response <- request socket (Normal signal)
+                    case response of
+                          Just OK     -> ok           env to >> go
+                          Just Error  -> genericError env    >> terminate
+                          Just Ignore -> ignore       env    >> terminate
+                          Just Denied -> denied       env    >> terminate
+                          Nothing     -> noResponse   env    >> terminate
 
 
 
@@ -79,13 +74,12 @@ signalH env socket to = go
 ok :: (MonadIO io)
    => Environment
    -> To          -- ^ Target downstream neighbour
-   -> io Proceed
+   -> io ()
 ok env node = liftIO $ do
       timestamp <- makeTimestamp
       let updateTimestamp client = client { _clientTimestamp = timestamp }
       atomically $ modifyTVar (_downstream env) $
             Map.adjust updateTimestamp node
-      return Continue
 
 
 
@@ -103,41 +97,37 @@ ok env node = liftIO $ do
 --       starts sending new signals, it will be told that it was dropped.
 ignore :: (MonadIO io)
        => Environment
-       -> io Proceed
+       -> io ()
 ignore env = liftIO $ do
       atomically . toIO env Debug $
             putStrLn "Server ignores this node, terminating client"
-      return Terminate
 
 
 
 -- | Server sent back a generic error, see docs for 'Error'
 genericError :: (MonadIO io)
              => Environment
-             -> io Proceed
+             -> io ()
 genericError env = liftIO $ do
       atomically . toIO env Debug $
             putStrLn "Generic server error, terminating client"
-      return Terminate
 
 
 
 -- | Server denied a valid request, see docs for 'Denied'
 denied :: (MonadIO io)
        => Environment
-       -> io Proceed
+       -> io ()
 denied env = liftIO $ do
       atomically . toIO env Debug $
             putStrLn "Server denied the request"
-      return Terminate
 
 
 
 -- | Server did not respond
 noResponse :: (MonadIO io)
            => Environment
-           -> io Proceed
+           -> io ()
 noResponse env = liftIO $ do
       atomically . toIO env Debug $
             putStrLn "Server did not respond"
-      return Terminate

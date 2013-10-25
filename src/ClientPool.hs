@@ -33,6 +33,7 @@ import qualified Data.Set as Set
 
 import Pipes
 import qualified Pipes.Prelude as P
+import qualified Pipes.Concurrent as P
 
 
 import Types
@@ -44,7 +45,8 @@ import Utilities
 --
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
-clientPool env = withAsync (housekeeping env) $ \_ -> fillPool env
+clientPool env = withAsync (housekeeping env) $
+      \_ -> fillPool env
 
 
 -- | Watches the count of nodes in the database, and issues 'EdgeRequest's
@@ -59,7 +61,7 @@ fillPool env =
       where
             -- Send signal to the single worker channel
             dispatch :: Consumer' NormalSignal IO ()
-            dispatch = toOut (_st1c env)
+            dispatch = P.toOutput (_pOutput $ _st1c env)
 
             -- Create an 'EdgeRequest' from a 'Direction'
             edgeRequest :: Direction
@@ -135,11 +137,10 @@ sendKeepAlive env = do
           needsRefreshing client = lastHeard client >= threshold
           needKeepAlive = Map.filter needsRefreshing clients
           -- Sends a KeepAlive signal to the client's dedicated channel
-          sendSignal chan = atomically $ do
-                --assertNotFull chan
-                writeTBQueue chan KeepAlive
+          sendSignal node = atomically $ do
+                P.send (_pOutput $ _stsc node) KeepAlive
 
-      void $ T.traverse (sendSignal._clientQueue) needKeepAlive
+      void $ T.traverse sendSignal needKeepAlive
 
 
 
@@ -231,7 +232,4 @@ isRoomIn :: Environment
          -> (Environment -> TVar (Map.Map k a))
          -> STM Bool
 isRoomIn env proj = checkPoolSize env proj (<)
-
-
-
 
