@@ -9,12 +9,19 @@
 
 module Main where
 
-import Network
 import System.IO
-import Control.Concurrent
+import Data.IORef
+import Control.Concurrent hiding (yield)
 import Control.Concurrent.Async
 import Control.Exception
 import Control.Monad
+
+import Pipes
+import qualified Pipes.Prelude as P
+import qualified Pipes.Concurrent as P
+import Pipes.Network.TCP (Socket)
+import qualified Pipes.Network.TCP as PN
+import Control.Monad.Catch (MonadCatch)
 
 import NodePool
 import CmdArgParser
@@ -33,7 +40,7 @@ bootstrapServerMain = do
       ldc <- newChan
       terminate <- newEmptyMVar
       let poolSize = _minNeighbours config * 2
-      startNodePool poolSize config ldc terminate
+      nodePool poolSize config ldc terminate
       putStrLn $ "Starting bootstrap server with " ++ show poolSize ++ " nodes"
       async $ restartLoop terminate
       bootstrapServer config ldc
@@ -52,45 +59,53 @@ bootstrapServer :: Config
                 -> Chan NormalSignal
                 -> IO ()
 bootstrapServer config ldc =
-      let initialize = listenOn . PortNumber $ _serverPort config
-          release = sClose
-      in  bracket initialize release $ \s -> bootstrapServerLoop config 0 s ldc
+      PN.listen (PN.Host "localhost")
+                (show $ _serverPort config)
+                $ \(sock, _) -> do
+                        counter <- newIORef 1
+                        bootstrapServerLoop config counter sock ldc
 
 
 
 bootstrapServerLoop :: Config  -- ^ Configuration to determine how many requests
                                --   to send out per new node
-                    -> Integer -- ^ Number of total clients served
+                    -> IORef Integer -- ^ Number of total clients served
                     -> Socket  -- ^ Socket to listen on for bootstrap requests
                     -> Chan NormalSignal -- ^  LDC to the node pool
-                    -> IO ()
-bootstrapServerLoop config numServed socket ldc = do
+                    -> IO r
+bootstrapServerLoop config counter serverSock ldc = forever $ do
+
+      count <- readIORef counter
 
       -- The first couple of new nodes should not bounce, as there are not
       -- enough nodes to relay the requests (hence the queues fill up and the
       -- nodes block indefinitely.
-      let config' = if numServed <= fromIntegral (_minNeighbours config)
+      let config' = if count <= fromIntegral (_minNeighbours config)
                 then config { _bounces = 0 }
                 else config
-          acquire = accept socket
-          release (h, _, _) = hClose h
-          action (h, host, port) = do
-                receive' h >>= \case
-                      BootstrapRequest port -> do
-                            dispatchSignal config' host port ldc
-                            send' h $ YourHostIs host
-                            return True
-                      _ -> return False
+          bootstrapRequest socket port = do
+            -- TODO: Handle IPv6/IPv4 properly instead of a premature hack
+            --       undefined -> proper hostname handling
+            dispatchSignal config' undefined port ldc
+            runEffect $ yield (YourHostIs undefined)
+                    >-> encodeMany
+                    >-> send' socket
 
-      success <- bracket acquire release action
+      success <- PN.accept serverSock $ \(clientSock, clientAddr) ->
+            runEffect (P.head $ receive' clientSock) >>= \case
+                  Just (BootstrapRequest port) -> do
+                        bootstrapRequest clientSock port
 
-      if success
-            then do
-                  putStrLn $ "Client " ++ show (numServed + 1) ++ " served"
-                  bootstrapServerLoop config (numServed + 1) socket ldc
-            else do
-                  putStrLn "Non-BootstrapRequest signal received"
-                  bootstrapServerLoop config (numServed + 1) socket ldc
+                        putStrLn $ "Client " ++ show count ++ " served"
+                        return True
+                  Just _other_signal -> do
+                        putStrLn "Non-BootstrapRequest signal received"
+                        return False
+                  _no_signal -> do
+                        putStrLn "Non-BootstrapRequest signal received"
+                        return False
+
+      when success $ modifyIORef' counter (+1)
 
 
 
@@ -99,8 +114,8 @@ bootstrapServerLoop config numServed socket ldc = do
 
 -- | Send bootstrap requests on behalf of the new node to the node pool
 dispatchSignal :: Config
-               -> HostName
-               -> PortNumber
+               -> PN.HostName
+               -> Int -- ^ Port
                -> Chan NormalSignal
                -> IO ()
 dispatchSignal config host port ldc = do

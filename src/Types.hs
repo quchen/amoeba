@@ -255,7 +255,7 @@ data SpecialSignal =
       -- | Initial request sent from a future client to a bootstrap server.
       --   While the reverse connection is provided by the request, the
       --   hostname will be deduced by the incoming connection by the server.
-        BootstrapRequest PortNumber
+        BootstrapRequest Int
 
       -- | Sent as a response to a Bootstrap to tell the node its hostname, so
       --   it can add it to its Environment.
