@@ -87,15 +87,12 @@ bootstrapServerLoop config counter serverSock ldc = forever $ do
             -- TODO: Handle IPv6/IPv4 properly instead of a premature hack
             --       undefined -> proper hostname handling
             dispatchSignal config' undefined port ldc
-            runEffect $ yield (YourHostIs undefined)
-                    >-> encodeMany
-                    >-> send' socket
+            send socket (YourHostIs undefined)
 
       success <- PN.accept serverSock $ \(clientSock, clientAddr) ->
-            runEffect (P.head $ receive' clientSock) >>= \case
+            receive clientSock >>= \case
                   Just (BootstrapRequest port) -> do
                         bootstrapRequest clientSock port
-
                         putStrLn $ "Client " ++ show count ++ " served"
                         return True
                   Just _other_signal -> do
@@ -106,9 +103,6 @@ bootstrapServerLoop config counter serverSock ldc = forever $ do
                         return False
 
       when success $ modifyIORef' counter (+1)
-
-
-
 
 
 
