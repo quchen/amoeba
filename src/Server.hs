@@ -534,28 +534,31 @@ startHandshakeH env to = liftIO $
 
             buffer = P.Bounded (_maxChanSize $ _config env)
 
+            -- Cancel the client thread if it is not found in the database
+            -- after the procedure has finished
+            rollback thread = do
+                  p <- atomically $ Map.member to <$> readTVar (_downstream env)
+                  unless p $ cancel thread
+
             tryLaunchClient socket = do
                   timestamp <- makeTimestamp
                   stsc      <- spawn buffer
-                  thread    <- async $ client env socket to stsc
-                  -- TODO: If there's an exception right now, the client async
-                  --       is never cancelled.
-                  let client = Client timestamp thread stsc
+                  bracket (async $ client env socket to stsc)
+                          rollback
+                          $ \thread -> atomically $ do
 
-                  -- Add node if it is unrelated and there is room
-                  keepClient <- atomically $ do
-                        let allowed IsUnrelated = True
+                        let client = Client timestamp thread stsc
+                            allowed IsUnrelated = True
                             allowed _else       = False
+                            insertClient = modifyTVar (_downstream env) $
+                                                            Map.insert to client
+
                         keep <- liftA2 (&&)
                               (allowed <$> nodeRelationship env to)
                               (isRoomIn env _downstream)
-                        when keep $ modifyTVar (_downstream env) $
-                                                            Map.insert to client
-                        return keep
 
-                  if keepClient
-                        then return OK
-                        else cancel thread >> return Error
+                        if keep then insertClient >> return OK
+                                else return Error
 
 
 
