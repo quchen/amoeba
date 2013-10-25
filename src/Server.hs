@@ -188,7 +188,6 @@ specialH env from socket signal = case signal of
       BootstrapRequest {} -> illegalBootstrapSignalH env
       Handshake           -> handshakeH env from socket
       HandshakeRequest to -> startHandshakeH env to
-      YourHostIs {}       -> illegalYourHostIsH env
 
 
 
@@ -208,14 +207,6 @@ illegalBootstrapSignalH :: (MonadIO io)
                         -> io ServerResponse
 illegalBootstrapSignalH env =
       illegal env "BootstrapRequest signal received on a normal server"
-
-
-
-illegalYourHostIsH :: (MonadIO io)
-                   => Environment
-                   -> io ServerResponse
-illegalYourHostIsH env =
-      illegal env "YouHostIs signal received on a normal server"
 
 
 
@@ -306,8 +297,8 @@ shuttingDownH env from = liftIO . atomically $ do
 nodeRelationship :: Environment
                  -> To
                  -> STM NodeRelationship
-nodeRelationship env node@(To to) = do
-      let isSelf = to == _self env
+nodeRelationship env node = do
+      let isSelf = node == _self env
       isAlreadyDownstream <- Map.member node <$> readTVar (_downstream env)
       case (isSelf, isAlreadyDownstream) of
             (True, _) -> return IsSelf
@@ -462,7 +453,7 @@ sendHandshakeRequest env to =
                   -- Nothing to do here, the handshake is a one-way command,
                   -- waiting for response is just a courtesy
 
-      where signal = Special . HandshakeRequest . To $ _self env
+      where signal = Special . HandshakeRequest $ _self env
 
 
 

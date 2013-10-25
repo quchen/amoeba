@@ -14,6 +14,7 @@ module Utilities (
 
       -- * Networking
       , connectToNode
+      , listenOnNode
       , sender
       , receiver
       , send
@@ -79,11 +80,21 @@ whileM p m = go
 
 
 -- | 'Node'-based version of 'P.connect'
-connectToNode :: (MonadIO m, MonadCatch m)
+connectToNode :: (MonadIO io, MonadCatch io)
               => To
-              -> ((P.Socket, P.SockAddr) -> m r)
-              -> m r
+              -> ((P.Socket, P.SockAddr) -> io r)
+              -> io r
 connectToNode (To node) = P.connect (_host node) (show $ _port node)
+
+
+
+-- | 'Node'-based version of 'P.listen'
+listenOnNode :: (MonadIO io, MonadCatch io)
+             => Node
+             -> ((P.Socket, P.SockAddr) -> io r)
+             -> io r
+listenOnNode node = P.listen (P.Host $ _host node)
+                             (show   $ _port node)
 
 
 

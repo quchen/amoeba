@@ -83,16 +83,14 @@ bootstrapServerLoop config counter serverSock ldc = forever $ do
       let config' = if count <= fromIntegral (_minNeighbours config)
                 then config { _bounces = 0 }
                 else config
-          bootstrapRequest socket port = do
-            -- TODO: Handle IPv6/IPv4 properly instead of a premature hack
-            --       undefined -> proper hostname handling
-            dispatchSignal config' undefined port ldc
-            send socket (YourHostIs undefined)
+          bootstrapRequestH socket node = do
+                dispatchSignal config' node ldc
+                send socket OK
 
       success <- PN.accept serverSock $ \(clientSock, clientAddr) ->
             receive clientSock >>= \case
-                  Just (BootstrapRequest port) -> do
-                        bootstrapRequest clientSock port
+                  Just (BootstrapRequest benefactor) -> do
+                        bootstrapRequestH clientSock benefactor
                         putStrLn $ "Client " ++ show count ++ " served"
                         return True
                   Just _other_signal -> do
@@ -108,16 +106,14 @@ bootstrapServerLoop config counter serverSock ldc = forever $ do
 
 -- | Send bootstrap requests on behalf of the new node to the node pool
 dispatchSignal :: Config
-               -> PN.HostName
-               -> Int -- ^ Port
+               -> To -- ^ Benefactor, i.e. 'BootstrapRequest' issuer's server
+                     --   address
                -> Chan NormalSignal
                -> IO ()
-dispatchSignal config host port ldc = do
-      let to = To $ Node host port
-          order dir = forM_ [1.._minNeighbours config] $ \_ ->
-                        writeChan ldc $ edgeRequest config to dir
-      order Incoming
-      order Outgoing
+dispatchSignal config to ldc = order Incoming >> order Outgoing
+      where order dir = forM_ [1.._minNeighbours config] $ \_ ->
+                              writeChan ldc $ edgeRequest config to dir
+
 
 
 

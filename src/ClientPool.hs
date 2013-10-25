@@ -66,7 +66,7 @@ fillPool env =
             -- Create an 'EdgeRequest' from a 'Direction'
             edgeRequest :: Direction
                         -> NormalSignal
-            edgeRequest dir = EdgeRequest (To $ _self env) $
+            edgeRequest dir = EdgeRequest (_self env) $
                               EdgeData dir $
                               Left $ -- Left = "bounce at least n times"
                               (_bounces._config) env

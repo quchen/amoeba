@@ -16,6 +16,7 @@ import Control.Exception
 import System.IO
 import Data.Either
 import Data.Typeable
+import Control.Monad
 
 import Types
 import Utilities
@@ -32,24 +33,27 @@ instance Exception BadBootstrapResponse
 -- | Send out a 'BootstrapRequest' to a bootstrap server and handle the
 --   response.
 bootstrap :: Config
-          -> Int         -- ^ Own server port
-          -> IO HostName -- ^ Own hostname
-bootstrap config port = do
+          -> To -- Own address so other nodes can connect
+          -> IO ()
+bootstrap config self =
+      do putStrLn "Starting bootstrap"
+         go
+         putStrLn "Bootstrap finished"
 
-      let bsServer = getBootstrapServer config
-
-      result <- connectToNode bsServer $ \(socket, _) -> do
-            request socket (BootstrapRequest port) >>= \case
-                  Just (YourHostIs host) -> return (Just host)
-                  Just _ -> putStrLn "Bad bootstrap server response. Bug!" >> return Nothing
-                  Nothing -> return Nothing
-
-      case result of
-            Just host -> return host
-            Nothing -> do
-                  putStrLn $ "Bootstrap failed. This is likely a bug."
-                  threadDelay (_mediumTickRate config)
-                  bootstrap config port
+      where go = do
+                  let bsServer = getBootstrapServer config
+                  success <- connectToNode bsServer $ \(s, _) -> do
+                        request s (BootstrapRequest self) >>= \case
+                              Just OK -> return True
+                              Just _  -> do
+                                    putStrLn "Bad bootstrap server response.\
+                                             \ Probably a bug."
+                                    return False
+                              Nothing -> return False
+                  unless success $ do
+                        putStrLn $ "Bootstrap failed. This is likely a bug."
+                        threadDelay (_mediumTickRate config)
+                        go
 
 
 

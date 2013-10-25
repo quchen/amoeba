@@ -25,9 +25,12 @@ import           Control.Monad
 import           Data.Maybe (fromMaybe)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import           Data.Maybe (fromJust)
 
 import qualified Pipes.Concurrent as P
-import qualified Pipes.Network.TCP as P
+
+import qualified Pipes.Network.TCP as N
+import qualified Network.Socket as NS
 
 import Bootstrap
 import ClientPool
@@ -45,16 +48,18 @@ startNode :: Maybe (PChan NormalSignal) -- ^ Local direct connection (LDC)
 startNode ldc config = do
 
       let port = _serverPort config
-      putStrLn "Starting bootstrap" -- IO thread doesn't exist yet
-      host <- bootstrap config port
-      putStrLn "Bootstrap finished" -- debugging
-      let self = Node host port
-      env <- initEnvironment self ldc config
 
-      let listen' node = P.listen (P.Host $ _host node)
-                                  (show   $ _port node)
-      listen' self $ \(socket, serverAddr) -> do
-            yell 32 $ "Server listening on " ++ show serverAddr
+      N.listen N.HostAny (show port) $ \(socket, serverAddr) -> do
+
+            (selfHost, selfPort) <- getSelfInfo serverAddr
+            when (port /= read selfPort) $ error "port /= selfPort. Fat bug."
+            let self = To $ Node selfHost port
+
+            bootstrap config self
+
+            env <- initEnvironment self ldc config
+
+            yell 32 $ "Server listening on " ++ show self
             asyncMany [ server env socket
                       , outputThread $ _io env
                       , clientPool env
@@ -63,8 +68,17 @@ startNode ldc config = do
 
 
 
+-- | Retrieve own server address
+getSelfInfo :: N.SockAddr -> IO (N.HostName, N.ServiceName)
+getSelfInfo addr = fromJust' <$> NS.getNameInfo flags True True addr
+      where flags = [ NS.NI_NUMERICHOST -- "IP address, not DNS"
+                    , NS.NI_NUMERICSERV -- "Port as a number please"
+                    ]
+            fromJust' (a,b) = (fromJust a, fromJust b)
+
+
 -- | Initializes node environment by setting up the communication channels etc.
-initEnvironment :: Node
+initEnvironment :: To
                 -> Maybe (PChan NormalSignal)
                 -> Config
                 -> IO Environment

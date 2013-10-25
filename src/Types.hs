@@ -54,7 +54,7 @@ data Environment = Environment {
                                        --   node, and can thus be ignored if
                                        --   they come in again.
 
-      , _self       :: Node            -- ^ Own hostname/port
+      , _self       :: To              -- ^ Own hostname/port
 
       , _ldc        :: Maybe (PChan NormalSignal)
                                        -- ^ Local direct connection (LDC) to a
@@ -250,13 +250,8 @@ instance Binary ServerResponse
 data SpecialSignal =
 
       -- | Initial request sent from a future client to a bootstrap server.
-      --   While the reverse connection is provided by the request, the
-      --   hostname will be deduced by the incoming connection by the server.
-        BootstrapRequest Int
-
-      -- | Sent as a response to a Bootstrap to tell the node its hostname, so
-      --   it can add it to its Environment.
-      | YourHostIs HostName
+      --   The 'Node' parameter allows other nodes to connect.
+        BootstrapRequest To
 
       -- | Ask another node to initiate a handshake
       | HandshakeRequest To
