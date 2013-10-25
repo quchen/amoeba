@@ -55,14 +55,12 @@ config = T.Config
 
 
 
-port :: Parser PortNumber
-port = let toPN = fromIntegral :: Int -> PortNumber
-       in fmap toPN . option $ mconcat
-             [ long    "port"
-             , short   'p'
-             , metavar "PORT"
-             , help    "Server port"
-             ]
+port :: Parser Int
+port = option $ mconcat [ long    "port"
+                        , short   'p'
+                        , metavar "PORT"
+                        , help    "Server port"
+                        ]
 
 minNeighbours :: Parser Word
 minNeighbours = nullOption $ mconcat
