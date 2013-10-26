@@ -12,18 +12,22 @@ module Bootstrap (
 
 import Control.Concurrent
 import Control.Exception
+import System.IO.Error
+import GHC.IO.Exception (ioe_description)
 import Data.Typeable
 import Control.Monad
+import Text.Printf
 
 import Types
 import Utilities
 
 
 
-data BadBootstrapResponse = BadBootstrapResponse
+data BootstrapError = BadResponse
+                    | NoResponse
       deriving (Show, Typeable)
 
-instance Exception BadBootstrapResponse
+instance Exception BootstrapError
 
 
 
@@ -37,20 +41,33 @@ bootstrap config self =
          go
          putStrLn "Bootstrap finished"
 
-      where go = do
+      where handleMulti action = do catches action [ badResponseH
+                                                   , noResponseH
+                                                   , ioErrorH
+                                                   ]
+                                    threadDelay (_longTickRate config)
+                                    go
+
+            badResponseH = Handler $ \BadResponse -> do
+                  putStrLn "Bad response from bootstrap server. Probably a bug."
+
+            noResponseH = Handler $ \NoResponse -> do
+                  putStrLn "No response from bootstrap server. Probably a bug."
+
+            ioErrorH = Handler $ \e -> do
+                  let _ = e :: IOException
+                  printf "Cound not connect to bootstrap server (%s).\
+                         \ Is it online?\n"
+                         (ioe_description e)
+
+
+            go = handleMulti $ forever $ do
                   let bsServer = getBootstrapServer config
-                  success <- connectToNode bsServer $ \(s, _) -> do
+                  connectToNode bsServer $ \(s, _) -> do
                         request s (BootstrapRequest self) >>= \case
-                              Just OK -> return True
-                              Just _  -> do
-                                    putStrLn "Bad bootstrap server response.\
-                                             \ Probably a bug."
-                                    return False
-                              Nothing -> return False
-                  unless success $ do
-                        putStrLn $ "Bootstrap failed. This is likely a bug."
-                        threadDelay (_mediumTickRate config)
-                        go
+                              Just OK -> return ()
+                              Just _  -> throwIO BadResponse
+                              Nothing -> throwIO NoResponse
 
 
 
