@@ -69,10 +69,10 @@ janitor config fromPool terminate = (handle $ \(SomeException e) -> yell 41 ("Ja
                      ]
       (`catches` handlers) $
             bracket (startNode (Just toNode) config) cancel $ \node ->
-             asyncMany [ fromPool `pipeTo` toNode
-                       , terminationWatch terminate node
-                       , statusReport config
-                       ]
+                  asyncMany [ fromPool `pipeTo` toNode
+                            , terminationWatch terminate node
+                            , statusReport config
+                            ]
 
 
 -- | Periodically say hello for DEBUG
