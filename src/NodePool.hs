@@ -67,11 +67,12 @@ janitor config fromPool terminate = handle (\(SomeException e) -> yell 41 ("Jani
       let handlers = [ Handler $ \ThreadKilled -> return ()
                      ]
       (`catches` handlers) $
-            withAsync (startNode (Just toNode) config) $ \node ->
+            withAsync (startNode (Just toNode) config) $ \node -> do
                   asyncMany [ fromPool `pipeTo` toNode
                             , terminationWatch terminate node
                             , statusReport config
                             ]
+                  wait node
 
 
 -- | Periodically say hello for DEBUG
@@ -87,6 +88,7 @@ pipeTo :: Chan NormalSignal -> PChan NormalSignal -> IO ()
 pipeTo input output =
 
       runEffect $ fromChan input >-> P.toOutput (_pOutput output)
+
 
       where fromChan chan = forever $ do
                   signal <- liftIO $ readChan chan

@@ -1,8 +1,8 @@
 MAIN = amoeba
 MAIN_BS = bootstrap
 SRC = src
-HSFLAGS = # -O
-PROF = # -prof -auto-all
+HSFLAGS =
+PROF =
 
 all :
 	ghc $(HSFLAGS) -i$(SRC) $(SRC)/Main.hs                -o $(MAIN)

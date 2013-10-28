@@ -24,7 +24,7 @@ import           Control.Monad
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import           Data.Maybe (isJust, fromJust)
-import           Control.Exception (assert)
+import           Control.Exception (assert, finally)
 
 import qualified Pipes.Concurrent as P
 
@@ -48,9 +48,9 @@ startNode ldc config = do
 
       let port = _serverPort config
 
-      PN.listen (PN.Host "127.0.0.1") (show port) $ \(socket, serverAddr) -> do
+      PN.listen (PN.Host "127.0.0.1") (show port) $ \(socket, addr) -> do
 
-            (selfHost, selfPort) <- getSelfInfo serverAddr
+            (selfHost, selfPort) <- getSelfInfo addr
             assert (port == read selfPort) $ return ()
             let self = To $ Node selfHost port
 
@@ -60,7 +60,7 @@ startNode ldc config = do
 
             yell 32 $ "Node server listening on " ++ show self
             asyncMany [ server env socket
-                      , outputThread $ _io env
+                      , outputThread (_io env)
                       , clientPool env
                       ]
 

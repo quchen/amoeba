@@ -4,9 +4,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module Bootstrap (
-      bootstrap
-) where
+module Bootstrap (bootstrap) where
 
 
 

@@ -2,16 +2,13 @@
 --   distributes the responses to the clients.
 --
 --   The suffix 'H' stands for 'Handler', which is a function that reacts
---   directly to an incoming signal's instructions. (Contrary to that, helper
---   functions invoked inside handlers don't have a special name.)
+--   directly to an incoming signal's instructions.
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Server (
-      server
-) where
+module Server (server) where
 
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
@@ -24,13 +21,12 @@ import           Text.Printf
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-import Pipes
+import           Pipes
 import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
-import Pipes.Network.TCP (Socket)
+import           Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
-import Control.Monad.Catch (MonadCatch)
-
+import           Control.Monad.Catch (MonadCatch)
 
 import Types
 import Utilities
@@ -54,14 +50,15 @@ server env serverSocket = liftIO $ do
                        modifyIORef' counter (+1)
                        return (From c)
 
-            PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
+            yellAndRethrow 41 $ PN.accept serverSocket $ \(clientSocket, addr) -> do
                   atomically . toIO env Debug $
-                        printf "New worker (%s) from %s" (show from) (show addr)
-                  worker env from clientSocket
+                        printf "New worker (%s) from %s\n" (show from) (show addr)
+                  withAsync (worker env from clientSocket) wait
 
 
 
--- | Handles 'Signal's coming in from the network.
+-- | Handles 'Signal's coming in from the network. and sends back the server's
+--   response.
 worker :: (MonadIO io)
        => Environment
        -> From        -- ^ Unique worker ID
@@ -84,8 +81,9 @@ worker env from socket = runEffect $ input >-> dispatch >-> output
             output :: (MonadIO io) => Consumer ServerResponse io ()
             output = do
                   response <- await
+                  send socket response
                   case response of
-                        OK -> sender socket
+                        OK -> output
                         _  -> return ()
 
 
@@ -296,10 +294,10 @@ nodeRelationship :: Environment
 nodeRelationship env node = do
       let isSelf = node == _self env
       isAlreadyDownstream <- Map.member node <$> readTVar (_downstream env)
-      case (isSelf, isAlreadyDownstream) of
-            (True, _) -> return IsSelf
-            (_, True) -> return IsDownstreamNeighbour
-            _         -> return IsUnrelated
+      return $ case (isSelf, isAlreadyDownstream) of
+            (True, _) -> IsSelf
+            (_, True) -> IsDownstreamNeighbour
+            _         -> IsUnrelated
 
 
 
@@ -379,8 +377,8 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = liftIO $ do
           -- one the relaying node uses. This prevents "small p" attacks
           -- that bounce indefinitely.
           bounceOn = if n >= (_maxSoftBounces $ _config env)
-                then let msg = "\ESC[31mToo many bounces, swallowing\ESC[0m"
-                     in  atomically . toIO env Debug $ putStrLn msg
+                then let msg = "Too many bounces, swallowing"
+                     in  atomically . toIO env Debug $ yell 31 msg
                 else atomically . void $ do
                       P.send (_pOutput $ _st1c env) . buildSignal $ Right (n+1, p')
 
@@ -480,14 +478,13 @@ handshakeH env from socket = do
             when isRoom $ modifyTVar (_upstream env) (Map.insert from timestamp)
             return isRoom
       if isRoom'
-            then do
-                  request socket OK >>= \case
-                        Just OK -> return OK
-                              -- This leaves the connection open, as it will be
-                              -- used further by the client on the other side.
-                        _ -> liftIO . atomically $ do
-                                   modifyTVar (_upstream env) (Map.delete from)
-                                   return Error
+            then request socket OK >>= \case
+                  Just OK -> return OK
+                        -- This leaves the connection open, as it will be
+                        -- used further by the client on the other side.
+                  x -> liftIO . atomically $ do
+                        modifyTVar (_upstream env) (Map.delete from)
+                        return Error
             else return Error
 
 
@@ -527,25 +524,26 @@ startHandshakeH env to = liftIO $
                   p <- atomically $ Map.member to <$> readTVar (_downstream env)
                   unless p $ cancel thread
 
+            insertClient = modifyTVar (_downstream env) . Map.insert to
+
             tryLaunchClient socket = do
-                  timestamp <- makeTimestamp
-                  stsc      <- spawn buffer
+                  time <- makeTimestamp
+                  stsc <- spawn buffer
                   bracket (async $ client env socket to stsc)
                           rollback
                           $ \thread -> atomically $ do
 
-                        let client = Client timestamp thread stsc
-                            allowed IsUnrelated = True
+                        let allowed IsUnrelated = True
                             allowed _else       = False
-                            insertClient = modifyTVar (_downstream env) $
-                                                            Map.insert to client
-
                         keep <- liftA2 (&&)
                               (allowed <$> nodeRelationship env to)
                               (isRoomIn env _downstream)
 
-                        if keep then insertClient >> return OK
-                                else return Error
+                        if keep
+                              then do insertClient (Client time thread stsc)
+                                      return OK
+                              else return Error
+
 
 
 

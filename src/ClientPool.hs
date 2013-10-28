@@ -74,19 +74,25 @@ fillPool env =
 -- | Watch the database of upstream and downstream neighbours. If there is a
 --   deficit in one of them, generate the 'Direction' of the new edge to
 --   construct.
-balanceEdges :: Environment -> Producer' Direction IO r
+balanceEdges :: Environment -> Producer Direction IO r
 balanceEdges env =
 
       forever $ do
 
-            (yield =<<) . lift . atomically $ do
+            liftIO $ threadDelay (_mediumTickRate $ _config env)
 
-                  usnCount <- dbSize _upstream
-                  dsnCount <- dbSize _downstream
+            (usnDeficit, dsnDeficit) <- liftIO $ do
+                  atomically $ do
 
-                  if | dsnCount < minNeighbours -> deficitAction Outgoing
-                     | usnCount < minNeighbours -> deficitAction Incoming
-                     | otherwise                -> retry
+                        usnDeficit <- (minNeighbours -) <$> dbSize _upstream
+                        dsnDeficit <- (minNeighbours -) <$> dbSize _downstream
+
+                        deficitMsg dsnDeficit Outgoing
+                        deficitMsg usnDeficit Incoming
+                        return (dsnDeficit, usnDeficit)
+
+            each [1..dsnDeficit] >-> P.map (const Outgoing)
+            each [1..usnDeficit] >-> P.map (const Incoming)
 
       where
 
@@ -94,10 +100,8 @@ balanceEdges env =
 
             dbSize db = fromIntegral . Map.size <$> readTVar (db env)
 
-            deficitAction dir = do
-                  toIO env Debug $
-                        printf "Deficit of %s edges detected" (show dir)
-                  return dir
+            deficitMsg n dir = when (n > 0) $ toIO env Debug $
+                         printf "Deficit of %d %s edges detected\n" n (show dir)
 
 
 

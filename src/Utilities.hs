@@ -165,7 +165,9 @@ catchAll x = void x `catch` handler
             handler _ = return ()
 
 -- | Easily print colored text for debugging
-yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ "\ESC[0m"
+yell :: MonadIO io => Int -> String -> io ()
+yell n text = liftIO . putStrLn $
+      "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ "\ESC[0m"
 
 
 
@@ -177,10 +179,13 @@ spawn buffer = toPChan <$> P.spawn' buffer
 
 
 
--- | Concurrently run multiple IO actions. If one of them returns or throws,
---   all others are 'cancel'ed.
+-- | Concurrently run multiple IO actions, and wait for the first 'Async' to
+--   complete. If one of them returns or throws, all others are 'cancel'ed.
 asyncMany :: [IO ()] -> IO ()
-asyncMany ios = void $ waitAnyCancel <$> mapM async ios
+asyncMany [] = return ()
+asyncMany (io:ios) = withAsync io $ \a -> do
+      waitAnyCancel <$> mapM async ios
+      wait a
 
 
 
@@ -200,6 +205,6 @@ outputThread = forever . join . atomically . readTBQueue
 
 
 -- | Catches all exceptions, 'yell's their contents, and rethrows them.
-yellAndRethrow msg = handle handler
+yellAndRethrow n = handle handler
       where handler :: SomeException -> IO ()
-            handler e = yell 41 msg >> throw e
+            handler (SomeException e) = yell n (show e) >> throw e
