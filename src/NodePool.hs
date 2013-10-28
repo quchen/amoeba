@@ -10,7 +10,6 @@ module NodePool (nodePool) where
 
 
 
-import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async
 import Control.Concurrent.MVar
 import Control.Concurrent.Chan
@@ -78,7 +77,7 @@ janitor config fromPool terminate = handle (\(SomeException e) -> yell 41 ("Jani
 -- | Periodically say hello for DEBUG
 statusReport :: Config -> IO ()
 statusReport config = forever $ do
-      threadDelay (10^7)
+      delay (10^7)
       yell 35 $ "Janitor for " ++ show (_serverPort config) ++ " reporting in"
 
 

@@ -11,6 +11,7 @@ module Utilities (
       -- * Concurrency
       , asyncMany
       , toIO
+      , delay
 
       -- * Networking
       , connectToNode
@@ -31,6 +32,7 @@ module Utilities (
       , outputThread
 ) where
 
+import           Control.Concurrent (threadDelay)
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
 import           Control.Monad
@@ -184,7 +186,7 @@ spawn buffer = toPChan <$> P.spawn' buffer
 asyncMany :: [IO ()] -> IO ()
 asyncMany [] = return ()
 asyncMany (io:ios) = withAsync io $ \a -> do
-      waitAnyCancel <$> mapM async ios
+      void $ waitAnyCancel <$> mapM async ios
       wait a
 
 
@@ -208,3 +210,9 @@ outputThread = forever . join . atomically . readTBQueue
 yellAndRethrow n = handle handler
       where handler :: SomeException -> IO ()
             handler (SomeException e) = yell n (show e) >> throw e
+
+
+
+-- | 'MonadIO' version of 'threadDelay'.
+delay :: MonadIO io => Int -> io ()
+delay = liftIO . threadDelay

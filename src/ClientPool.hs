@@ -79,7 +79,7 @@ balanceEdges env =
 
       forever $ do
 
-            liftIO $ threadDelay (_mediumTickRate $ _config env)
+            delay (_mediumTickRate $ _config env)
 
             (usnDeficit, dsnDeficit) <- liftIO $ do
                   atomically $ do
@@ -119,7 +119,7 @@ housekeeping env = forever $ do
       removeTimedOutDsn env
       removeDeadClients env
       sendKeepAlive env
-      threadDelay (_mediumTickRate $ _config env)
+      delay (_mediumTickRate $ _config env)
 
 
 

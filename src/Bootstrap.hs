@@ -44,7 +44,7 @@ bootstrap config self =
                                                    , ioErrorH
                                                    ]
 
-            retry = threadDelay (_longTickRate config) >> go
+            retry = delay (_longTickRate config) >> go
 
             badResponseH = Handler $ \BadResponse -> do
                   putStrLn "Bad response from bootstrap server. Probably a bug."

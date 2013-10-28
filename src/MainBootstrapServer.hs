@@ -44,7 +44,7 @@ bootstrapServerMain = do
 --   is getting rid of too high interconnectedness in the node pool when there
 --   is a larger network present.
 restartLoop :: MVar () -> IO ()
-restartLoop trigger = forever $ threadDelay (10*10^6) >> yell 34 "restart sent" >> tryPutMVar trigger ()
+restartLoop trigger = forever $ delay (10*10^6) >> yell 34 "restart sent" >> tryPutMVar trigger ()
 
 
 
@@ -94,7 +94,7 @@ bootstrapServerLoop config counter serverSock ldc = forever $ do
                         putStrLn "Non-BootstrapRequest signal received"
                         return False
 
-      threadDelay (10^5)
+      delay (10^5)
 
       when success $ modifyIORef' counter (+1)
 
