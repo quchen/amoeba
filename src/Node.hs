@@ -23,7 +23,8 @@ import           Control.Concurrent.STM
 import           Control.Monad
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import           Data.Maybe (fromJust)
+import           Data.Maybe (isJust, fromJust)
+import           Control.Exception (assert)
 
 import qualified Pipes.Concurrent as P
 
@@ -71,7 +72,8 @@ getSelfInfo addr = fromJust' <$> NS.getNameInfo flags True True addr
       where flags = [ NS.NI_NUMERICHOST -- "IP address, not DNS"
                     , NS.NI_NUMERICSERV -- "Port as a number please"
                     ]
-            fromJust' (a,b) = (fromJust a, fromJust b)
+            fromJust' (a,b) = assert (isJust a && isJust b)
+                                     (fromJust a, fromJust b)
 
 
 -- | Initializes node environment by setting up the communication channels etc.
