@@ -45,25 +45,29 @@ bootstrap config self =
                                                    , noResponseH
                                                    , ioErrorH
                                                    ]
-                                    threadDelay (_longTickRate config)
-                                    go
+
+            retry = threadDelay (_longTickRate config) >> go
 
             badResponseH = Handler $ \BadResponse -> do
                   putStrLn "Bad response from bootstrap server. Probably a bug."
+                  retry
 
             noResponseH = Handler $ \NoResponse -> do
                   putStrLn "No response from bootstrap server. Probably a bug."
+                  retry
 
             ioErrorH = Handler $ \e -> do
                   let _ = e :: IOException
                   printf "Cound not connect to bootstrap server (%s).\
                          \ Is it online?\n"
                          (ioe_description e)
+                  retry
 
 
-            go = handleMulti $ forever $ do
+            go = handleMulti $ do
                   let bsServer = getBootstrapServer config
                   connectToNode bsServer $ \(s, _) -> do
+                        yell 31 "Sending request"
                         request s (BootstrapRequest self) >>= \case
                               Just OK -> return ()
                               Just _  -> throwIO BadResponse
@@ -73,6 +77,7 @@ bootstrap config self =
 
 
 -- | Find the address of a suitable bootstrap server.
-getBootstrapServer :: Config -> To
-getBootstrapServer = head . _bootstrapServers
 -- TODO: Make bootstrap server selection a little more complex :-)
+getBootstrapServer :: Config -> To
+getBootstrapServer = head . _bootstrapServers . setBootstrap
+setBootstrap x = x { _bootstrapServers = [To $ Node "127.0.0.1" 20000] }

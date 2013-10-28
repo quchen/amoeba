@@ -52,9 +52,10 @@ bootstrapServer :: Config
                 -> Chan NormalSignal
                 -> IO ()
 bootstrapServer config ldc =
-      PN.listen (PN.Host "localhost")
+      PN.listen (PN.Host "127.0.0.1")
                 (show $ _serverPort config)
-                $ \(sock, _) -> do
+                $ \(sock, addr) -> do
+                        putStrLn $ "Bootstrap server listening on " ++ show addr
                         counter <- newIORef 1
                         bootstrapServerLoop config counter sock ldc
 
@@ -92,6 +93,8 @@ bootstrapServerLoop config counter serverSock ldc = forever $ do
                   _no_signal -> do
                         putStrLn "Non-BootstrapRequest signal received"
                         return False
+
+      threadDelay (10^5)
 
       when success $ modifyIORef' counter (+1)
 

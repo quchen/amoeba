@@ -57,7 +57,7 @@ startNode ldc config = do
 
             env <- initEnvironment self ldc config
 
-            yell 32 $ "Server listening on " ++ show self
+            yell 32 $ "Node server listening on " ++ show self
             asyncMany wait [ server env socket
                            , outputThread $ _io env
                            , clientPool env

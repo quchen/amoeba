@@ -10,10 +10,6 @@ import Types
 -- | Starts a single node.
 main :: IO ()
 main = do config <- parseArgs
-          startNode Nothing (setBootstrap config)
+          startNode Nothing config
 
 
-
--- | Hardcoded bootstrap servers
-setBootstrap x = x { _bootstrapServers = [To $ Node "localhost" 20000] }
--- TODO: proper discovery
