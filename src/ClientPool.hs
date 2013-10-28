@@ -44,8 +44,7 @@ import Utilities
 --
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
-clientPool env = withAsync (housekeeping env) $
-      \_ -> fillPool env
+clientPool env = withAsync (housekeeping env) $ \_ -> fillPool env
 
 
 -- | Watches the count of nodes in the database, and issues 'EdgeRequest's
@@ -107,6 +106,7 @@ balanceEdges env =
 --   nodes.
 housekeeping :: Environment -> IO ()
 housekeeping env = forever $ do
+
       -- Order matters: remove dead neighbours first, then send KeepAlive
       -- signals
       -- TODO: Update timestamps of running clients

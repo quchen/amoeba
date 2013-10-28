@@ -67,7 +67,6 @@ bootstrap config self =
             go = handleMulti $ do
                   let bsServer = getBootstrapServer config
                   connectToNode bsServer $ \(s, _) -> do
-                        yell 31 "Sending request"
                         request s (BootstrapRequest self) >>= \case
                               Just OK -> return ()
                               Just _  -> throwIO BadResponse

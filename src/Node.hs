@@ -28,7 +28,7 @@ import           Control.Exception (assert)
 
 import qualified Pipes.Concurrent as P
 
-import qualified Pipes.Network.TCP as N
+import qualified Pipes.Network.TCP as PN
 import qualified Network.Socket as NS
 
 import Bootstrap
@@ -48,10 +48,10 @@ startNode ldc config = do
 
       let port = _serverPort config
 
-      N.listen N.HostAny (show port) $ \(socket, serverAddr) -> do
+      PN.listen (PN.Host "127.0.0.1") (show port) $ \(socket, serverAddr) -> do
 
             (selfHost, selfPort) <- getSelfInfo serverAddr
-            when (port /= read selfPort) $ error "port /= selfPort. Fat bug."
+            assert (port == read selfPort) $ return ()
             let self = To $ Node selfHost port
 
             bootstrap config self
@@ -67,7 +67,7 @@ startNode ldc config = do
 
 
 -- | Retrieve own server address
-getSelfInfo :: N.SockAddr -> IO (N.HostName, N.ServiceName)
+getSelfInfo :: PN.SockAddr -> IO (PN.HostName, PN.ServiceName)
 getSelfInfo addr = fromJust' <$> NS.getNameInfo flags True True addr
       where flags = [ NS.NI_NUMERICHOST -- "IP address, not DNS"
                     , NS.NI_NUMERICSERV -- "Port as a number please"
