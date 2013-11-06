@@ -119,6 +119,27 @@ This is a list of known and feasible attacks on the current design:
 
 
 
+
+The protocol
+------------
+
+The protocol type used by Amoeba can be found in `src/Types.hs`. All signals are sent downstream, with one exception where relevant data actually flows upstream. Unless otherwise noted, the server answers signals with a `ServerSignal`, which can basically be `OK` or one of multiple possible errors. A usual request consists of a node sending a signal downstream and waiting for the response, terminating the worker if it is not positive.
+
+Signals are divided in two main groups, normal and special. Normal signals are what usual nodes routinely use:
+
+- `EdgeRequest` contains information for establishing a new edge in the network
+- `KeepAlive` is sent in case there haven't been any useful signals, but the connection should not time out
+- `ShuttingDown` is sent as a courtesy to other nodes, so they can remove a terminating node before the timeout kicks in
+- `Flood` signals are distributed to every node in the network. Current instances are text messages and one to draw the network.
+
+Normal signals are filtered: only when they're coming from known upstream nodes they are processed. Special signals circumvent this, as some processes inherently require unknown nodes to establish connections.
+
+- `BootstrapRequest` is sent to the bootstrap server, and instructs it to send out `EdgeRequest`s on behalf of the contacting node.
+- `Handshake` is what actually establishes a new connection. Sent to a new downstream neighbour, it adds the issuer to its list of known nodes and answers with `OK`; the issuer then does its own bookkeeping, and answers back `OK` as well, finalizing the deal with mutual agreement.
+- `HandshakeRequest`s prompt another node to send back a `Handshake`. This allows `Handshake` to be used to establish incoming connections, not just outgoing ones by sending it directly.
+
+
+
 Terminology
 -----------
 
