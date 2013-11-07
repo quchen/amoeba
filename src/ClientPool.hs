@@ -92,9 +92,8 @@ balanceEdges env = forever $ do
             deficitMsg usnDeficit Incoming
             return (dsnDeficit, usnDeficit)
 
-      yell 31 "BALANCING EDGES"
-      for (each [1..dsnDeficit]) $ const (yield Outgoing)
-      for (each [1..usnDeficit]) $ const (yield Incoming)
+      each ~> const (yield Outgoing) $ [1..dsnDeficit]
+      each ~> const (yield Incoming) $ [1..usnDeficit]
 
       where
 
