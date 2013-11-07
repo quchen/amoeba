@@ -13,6 +13,7 @@ module NodePool (nodePool) where
 import Control.Concurrent.Async
 import Control.Concurrent.MVar
 import Control.Concurrent.Chan
+import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
 import Data.Word
@@ -36,14 +37,15 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
                     -- ^ Local direct connection to one node (taking
                     --   turns). 'Chan' instead of 'TQueue' because of the
                     --   lack of fairness in STM.
+         -> TBQueue (IO ()) -- ^ Channel to output thread
          -> MVar () -- ^ Termination lock. If the MVar is filled, the next
                     --   node (due to fairness) is killed and restarted,
                     --   see 'janitor'.
          -> IO ()
-nodePool n config ldc terminate = forM_ [1..n] $ \portOffset ->
+nodePool n config ldc output terminate = forM_ [1..n] $ \portOffset ->
       let port = _serverPort config + fromIntegral portOffset
           config' = config { _serverPort = port }
-      in  async $ janitor config' ldc terminate
+      in  async $ janitor config' ldc output terminate
 
 
 
@@ -54,24 +56,24 @@ nodePool n config ldc terminate = forM_ [1..n] $ \portOffset ->
 --   example the initial bootstrap nodes are very interconnected, which is not
 --   desirable. Restarting these nodes when there's an actual network leads to
 --   more natural neighbourships.
-janitor :: Config             -- ^ Node configuration
+janitor :: Config            -- ^ Node configuration
         -> Chan NormalSignal -- ^ Local direct connection
-        -> MVar ()            -- ^ Termination MVar. If filled, a node is
-                              --   terminated (and replaced by a new one by the
-                              --   janitor). Also see 'terminationWatch'.
+        -> TBQueue (IO ())   -- ^ Channel to output thread
+        -> MVar ()           -- ^ Termination MVar. If filled, a node is
+                             --   terminated (and replaced by a new one by the
+                             --   janitor). Also see 'terminationWatch'.
         -> IO ()
-janitor config fromPool terminate = handle (\(SomeException e) -> yell 41 ("Janitor crashed! Exception: " ++ show e)) $
+janitor config fromPool output terminate = handle (\(SomeException e) -> yell 41 ("Janitor crashed! Exception: " ++ show e)) $
   forever $ do
       toNode <- spawn (P.Bounded $ _maxChanSize config)
       let handlers = [ Handler $ \ThreadKilled -> return ()
                      ]
       (`catches` handlers) $
-            withAsync (startNode (Just toNode) config) $ \node -> do
-                  asyncMany [ fromPool `pipeTo` toNode
-                            , terminationWatch terminate node
-                            , statusReport config
-                            ]
-                  wait node
+            withAsync (startNode (Just toNode) output config) $ \node ->
+             withAsync (fromPool `pipeTo` toNode) $ \_ ->
+              withAsync (terminationWatch terminate node) $ \_ ->
+               withAsync (statusReport config) $ \_ ->
+                wait node
 
 
 

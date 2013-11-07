@@ -19,6 +19,7 @@ module Node (startNode) where
 
 import           Control.Applicative
 import           Control.Concurrent.STM
+import           Control.Concurrent.Async
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import           Data.Maybe (isJust, fromJust)
@@ -39,10 +40,11 @@ import Utilities
 -- | Node main function. Bootstraps, launches server loop, client pool,
 --   IO thread.
 startNode :: Maybe (PChan NormalSignal) -- ^ Local direct connection (LDC)
+          -> TBQueue (IO ()) -- ^ Channel to output thread
           -> Config -- ^ Configuration, most likely given by command line
                     --   parameters
           -> IO ()
-startNode ldc config = do
+startNode ldc output config = do
 
       let port = _serverPort config
 
@@ -54,13 +56,12 @@ startNode ldc config = do
 
             bootstrap config self
 
-            env <- initEnvironment self ldc config
+            env <- initEnvironment self ldc output config
 
             yell 32 $ "Node server listening on " ++ show self
-            asyncMany [ server env socket
-                      , outputThread (_io env)
-                      , clientPool env
-                      ]
+            withAsync (server env socket) $ \server ->
+             withAsync (clientPool env) $ \_ ->
+              wait server
 
 
 
@@ -75,16 +76,17 @@ getSelfInfo addr = fromJust' <$> NS.getNameInfo flags True True addr
 
 
 -- | Initializes node environment by setting up the communication channels etc.
-initEnvironment :: To
-                -> Maybe (PChan NormalSignal)
+initEnvironment :: To                         -- ^ Own address
+                -> Maybe (PChan NormalSignal) -- ^ Local direct connection
+                -> TBQueue (IO ())            -- ^ Channel to output thread
                 -> Config
                 -> IO Environment
-initEnvironment node ldc config = Environment
+initEnvironment node ldc output config = Environment
 
       <$> newTVarIO Map.empty -- Known nodes
       <*> newTVarIO Map.empty -- Nodes known by
       <*> spawn buffer        -- Channel read by all clients
-      <*> newTBQueueIO size   -- Channel to the IO thread
+      <*> pure output         -- Channel to the IO thread
       <*> newTVarIO Set.empty -- Previously handled queries
       <*> pure node           -- Own server's address
       <*> pure ldc            -- (Maybe) local direct connection

@@ -11,6 +11,7 @@ module Main where
 
 import Data.IORef
 import Control.Concurrent.Async
+import Control.Concurrent.STM
 import Control.Concurrent hiding (yield)
 import Control.Monad
 
@@ -33,7 +34,8 @@ bootstrapServerMain = do
       ldc <- newChan
       terminate <- newEmptyMVar
       let poolSize = _minNeighbours config * 2
-      nodePool poolSize config ldc terminate
+      output <- newTBQueueIO (_maxChanSize config)
+      nodePool poolSize config ldc output terminate
       putStrLn $ "Starting bootstrap server with " ++ show poolSize ++ " nodes"
       async $ restartLoop terminate
       bootstrapServer config ldc
