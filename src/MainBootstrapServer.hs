@@ -34,11 +34,10 @@ bootstrapServerMain = do
       ldc <- newChan
       terminate <- newEmptyMVar
       let poolSize = _minNeighbours config * 2
-      output <- newTBQueueIO (_maxChanSize config)
+      (output, _) <- outputThread (_maxChanSize config)
       nodePool poolSize config ldc output terminate
       putStrLn $ "Starting bootstrap server with " ++ show poolSize ++ " nodes"
       async $ restartLoop terminate
-      async $ outputThread output
       bootstrapServer config ldc
 
 

@@ -223,8 +223,17 @@ getBroadcastOutput env =
 
 -- | Dedicated (I)O thread to make sure messages aren't scrambled up. Reads
 --   IO actions from a queue and executes them.
-outputThread :: TBQueue (IO ()) -> IO ()
-outputThread = forever . join . atomically . readTBQueue
+-- | Set up the decicated IO thread. Forks said thread, and returns a 'TBQueue'
+--   to it, along with the 'Async' of the thread (which may be useful for
+--   cancelling it).
+outputThread :: Int -- ^ Thread size
+             -> IO ( TBQueue (IO ()) -- Channel
+                   , Async ()        -- Async of the printer thread
+                   )
+outputThread size = do
+      q <- newTBQueueIO size
+      thread <- async $ (forever . join . atomically . readTBQueue) q
+      return (q, thread)
 
 
 -- | Catches all exceptions, 'yell's their contents, and rethrows them.
