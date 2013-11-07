@@ -8,9 +8,7 @@ module Bootstrap (bootstrap) where
 
 
 
-import Control.Concurrent
 import Control.Exception
-import System.IO.Error
 import GHC.IO.Exception (ioe_description)
 import Data.Typeable
 import Control.Monad

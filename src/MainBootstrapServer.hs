@@ -11,7 +11,6 @@ module Main where
 
 import Data.IORef
 import Control.Concurrent hiding (yield)
-import Control.Concurrent.Async
 import Control.Monad
 
 import Pipes.Network.TCP (Socket)
@@ -19,7 +18,6 @@ import qualified Pipes.Network.TCP as PN
 
 import NodePool
 import CmdArgParser
-import Types
 import Utilities
 
 main :: IO ()

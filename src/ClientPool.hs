@@ -18,7 +18,6 @@ module ClientPool (
         , isRoomIn
 ) where
 
-import           Control.Concurrent (threadDelay)
 import           Control.Applicative
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async

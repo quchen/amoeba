@@ -18,13 +18,11 @@ module Node (startNode) where
 
 
 import           Control.Applicative
-import           Control.Concurrent.Async
 import           Control.Concurrent.STM
-import           Control.Monad
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import           Data.Maybe (isJust, fromJust)
-import           Control.Exception (assert, finally)
+import           Control.Exception (assert)
 
 import qualified Pipes.Concurrent as P
 

@@ -26,7 +26,6 @@ import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
 import           Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
-import qualified Network.Simple.TCP as PN
 import           Control.Monad.Catch (MonadCatch)
 
 import Types
