@@ -26,6 +26,7 @@ import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
 import           Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
+import qualified Network.Simple.TCP as PN
 import           Control.Monad.Catch (MonadCatch)
 
 import Types
@@ -50,10 +51,10 @@ server env serverSocket = liftIO $ do
                        modifyIORef' counter (+1)
                        return (From c)
 
-            yellAndRethrow 41 $ PN.accept serverSocket $ \(clientSocket, addr) -> do
+            yellAndRethrow 41 . void $ PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
                   atomically . toIO env Debug $
                         printf "New worker (%s) from %s\n" (show from) (show addr)
-                  withAsync (worker env from clientSocket) wait
+                  worker env from clientSocket
 
 
 
@@ -118,6 +119,7 @@ workerLdc env@(_ldc -> Just pChan) = runEffect $ input >-> dispatch >-> discard
             ldcError = liftIO . atomically . toIO env Debug . putStrLn $
                                                        "Bad LDC signal received"
                                -- TODO This should be red bold and underlined. ^
+
 workerLdc _ = return ()
 
 
@@ -356,7 +358,7 @@ edgeBounceH env origin (EdgeData dir (Left n)) = liftIO $ do
                                 -- node's configuration to   |
                                 -- prevent "maxBound bounces |
                                 -- left" attacks             |
-            toIO env Chatty $ printf "Bounced %s request from %s (%d left)\n"
+            toIO env Chatty $ printf "Hardbounced %s request from %s (%d left)\n"
                                      (show dir)
                                      (show origin)
                                      n
@@ -409,8 +411,9 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = liftIO $ do
                   -- directions in that pattern (Incoming+Downstream): The
                   -- direction is from the viewpoint of the requestee, while the
                   -- relationship to that node is seen from the current node.
-                  atomically . toIO env Chatty . putStrLn $
-                        "Edge downstream already exists, bouncing"
+                  atomically . toIO env Chatty $ printf
+                        "Edge to %s already exists, bouncing\n"
+                        (show origin)
                   bounceOn
 
             -- Request randomly denied
@@ -420,17 +423,25 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = liftIO $ do
                   bounceOn
 
             -- Try accepting an Outgoing request
-            (_, _, Outgoing) -> sendHandshakeRequest env origin
+            (_, _, Outgoing) -> do
+                  atomically . toIO env Chatty . putStrLn $
+                        "Outgoing edge request accepted, sending handshake\
+                        \ request"
+                  sendHandshakeRequest env origin
                   -- TODO: Bounce on if failed, otherwise an almost saturated
                   --       network won't allow new nodes
 
             -- Try accepting an Incoming request
-            (_, _, Incoming) -> void $ startHandshakeH env origin
+            (_, _, Incoming) -> do
+                  atomically . toIO env Chatty . putStrLn $
+                        "Incoming edge request accepted, starting handshake"
+                  void $ startHandshakeH env origin
                   -- TODO: Bounce on if failed, otherwise an almost saturated
                   --       network won't allow new nodes
 
       return OK -- The upstream neighbour that relayed the EdgeRequest has
                 -- nothing to do with whether the handshake fails etc.
+
 
 
 -- | Prompt another node to start a handshake in order to be added as its
@@ -480,9 +491,7 @@ handshakeH env from socket = do
       if isRoom'
             then request socket OK >>= \case
                   Just OK -> return OK
-                        -- This leaves the connection open, as it will be
-                        -- used further by the client on the other side.
-                  x -> liftIO . atomically $ do
+                  _else -> liftIO . atomically $ do
                         modifyTVar (_upstream env) (Map.delete from)
                         return Error
             else return Error
@@ -508,11 +517,16 @@ startHandshakeH :: (MonadIO io)
                 => Environment
                 -> To -- ^ Node to add
                 -> io ServerResponse
-startHandshakeH env to = liftIO $
-      connectToNode to $ \(socket, _addr) ->
-            request socket (Special Handshake) >>= \case
-                  Just OK -> tryLaunchClient socket
-                  _else   -> return Error
+startHandshakeH env to = do
+      -- TODO: make this socket leak proof
+      (socket, _addr) <- connectToNode' to
+      result <- request socket (Special Handshake) >>= liftIO . \case
+            Just OK -> tryLaunchClient socket
+            _else   -> return Error
+
+      case result of
+            OK    -> return OK
+            _else -> disconnect socket >> return Error
 
       where
 
@@ -520,9 +534,9 @@ startHandshakeH env to = liftIO $
 
             -- Cancel the client thread if it is not found in the database
             -- after the procedure has finished
-            rollback thread = do
+            rollback socket thread = do
                   p <- atomically $ Map.member to <$> readTVar (_downstream env)
-                  unless p $ cancel thread
+                  unless p $ cancel thread >> disconnect socket
 
             insertClient = modifyTVar (_downstream env) . Map.insert to
 
@@ -530,7 +544,7 @@ startHandshakeH env to = liftIO $
                   time <- makeTimestamp
                   stsc <- spawn buffer
                   bracket (async $ client env socket to stsc)
-                          rollback
+                          (rollback socket)
                           $ \thread -> atomically $ do
 
                         let allowed IsUnrelated = True
@@ -541,6 +555,8 @@ startHandshakeH env to = liftIO $
 
                         if keep
                               then do insertClient (Client time thread stsc)
+                                      toIO env Chatty . putStrLn $
+                                             "New client!"
                                       return OK
                               else return Error
 

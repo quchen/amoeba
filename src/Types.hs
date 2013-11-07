@@ -10,6 +10,7 @@ import Data.Map
 import Network
 import GHC.Generics (Generic)
 import Data.Functor
+import Text.Printf
 
 import qualified Pipes.Concurrent as P
 
@@ -75,11 +76,11 @@ data Config = Config {
 
         _serverPort     :: Int        -- ^ Port to open the server socket on
 
-      , _maxNeighbours  :: Word       -- ^ The maximum number of neighbours. No
+      , _maxNeighbours  :: Int        -- ^ The maximum number of neighbours. No
                                       --   new ones will be accepted once it's
                                       --   full.
 
-      , _minNeighbours  :: Word       -- ^ The minimum number of neighbours. If
+      , _minNeighbours  :: Int        -- ^ The minimum number of neighbours. If
                                       --   the current number is smaller issue
                                       --   announce signals.
 
@@ -187,7 +188,13 @@ data NormalSignal =
       -- | Signals meant to be considered by every node in the network.
       | Flood Timestamp FloodSignal
 
-      deriving (Eq, Ord, Show, Generic)
+      deriving (Eq, Ord, Generic)
+
+instance Show NormalSignal where
+      show KeepAlive = "KeepAlive"
+      show ShuttingDown = "ShuttingDown"
+      show (Flood t s) = printf "Flood %s %s" (show t) (show s)
+      show (EdgeRequest to ed) = printf "EdgeRequest { %s, %s }" (show to) (show ed)
 
 instance Binary NormalSignal
 
@@ -280,7 +287,16 @@ data EdgeData = EdgeData {
             --                    requests that bounce indefinitely.
             --                 p: Acceptance probability
       }
-      deriving (Eq, Ord, Show, Generic)
+      deriving (Eq, Ord, Generic)
+
+instance Show EdgeData where
+      show ed = printf "%s edge (%s)"(show $ _direction ed) bp
+            where bp :: String
+                  bp = case _bounceParam ed of
+                        Left n -> printf "%d bounce%s left"
+                                         n
+                                         (if n /= 1 then "s" else "")
+                        Right (n,p) -> printf "bounces: %d, accept: %.2f" n p
 
 instance Binary EdgeData
 
@@ -340,7 +356,7 @@ newtype To = To { getTo :: Node }
       deriving (Eq, Ord, Generic)
 
 instance Show To where
-      show (To node) = "To " ++ show node
+      show (To node) = "->" ++ show node
 
 instance Binary To
 

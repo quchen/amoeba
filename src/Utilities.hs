@@ -15,7 +15,9 @@ module Utilities (
 
       -- * Networking
       , connectToNode
+      , connectToNode'
       , listenOnNode
+      , disconnect
       , sender
       , receiver
       , send
@@ -46,6 +48,7 @@ import           Pipes
 import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
 import qualified Pipes.Network.TCP as P
+import qualified Network.Simple.TCP as P
 import qualified Pipes.Binary as P
 import Control.Monad.Catch (MonadCatch)
 
@@ -77,12 +80,30 @@ whileM p m = go
 
 
 
--- | 'Node'-based version of 'P.connect'
+-- | 'Node'-based version of 'P.connect'. Automatically closes when the
+--   operation terminates or throws.
 connectToNode :: (MonadIO io, MonadCatch io)
               => To
               -> ((P.Socket, P.SockAddr) -> io r)
               -> io r
 connectToNode (To node) = P.connect (_host node) (show $ _port node)
+
+
+-- | 'Node'-based version of 'P.connectSock'. Opens the connection, but
+--   contrary to 'connectToNode', it will not be closed automatically. Use
+--   'P.closeSock' to do so.
+connectToNode' :: (MonadIO io)
+               => To
+               -> io (P.Socket, P.SockAddr)
+connectToNode' (To node) = P.connectSock (_host node) (show $ _port node)
+
+
+
+-- | Closes a connection.
+disconnect :: (MonadIO io)
+           => P.Socket
+           -> io ()
+disconnect s = liftIO (P.closeSock s)
 
 
 
@@ -207,7 +228,8 @@ outputThread = forever . join . atomically . readTBQueue
 
 
 -- | Catches all exceptions, 'yell's their contents, and rethrows them.
-yellAndRethrow n = handle handler
+yellAndRethrow :: (MonadIO io) => Int -> IO () -> io ()
+yellAndRethrow n = liftIO . handle handler
       where handler :: SomeException -> IO ()
             handler (SomeException e) = yell n (show e) >> throw e
 

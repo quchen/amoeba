@@ -61,7 +61,7 @@ port = option $ mconcat [ long    "port"
                         , help    "Server port"
                         ]
 
-minNeighbours :: Parser Word
+minNeighbours :: Parser Int
 minNeighbours = nullOption $ mconcat
       [ reader positive
       , showDefault
@@ -71,7 +71,7 @@ minNeighbours = nullOption $ mconcat
       , help    "Minimum amount of neighbours (up-/downstream separate)"
       ]
 
-maxNeighbours :: Parser Word
+maxNeighbours :: Parser Int
 maxNeighbours = nullOption $ mconcat
       [ reader positive
       , showDefault

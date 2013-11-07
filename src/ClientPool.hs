@@ -44,7 +44,9 @@ import Utilities
 --
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
-clientPool env = withAsync (housekeeping env) $ \_ -> fillPool env
+clientPool env = withAsync hkeep $ \_ -> fillPool env
+      --where hkeep = housekeeping env
+      where hkeep = yell 31 "Housekeeping disabled" -- TODO: enable
 
 
 -- | Watches the count of nodes in the database, and issues 'EdgeRequest's
@@ -58,7 +60,7 @@ fillPool env =
 
       where
             -- Send signal to the single worker channel
-            dispatch :: Consumer' NormalSignal IO ()
+            dispatch :: Consumer NormalSignal IO ()
             dispatch = P.toOutput (_pOutput $ _st1c env)
 
             -- Create an 'EdgeRequest' from a 'Direction'
@@ -75,33 +77,38 @@ fillPool env =
 --   deficit in one of them, generate the 'Direction' of the new edge to
 --   construct.
 balanceEdges :: Environment -> Producer Direction IO r
-balanceEdges env =
+balanceEdges env = forever $ do
 
-      forever $ do
+      delay (_mediumTickRate $ _config env)
 
-            delay (_mediumTickRate $ _config env)
+      (usnDeficit, dsnDeficit) <- liftIO $ atomically $ do
 
-            (usnDeficit, dsnDeficit) <- liftIO $ do
-                  atomically $ do
+            -- Careful with integer underflows here.
+            -- This piece of code is the reason neighbours are
+            -- Int and not Word.
+            usnDeficit <- (minNeighbours -) <$> dbSize _upstream
+            dsnDeficit <- (minNeighbours -) <$> dbSize _downstream
 
-                        usnDeficit <- (minNeighbours -) <$> dbSize _upstream
-                        dsnDeficit <- (minNeighbours -) <$> dbSize _downstream
+            deficitMsg dsnDeficit Outgoing
+            deficitMsg usnDeficit Incoming
+            return (dsnDeficit, usnDeficit)
 
-                        deficitMsg dsnDeficit Outgoing
-                        deficitMsg usnDeficit Incoming
-                        return (dsnDeficit, usnDeficit)
-
-            each [1..dsnDeficit] >-> P.map (const Outgoing)
-            each [1..usnDeficit] >-> P.map (const Incoming)
+      yell 31 "BALANCING EDGES"
+      for (each [1..dsnDeficit]) $ const (yield Outgoing)
+      for (each [1..usnDeficit]) $ const (yield Incoming)
 
       where
 
             minNeighbours = _minNeighbours (_config env)
 
-            dbSize db = fromIntegral . Map.size <$> readTVar (db env)
+            dbSize :: (Environment -> TVar (Map.Map k a)) -> STM Int
+            dbSize db = Map.size <$> readTVar (db env)
 
             deficitMsg n dir = when (n > 0) $ toIO env Debug $
-                         printf "Deficit of %d %s edges detected\n" n (show dir)
+                  printf "Deficit of %d %s edge%s detected\n"
+                         n
+                         (show dir)
+                         (if n > 1 then "s" else "")
 
 
 

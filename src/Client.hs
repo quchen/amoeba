@@ -13,6 +13,7 @@ module Client  (
 
 import Control.Concurrent.STM
 import Data.Monoid
+import Control.Exception (finally)
 import qualified Data.Map as Map
 
 import Pipes
@@ -26,18 +27,19 @@ import Utilities
 
 
 -- | Start a new client
-client :: (MonadIO io)
-       => Environment
+client :: Environment
        -> Socket -- ^ Connection to use (created by the handshake process)
        -> To -- ^ Node the Socket connects to. Only used for bookkeeping, in
              --   order to keep the client pool up to date.
        -> PChan NormalSignal
-       -> io ()
-client env socket to stsc = runEffect $
+       -> IO ()
+client env socket to stsc = (`finally` disconnect socket) $ runEffect $
       P.fromInput input >-> signalH env socket to
 
-      where st1c   = _st1c   env
-            input  = mconcat [_pInput st1c, _pInput stsc]
+      where st1c   = _st1c env
+            input  = mconcat [ _pInput st1c
+                             , _pInput stsc
+                             ]
             -- TODO: Implement stc to support flood messages
 -- TODO: send shutdown notice on termination
 
@@ -52,6 +54,7 @@ signalH :: (MonadIO io)
 signalH env socket to = go
       where terminate = return ()
             go = do signal <- await
+                    yell 34 (show signal)
                     response <- request socket (Normal signal)
                     case response of
                           Just OK      -> ok           env to >> go
@@ -60,6 +63,7 @@ signalH env socket to = go
                           Just Denied  -> denied       env    >> terminate
                           Just Illegal -> illegal      env    >> terminate
                           Nothing      -> noResponse   env    >> terminate
+
 
 
 

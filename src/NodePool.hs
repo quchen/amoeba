@@ -28,7 +28,7 @@ import Utilities
 
 -- | Starts a node pool of a certain size, and provides a channel to
 --   communitcate with (random nodes in) it
-nodePool :: Word    -- ^ Number of nodes in the pool (also the port range)
+nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
          -> Config  -- ^ Configuration for a single node. Of particular
                     --   importance are the port (nodes will be spawned
                     --   in the range [port+1, port+range]).
@@ -74,6 +74,7 @@ janitor config fromPool terminate = handle (\(SomeException e) -> yell 41 ("Jani
                   wait node
 
 
+
 -- | Periodically say hello for DEBUG
 statusReport :: Config -> IO ()
 statusReport config = forever $ do
@@ -87,7 +88,6 @@ pipeTo :: Chan NormalSignal -> PChan NormalSignal -> IO ()
 pipeTo input output =
 
       runEffect $ fromChan input >-> P.toOutput (_pOutput output)
-
 
       where fromChan chan = forever $ do
                   signal <- liftIO $ readChan chan
