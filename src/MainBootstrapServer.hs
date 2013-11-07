@@ -38,6 +38,7 @@ bootstrapServerMain = do
       nodePool poolSize config ldc output terminate
       putStrLn $ "Starting bootstrap server with " ++ show poolSize ++ " nodes"
       async $ restartLoop terminate
+      async $ outputThread output
       bootstrapServer config ldc
 
 
