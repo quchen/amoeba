@@ -123,7 +123,7 @@ This is a list of known and feasible attacks on the current design:
 The protocol
 ------------
 
-The protocol type used by Amoeba can be found in `src/Types.hs`. All signals are sent downstream, with one exception where relevant data actually flows upstream. Unless otherwise noted, the server answers signals with a `ServerSignal`, which can basically be `OK` or one of multiple possible errors. A usual request consists of a node sending a signal downstream and waiting for the response, terminating the worker if it is not positive.
+The protocol type used by Amoeba can be found in `src/Types/Signal.hs`. All signals are sent downstream, with one exception where relevant data actually flows upstream. Unless otherwise noted, the server answers signals with a `ServerSignal`, which can basically be `OK` or one of multiple possible errors. A usual request consists of a node sending a signal downstream and waiting for the response, terminating the worker if it is not positive.
 
 Signals are divided in two main groups, normal and special. Normal signals are what usual nodes routinely use:
 
