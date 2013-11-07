@@ -53,16 +53,15 @@ signalH :: (MonadIO io)
         -> Consumer NormalSignal io ()
 signalH env socket to = go
       where terminate = return ()
-            go = do signal <- await
-                    yell 34 (show signal)
-                    response <- request socket (Normal signal)
-                    case response of
-                          Just OK      -> ok           env to >> go
-                          Just Error   -> genericError env    >> terminate
-                          Just Ignore  -> ignore       env    >> terminate
-                          Just Denied  -> denied       env    >> terminate
-                          Just Illegal -> illegal      env    >> terminate
-                          Nothing      -> noResponse   env    >> terminate
+            go = do
+                  signal <- await
+                  request socket (Normal signal) >>= \case
+                        Just OK      -> ok           env to >> go
+                        Just Error   -> genericError env    >> terminate
+                        Just Ignore  -> ignore       env    >> terminate
+                        Just Denied  -> denied       env    >> terminate
+                        Just Illegal -> illegal      env    >> terminate
+                        Nothing      -> noResponse   env    >> terminate
 
 
 

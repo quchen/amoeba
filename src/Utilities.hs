@@ -120,7 +120,7 @@ listenOnNode node = P.listen (P.Host $ _host node)
 -- | Continuously encode and send data to a 'P.Socket'.
 sender :: (MonadIO io, Binary b)
        => P.Socket
-       -> Consumer b io ()
+       -> Consumer b io r
 sender s = encodeMany >-> P.toSocket s
 
 
@@ -221,12 +221,10 @@ getBroadcastOutput env =
 
 
 
--- | Dedicated (I)O thread to make sure messages aren't scrambled up. Reads
---   IO actions from a queue and executes them.
 -- | Set up the decicated IO thread. Forks said thread, and returns a 'TBQueue'
 --   to it, along with the 'Async' of the thread (which may be useful for
 --   cancelling it).
-outputThread :: Int -- ^ Thread size
+outputThread :: Int                  -- ^ Thread size
              -> IO ( TBQueue (IO ()) -- Channel
                    , Async ()        -- Async of the printer thread
                    )

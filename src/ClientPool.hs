@@ -18,6 +18,7 @@ module ClientPool (
         , isRoomIn
 ) where
 
+import           Control.Exception
 import           Control.Applicative
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
@@ -90,6 +91,7 @@ balanceEdges env = forever $ do
 
             deficitMsg dsnDeficit Outgoing
             deficitMsg usnDeficit Incoming
+
             return (dsnDeficit, usnDeficit)
 
       each ~> const (yield Outgoing) $ [1..dsnDeficit]
@@ -181,8 +183,7 @@ removeTimedOutDsn env = do
 
       when (not $ Map.null kill') $
             atomically . toIO env Debug $
-                 putStrLn "\ESC[34mDownstream neighbour housekilled. Is this\
-                          \ a bug?\ESC[0m\n"
+                 putStrLn "Downstream neighbour housekilled. Is this a bug?"
 
       void $ T.traverse (cancel . _clientAsync) kill'
 -- TODO: Find out whether this function is useful, or whether
@@ -208,8 +209,8 @@ removeDeadClients env = do
 
       when (not $ Set.null deadNodes) $
             atomically . toIO env Debug $
-                 putStrLn "\ESC[34mClient housekilled. This may be a bug\
-                          \ (client should cleanup itself).\ESC[0m\n"
+                 putStrLn "Client housekilled. This may be a bug\
+                          \ (client should cleanup itself).\n"
 
       -- Finally, remove all dead nodes by their just found out keys
       atomically $ modifyTVar (_downstream env) $ \knownNodes ->

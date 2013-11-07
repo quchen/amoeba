@@ -83,10 +83,12 @@ bootstrapServerLoop config counter serverSock ldc = forever $ do
                 dispatchSignal config' node ldc
                 send socket OK
 
-      success <- PN.accept serverSock $ \(clientSock, _clientAddr) ->
+      PN.accept serverSock $ \(clientSock, _clientAddr) ->
             receive clientSock >>= \case
                   Just (BootstrapRequest benefactor) -> do
+                        putStrLn $ "Sending requests on behalf of " ++ show benefactor
                         bootstrapRequestH clientSock benefactor
+                        modifyIORef' counter (+1)
                         putStrLn $ "Client " ++ show count ++ " served"
                         return True
                   Just _other_signal -> do
@@ -97,8 +99,6 @@ bootstrapServerLoop config counter serverSock ldc = forever $ do
                         return False
 
       delay (10^5)
-
-      when success $ modifyIORef' counter (+1)
 
 
 

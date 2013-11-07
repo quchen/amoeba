@@ -37,20 +37,19 @@ bootstrap config self =
          go
          putStrLn "Bootstrap finished"
 
-      where handleMulti action = do catches action [ badResponseH
-                                                   , noResponseH
+      where handleMulti action = do catches action [ bootstrapErrorH
                                                    , ioErrorH
                                                    ]
 
             retry = delay (_longTickRate config) >> go
 
-            badResponseH = Handler $ \BadResponse -> do
-                  putStrLn "Bad response from bootstrap server. Probably a bug."
-                  retry
-
-            noResponseH = Handler $ \NoResponse -> do
-                  putStrLn "No response from bootstrap server. Probably a bug."
-                  retry
+            bootstrapErrorH = Handler $ \case
+                  BadResponse -> do
+                        putStrLn "Bad response from bootstrap server. Probably a bug."
+                        retry
+                  NoResponse -> do
+                        putStrLn "No response from bootstrap server. Probably a bug."
+                        retry
 
             ioErrorH = Handler $ \e -> do
                   let _ = e :: IOException
@@ -58,7 +57,6 @@ bootstrap config self =
                          \ Is it online?\n"
                          (ioe_description e)
                   retry
-
 
             go = handleMulti $ do
                   let bsServer = getBootstrapServer config

@@ -50,10 +50,18 @@ server env serverSocket = liftIO $ do
                        modifyIORef' counter (+1)
                        return (From c)
 
-            yellAndRethrow 41 . void $ PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
+            void $ PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
                   atomically . toIO env Debug $
-                        printf "New worker (%s) from %s\n" (show from) (show addr)
-                  worker env from clientSocket
+                        printf "New worker %s from %s\n"
+                               (show from)
+                               (show addr)
+                  response <- worker env from clientSocket
+                  atomically . toIO env Debug $
+                        printf "Worker %s from %s terminated\n"
+                               (show from)
+                               (show addr)
+
+
 
 
 
@@ -492,8 +500,13 @@ handshakeH env from socket = do
                   Just OK -> return OK
                   _else -> liftIO . atomically $ do
                         modifyTVar (_upstream env) (Map.delete from)
+                        toIO env Chatty . putStrLn $
+                              "Error: handshake request denied"
                         return Error
-            else return Error
+            else liftIO . atomically $ do
+                  toIO env Chatty . putStrLn $
+                              "Error: no room for handshake"
+                  return Error
 
 
 
@@ -522,7 +535,6 @@ startHandshakeH env to = do
       result <- request socket (Special Handshake) >>= liftIO . \case
             Just OK -> tryLaunchClient socket
             _else   -> return Error
-
       case result of
             OK    -> return OK
             _else -> disconnect socket >> return Error
