@@ -10,6 +10,7 @@
 module Main where
 
 import Data.IORef
+import Control.Concurrent.Async
 import Control.Concurrent hiding (yield)
 import Control.Monad
 
@@ -19,6 +20,7 @@ import qualified Pipes.Network.TCP as PN
 import NodePool
 import CmdArgParser
 import Utilities
+import Types
 
 main :: IO ()
 main = bootstrapServerMain
