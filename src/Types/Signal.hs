@@ -90,8 +90,8 @@ data ServerResponse =
         -- | Server response if the command received will be processed
         OK
 
-        -- | Unspecified error
-      | Error
+        -- | Generic error
+      | Error String
 
         -- | Sent to node that tries to connect without being a registered
         --   upstream neighbour

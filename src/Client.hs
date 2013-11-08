@@ -56,12 +56,12 @@ signalH env socket to = go
             go = do
                   signal <- await
                   request socket (Normal signal) >>= \case
-                        Just OK      -> ok           env to >> go
-                        Just Error   -> genericError env    >> terminate
-                        Just Ignore  -> ignore       env    >> terminate
-                        Just Denied  -> denied       env    >> terminate
-                        Just Illegal -> illegal      env    >> terminate
-                        Nothing      -> noResponse   env    >> terminate
+                        Just OK        -> ok           env to >> go
+                        Just (Error e) -> genericError env e  >> terminate
+                        Just Ignore    -> ignore       env    >> terminate
+                        Just Denied    -> denied       env    >> terminate
+                        Just Illegal   -> illegal      env    >> terminate
+                        Nothing        -> noResponse   env    >> terminate
 
 
 
@@ -107,8 +107,10 @@ ignore env = errorPrint env "Server ignores this node, terminating client"
 -- | Server sent back a generic error, see docs for 'Error'
 genericError :: (MonadIO io)
              => Environment
+             -> String
              -> io ()
-genericError env = errorPrint env "Generic server error, terminating client"
+genericError env e = errorPrint env $ "Generic error encountered, terminating\
+                                      \ client (" ++ e ++ ")"
 
 
 

@@ -111,7 +111,7 @@ workerLdc env@(_ldc -> Just pChan) = runEffect $ input >-> dispatch >-> discard
             dispatch = P.mapM $ \case
                   EdgeRequest to edge  -> edgeBounceH env to edge
                   Flood tStamp fSignal -> floodSignalH env (tStamp, fSignal)
-                  _else                -> ldcError >> return Error
+                  _else                -> return $ Error "Bad LDC signal"
 
             -- Eat up all incoming signals; this is the equivalent to the
             -- 'respond' consumer in the ordinary worker, but in the LDC case
@@ -122,11 +122,6 @@ workerLdc env@(_ldc -> Just pChan) = runEffect $ input >-> dispatch >-> discard
             -- to be destroyed.
             discard :: (MonadIO io) => Consumer ServerResponse io r
             discard = forever await
-
-            ldcError :: (MonadIO io) => io ()
-            ldcError = liftIO . atomically . toIO env Debug . putStrLn $
-                                                       "Bad LDC signal received"
-                               -- TODO This should be red bold and underlined. ^
 
 workerLdc _ = return ()
 
@@ -301,13 +296,13 @@ shuttingDownH env from = liftIO . atomically $ do
 nodeRelationship :: Environment
                  -> To
                  -> STM NodeRelationship
-nodeRelationship env node = do
-      let isSelf = node == _self env
-      isAlreadyDownstream <- Map.member node <$> readTVar (_downstream env)
-      return $ case (isSelf, isAlreadyDownstream) of
-            (True, _) -> IsSelf
-            (_, True) -> IsDownstreamNeighbour
-            _         -> IsUnrelated
+nodeRelationship env node =
+      if node == _self env
+            then return IsSelf
+            else Map.member node <$> readTVar (_downstream env) >>= \isDS ->
+                  return $ if isDS
+                        then IsDownstreamNeighbour
+                        else IsUnrelated
 
 
 
@@ -501,13 +496,8 @@ handshakeH env from socket = do
                   Just OK -> return OK
                   _else -> liftIO . atomically $ do
                         modifyTVar (_upstream env) (Map.delete from)
-                        toIO env Chatty . putStrLn $
-                              "Error: handshake request denied"
-                        return Error
-            else liftIO . atomically $ do
-                  toIO env Chatty . putStrLn $
-                              "Error: no room for handshake"
-                  return Error
+                        return $ Error "Handshake request denied"
+            else return $ Error "No room for handshake"
 
 
 
@@ -534,11 +524,43 @@ startHandshakeH env to = do
       -- TODO: make this socket leak proof
       (socket, _addr) <- connectToNode' to
       result <- request socket (Special Handshake) >>= liftIO . \case
-            Just OK -> tryLaunchClient socket
-            _else   -> return Error
+            Just OK -> tryLaunchClient env to socket
+            Just (Error e) -> return $ Error $ "Handshake ServerResponse: " ++ e
+            x -> return $ Error $ "Handshake ServerResponse: " ++ show x
       case result of
-            OK    -> return OK
-            _else -> disconnect socket >> return Error
+            OK -> return OK
+            (Error e) -> do disconnect socket
+                            return $ Error $ "Handshake request result: " ++ e
+            x -> return $ Error $ "Handshake ServerResponse: " ++ show x
+
+
+
+-- | Starts a new client thread, if the current environment allows it (i.e.
+--   there is no connection already, and the downstrean pool isn't full).
+tryLaunchClient :: Environment
+                -> To     -- ^ Target address (for bookkeeping)
+                -> Socket -- ^ Connection
+                -> IO ServerResponse
+tryLaunchClient env to socket = do
+      time <- makeTimestamp
+      stsc <- spawn buffer
+      bracket (async $ client env socket to stsc)
+              (rollback socket)
+              $ \thread -> atomically $ do
+
+            let allowed IsUnrelated = True
+                allowed _else       = False
+            isUnrelated <- allowed <$> nodeRelationship env to
+            if not isUnrelated
+                  then return $ Error $ "New client already known or self"
+                  else do
+                        isRoom <- isRoomIn env _downstream
+                        if not isRoom
+                              then return $ Error $ "No room for new client"
+                              else do insertClient (Client time thread stsc)
+                                      toIO env Chatty . putStrLn $
+                                             "New client!"
+                                      return OK
 
       where
 
@@ -551,26 +573,6 @@ startHandshakeH env to = do
                   unless p $ cancel thread >> disconnect socket
 
             insertClient = modifyTVar (_downstream env) . Map.insert to
-
-            tryLaunchClient socket = do
-                  time <- makeTimestamp
-                  stsc <- spawn buffer
-                  bracket (async $ client env socket to stsc)
-                          (rollback socket)
-                          $ \thread -> atomically $ do
-
-                        let allowed IsUnrelated = True
-                            allowed _else       = False
-                        keep <- liftA2 (&&)
-                              (allowed <$> nodeRelationship env to)
-                              (isRoomIn env _downstream)
-
-                        if keep
-                              then do insertClient (Client time thread stsc)
-                                      toIO env Chatty . putStrLn $
-                                             "New client!"
-                                      return OK
-                              else return Error
 
 
 
