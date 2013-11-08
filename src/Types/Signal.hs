@@ -106,6 +106,10 @@ data ServerResponse =
         --   receives a 'BootstrapRequest'.
       | Illegal
 
+        -- | The signal was received, but couldn't be decoded to the appropriate
+        --   format
+      | DecodeError
+
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary ServerResponse

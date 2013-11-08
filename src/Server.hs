@@ -57,9 +57,10 @@ server env serverSocket = liftIO $ do
                                (show addr)
                   response <- worker env from clientSocket
                   atomically . toIO env Debug $
-                        printf "Worker %s from %s terminated\n"
+                        printf "Worker %s from %s terminated (%s)\n"
                                (show from)
                                (show addr)
+                               (show response)
 
 
 
@@ -71,11 +72,11 @@ worker :: (MonadIO io)
        => Environment
        -> From        -- ^ Unique worker ID
        -> Socket      -- ^ Incoming connection
-       -> io ()
+       -> io ServerResponse
 worker env from socket = runEffect $ input >-> dispatch >-> output
 
-      where input :: (MonadIO io) => Producer Signal io ()
-            input = receiver socket
+      where input :: (MonadIO io) => Producer Signal io ServerResponse
+            input = DecodeError <$ receiver socket
 
             dispatch :: (MonadIO io) => Pipe Signal ServerResponse io r
             dispatch = P.mapM $ \case
@@ -86,13 +87,13 @@ worker env from socket = runEffect $ input >-> dispatch >-> output
             -- bad signal (not "OK") is received.
 
             -- TODO: Maybe the termination rule should be relaxed to "n strikes"
-            output :: (MonadIO io) => Consumer ServerResponse io ()
+            output :: (MonadIO io) => Consumer ServerResponse io ServerResponse
             output = do
                   response <- await
                   send socket response
                   case response of
                         OK -> output
-                        _  -> return ()
+                        x  -> return x
 
 
 

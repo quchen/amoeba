@@ -45,8 +45,8 @@ import Utilities
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
 clientPool env = withAsync hkeep $ \_ -> fillPool env
-      --where hkeep = housekeeping env
-      where hkeep = yell 31 "Housekeeping disabled" -- TODO: enable
+      where hkeep = housekeeping env
+      -- where hkeep = yell 31 "Housekeeping disabled" -- TODO: enable
 
 
 -- | Watches the count of nodes in the database, and issues 'EdgeRequest's
@@ -162,10 +162,16 @@ removeTimedOutUsn env = do
       (Timestamp now) <- makeTimestamp
       atomically $ do
             let notTimedOut (Timestamp t) = now - t < (_poolTimeout._config) env
+
+            -- TODO: Remove this, it's only for debugging
+            timedOut <- Map.size . Map.filter (not . notTimedOut) <$> readTVar (_upstream env)
+            when (timedOut > 0) $ toIO env Debug $
+                  putStrLn $ show timedOut ++ " timed out upstream neighbour(s) removed"
+
             modifyTVar (_upstream env) (Map.filter notTimedOut)
             -- TODO: terminate corresponding connection (right now I *think*
-            --       timeouts will eventually do this, but explicit termination
-            --       would be a cleaner solution.
+            --       timeouts/exceptions will eventually do this, but explicit
+            --       termination would be a cleaner solution.
 
 
 
