@@ -30,12 +30,18 @@ main = bootstrapServerMain
 
 bootstrapServerMain :: IO ()
 bootstrapServerMain = do
+
+      -- Preliminaries
       config <- parseArgs
-      ldc <- newChan
-      terminate <- newEmptyMVar
       let poolSize = _minNeighbours config * 2
       (output, _) <- outputThread (_maxChanSize config)
+
+      -- Node pool
+      ldc <- newChan
+      terminate <- newEmptyMVar
       nodePool poolSize config ldc output terminate
+
+      -- Bootstrap service
       putStrLn $ "Starting bootstrap server with " ++ show poolSize ++ " nodes"
       async $ restartLoop terminate
       bootstrapServer config ldc
@@ -46,7 +52,10 @@ bootstrapServerMain = do
 --   is getting rid of too high interconnectedness in the node pool when there
 --   is a larger network present.
 restartLoop :: MVar () -> IO ()
-restartLoop trigger = forever $ delay (10*10^6) >> yell 34 "restart sent" >> tryPutMVar trigger ()
+restartLoop trigger = forever $ do
+      delay (10*10^6)
+      yell 34 "restart sent"
+      tryPutMVar trigger ()
 
 
 

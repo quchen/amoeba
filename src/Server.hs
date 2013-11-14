@@ -218,7 +218,7 @@ keepAliveH :: (MonadIO io)
            -> io ServerResponse
 keepAliveH env from = liftIO $ do
       atomically . toIO env Chatty $ printf
-            "KeepAlive signal received from %s" (show from)
+            "KeepAlive signal received from %s\n" (show from)
             -- This is *very* chatty, probably too much so.
       return OK
 
@@ -381,16 +381,16 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = liftIO $ do
           -- ^ The relayed acceptance probability is at least as high as the
           -- one the relaying node uses. This prevents "small p" attacks
           -- that bounce indefinitely.
-          bounceOn = if n >= (_maxSoftBounces $ _config env)
-                then let msg = "Too many bounces, swallowing"
-                     in  atomically . toIO env Debug $ yell 31 msg
-                else atomically . void $ do
-                      P.send (_pOutput $ _st1c env) . buildSignal $ Right (n+1, p')
+          bounceOn | n >= (_maxSoftBounces $ _config env) =
+                           toIO env Debug $ yell 31 $
+                                 "Too many bounces, swallowing"
+                   | otherwise = void . P.send (_pOutput $ _st1c env) $
+                           buildSignal $ Right (n+1, p')
 
       -- Build "bounce again from the beginning" signal. This is invoked if
       -- an EdgeRequest reaches the issuing node again.
       let n = _bounces $ _config env
-          bounceReset = void . atomically $ do
+          bounceReset = void $
                 P.send (_pOutput $ _st1c env) . buildSignal $ Left n
 
       -- Make sure not to connect to itself or to already known nodes
@@ -400,28 +400,29 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = liftIO $ do
       -- Roll whether to accept the query first, then check whether there's
       -- room. In case of failure, bounce on.
       acceptEdge <- (< p) <$> randomRIO (0, 1 :: Double)
+
       case (relationship, acceptEdge, dir) of
 
             -- Don't connect to self
-            (IsSelf, _, _) -> do
-                  atomically . toIO env Chatty . putStrLn $
+            (IsSelf, _, _) -> atomically $ do
+                  toIO env Chatty . putStrLn $
                         "Edge to self requested, bouncing"
                   bounceReset
 
             -- Don't connect to the same node multiple times
-            (IsDownstreamNeighbour, _, Incoming) -> do
+            (IsDownstreamNeighbour, _, Incoming) -> atomically $ do
                   -- In case you're wondering about the seemingly different
                   -- directions in that pattern (Incoming+Downstream): The
                   -- direction is from the viewpoint of the requestee, while the
                   -- relationship to that node is seen from the current node.
-                  atomically . toIO env Chatty $ printf
+                  toIO env Chatty $ printf
                         "Edge to %s already exists, bouncing\n"
                         (show origin)
                   bounceOn
 
             -- Request randomly denied
-            (_, False, _) -> do
-                  atomically . toIO env Chatty . putStrLn $
+            (_, False, _) -> atomically $ do
+                  toIO env Chatty . putStrLn $
                         "Random bounce (accept: p = " ++ show p ++ ")"
                   bounceOn
 
@@ -431,8 +432,6 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = liftIO $ do
                         "Outgoing edge request accepted, sending handshake\
                         \ request"
                   sendHandshakeRequest env origin
-                  -- TODO: Bounce on if failed, otherwise an almost saturated
-                  --       network won't allow new nodes
 
             -- Try accepting an Incoming request
             (_, _, Incoming) -> do
@@ -524,14 +523,15 @@ startHandshakeH env to = do
       -- TODO: make this socket leak proof
       (socket, _addr) <- connectToNode' to
       result <- request socket (Special Handshake) >>= liftIO . \case
-            Just OK -> tryLaunchClient env to socket
+            Just OK        -> tryLaunchClient env to socket
             Just (Error e) -> return $ Error $ "Handshake ServerResponse: " ++ e
-            x -> return $ Error $ "Handshake ServerResponse: " ++ show x
+            x              -> return $ Error $
+                                          "Handshake ServerResponse: " ++ show x
       case result of
-            OK -> return OK
+            OK        -> return OK
             (Error e) -> do disconnect socket
                             return $ Error $ "Handshake request result: " ++ e
-            x -> return $ Error $ "Handshake ServerResponse: " ++ show x
+            x         -> return $ Error $ "Handshake ServerResponse: " ++ show x
 
 
 
@@ -550,10 +550,11 @@ tryLaunchClient env to socket = do
 
             let allowed IsUnrelated = True
                 allowed _else       = False
-            isUnrelated <- allowed <$> nodeRelationship env to
-            if not isUnrelated
-                  then return $ Error $ "New client already known or self"
-                  else do
+            nodeRelationship env to >>= \case
+                  IsSelf -> return $ Error $ "Tried to launch client to self"
+                  IsDownstreamNeighbour -> return $ Error $
+                        "Tried to launch client to already known node"
+                  IsUnrelated -> do
                         isRoom <- isRoomIn env _downstream
                         if not isRoom
                               then return $ Error $ "No room for new client"
