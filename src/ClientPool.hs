@@ -91,6 +91,8 @@ balanceEdges env = forever $ do
 
             deficitMsg dsnDeficit Outgoing
             deficitMsg usnDeficit Incoming
+            when (usnDeficit == 0 && dsnDeficit == 0) $
+                  toIO env Debug . putStrLn $ "No deficit, node's fine"
 
             return (dsnDeficit, usnDeficit)
 
@@ -120,7 +122,6 @@ housekeeping env = forever $ do
 
       -- Order matters: remove dead neighbours first, then send KeepAlive
       -- signals
-      -- TODO: Update timestamps of running clients
 
       removeTimedOutUsn env
       removeTimedOutDsn env

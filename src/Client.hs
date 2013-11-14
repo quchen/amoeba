@@ -33,15 +33,19 @@ client :: Environment
              --   order to keep the client pool up to date.
        -> PChan NormalSignal
        -> IO ()
-client env socket to stsc = (`finally` disconnect socket) $ runEffect $
+client env socket to stsc = (`finally` cleanup) $ runEffect $
       P.fromInput input >-> signalH env socket to
 
-      where st1c   = _st1c env
-            input  = mconcat [ _pInput st1c
-                             , _pInput stsc
-                             ]
+      where st1c  = _st1c env
+            input = mconcat [ _pInput st1c
+                            , _pInput stsc
+                            ]
             -- TODO: Implement stc to support flood messages
--- TODO: send shutdown notice on termination
+
+            cleanup = do
+                  atomically $ modifyTVar (_downstream env) $ Map.delete to
+                  -- TODO: send shutdown notice
+                  disconnect socket
 
 
 
@@ -67,7 +71,7 @@ signalH env socket to = go
 
 
 -- | Response to sending a signal to a server successfully. (Updates the "last
---   successfully sent signal to" timestamp)
+--   successfully sent signal to" timestamp.)
 ok :: (MonadIO io)
    => Environment
    -> To          -- ^ Target downstream neighbour

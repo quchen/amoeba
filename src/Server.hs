@@ -299,10 +299,9 @@ nodeRelationship :: Environment
 nodeRelationship env node =
       if node == _self env
             then return IsSelf
-            else Map.member node <$> readTVar (_downstream env) >>= \isDS ->
-                  return $ if isDS
-                        then IsDownstreamNeighbour
-                        else IsUnrelated
+            else do isDS <- Map.member node <$> readTVar (_downstream env)
+                    return $ if isDS then IsDownstreamNeighbour
+                                     else IsUnrelated
 
 
 
@@ -496,7 +495,7 @@ handshakeH env from socket = do
                   _else -> liftIO . atomically $ do
                         modifyTVar (_upstream env) (Map.delete from)
                         return $ Error "Handshake request denied"
-            else return $ Error "No room for handshake"
+            else return $ Error "No room for another USN"
 
 
 
