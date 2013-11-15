@@ -52,7 +52,8 @@ clientPool env = withAsync hkeep $ \_ -> fillPool env
 -- | Watches the count of nodes in the database, and issues 'EdgeRequest's
 --   to fill the ranks if necessary.
 fillPool :: Environment -> IO ()
-fillPool env =
+fillPool env = (`finally` yell 42 "fillPool terminated! Should never happen!") $
+               (yellAndRethrow 42) $
 
       runEffect $ balanceEdges env
               >-> P.map edgeRequest

@@ -53,7 +53,7 @@ bootstrapServerMain = do
 --   is a larger network present.
 restartLoop :: MVar () -> IO ()
 restartLoop trigger = forever $ do
-      delay (10*10^6)
+      delay (2*10^6)
       yell 34 "restart sent"
       tryPutMVar trigger ()
 
@@ -67,24 +67,24 @@ bootstrapServer config ldc =
                 (show $ _serverPort config)
                 $ \(sock, addr) -> do
                         putStrLn $ "Bootstrap server listening on " ++ show addr
-                        counter <- newIORef 1
+                        counter <- newTVarIO 1
                         bootstrapServerLoop config counter sock ldc
 
 
 
 bootstrapServerLoop :: Config  -- ^ Configuration to determine how many requests
                                --   to send out per new node
-                    -> IORef Integer -- ^ Number of total clients served
+                    -> TVar Integer -- ^ Number of total clients served
                     -> Socket  -- ^ Socket to listen on for bootstrap requests
                     -> Chan NormalSignal -- ^  LDC to the node pool
                     -> IO r
 bootstrapServerLoop config counter serverSock ldc = forever $ do
 
-      count <- readIORef counter
 
       -- The first couple of new nodes should not bounce, as there are not
       -- enough nodes to relay the requests (hence the queues fill up and the
       -- nodes block indefinitely.
+      count <- atomically $ readTVar counter
       let config' = if count <= fromIntegral (_minNeighbours config)
                 then config { _bounces = 0 }
                 else config
@@ -97,12 +97,16 @@ bootstrapServerLoop config counter serverSock ldc = forever $ do
                   Just (BootstrapRequest benefactor) -> do
                         putStrLn $ "Sending requests on behalf of " ++ show benefactor
                         bootstrapRequestH clientSock benefactor
-                        modifyIORef' counter (+1)
-                        putStrLn $ "Client " ++ show count ++ " served"
+                        count' <- atomically $ do
+                              c <- readTVar counter
+                              modifyTVar counter (+1)
+                              return c
+                        putStrLn $ "Client " ++ show count' ++ " served"
                   Just _other_signal -> do
                         putStrLn "Non-BootstrapRequest signal received"
                   _no_signal -> do
                         putStrLn "Non-BootstrapRequest signal received"
+
 
 
 

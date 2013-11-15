@@ -45,12 +45,20 @@ server env serverSocket = liftIO $ do
       -- The counter will assign each node a unique name.
       counter <- newIORef 0
 
+      forks <- newTVarIO 0
+
       withAsync (workerLdc env) $ \_ldcThread -> forever $ do
             from <- do c <- readIORef counter
                        modifyIORef' counter (+1)
                        return (From c)
 
             void $ PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
+                  let brighty n | n > _maxNeighbours (_config env) = "\ESC[41m" ++ show n
+                                | otherwise = show n
+                  atomically $ do
+                        modifyTVar forks (+1)
+                        f <- readTVar forks
+                        toIO env Debug $ yell 43 ("Forks: " ++ brighty f)
                   atomically . toIO env Debug $
                         printf "New worker %s from %s\n"
                                (show from)
@@ -61,6 +69,10 @@ server env serverSocket = liftIO $ do
                                (show from)
                                (show addr)
                                (show response)
+                  atomically $ do
+                        modifyTVar forks (subtract 1)
+                        f <- readTVar forks
+                        toIO env Debug $ yell 43 ("Forks: " ++ brighty f)
 
 
 
