@@ -9,18 +9,19 @@
 
 module Main where
 
-import Network
-import System.IO
-import Control.Concurrent
+import Data.IORef
 import Control.Concurrent.Async
-import Control.Exception
+import Control.Concurrent.STM
+import Control.Concurrent hiding (yield)
 import Control.Monad
+
+import Pipes.Network.TCP (Socket)
+import qualified Pipes.Network.TCP as PN
 
 import NodePool
 import CmdArgParser
-import Node
-import Types
 import Utilities
+import Types
 
 main :: IO ()
 main = bootstrapServerMain
@@ -29,11 +30,18 @@ main = bootstrapServerMain
 
 bootstrapServerMain :: IO ()
 bootstrapServerMain = do
+
+      -- Preliminaries
       config <- parseArgs
+      let poolSize = _minNeighbours config * 2
+      (output, _) <- outputThread (_maxChanSize config)
+
+      -- Node pool
       ldc <- newChan
       terminate <- newEmptyMVar
-      let poolSize = _minNeighbours config * 2
-      startNodePool poolSize config ldc terminate
+      nodePool poolSize config ldc output terminate
+
+      -- Bootstrap service
       putStrLn $ "Starting bootstrap server with " ++ show poolSize ++ " nodes"
       async $ restartLoop terminate
       bootstrapServer config ldc
@@ -44,7 +52,10 @@ bootstrapServerMain = do
 --   is getting rid of too high interconnectedness in the node pool when there
 --   is a larger network present.
 restartLoop :: MVar () -> IO ()
-restartLoop trigger = forever $ threadDelay (10*10^6) >> yell 34 "restart sent" >> tryPutMVar trigger ()
+restartLoop trigger = forever $ do
+      delay (10*10^6)
+      yell 34 "restart sent"
+      tryPutMVar trigger ()
 
 
 
@@ -52,63 +63,59 @@ bootstrapServer :: Config
                 -> Chan NormalSignal
                 -> IO ()
 bootstrapServer config ldc =
-      let initialize = listenOn . PortNumber $ _serverPort config
-          release = sClose
-      in  bracket initialize release $ \s -> bootstrapServerLoop config 0 s ldc
+      PN.listen (PN.Host "127.0.0.1")
+                (show $ _serverPort config)
+                $ \(sock, addr) -> do
+                        putStrLn $ "Bootstrap server listening on " ++ show addr
+                        counter <- newIORef 1
+                        bootstrapServerLoop config counter sock ldc
 
 
 
 bootstrapServerLoop :: Config  -- ^ Configuration to determine how many requests
                                --   to send out per new node
-                    -> Integer -- ^ Number of total clients served
+                    -> IORef Integer -- ^ Number of total clients served
                     -> Socket  -- ^ Socket to listen on for bootstrap requests
                     -> Chan NormalSignal -- ^  LDC to the node pool
-                    -> IO ()
-bootstrapServerLoop config numServed socket ldc = do
+                    -> IO r
+bootstrapServerLoop config counter serverSock ldc = forever $ do
+
+      count <- readIORef counter
 
       -- The first couple of new nodes should not bounce, as there are not
       -- enough nodes to relay the requests (hence the queues fill up and the
       -- nodes block indefinitely.
-      let config' = if numServed <= fromIntegral (_minNeighbours config)
+      let config' = if count <= fromIntegral (_minNeighbours config)
                 then config { _bounces = 0 }
                 else config
-          acquire = accept socket
-          release (h, _, _) = hClose h
-          action (h, host, port) = do
-                receive' h >>= \case
-                      BootstrapRequest port -> do
-                            dispatchSignal config' host port ldc
-                            send' h $ YourHostIs host
-                            return True
-                      _ -> return False
+          bootstrapRequestH socket node = do
+                dispatchSignal config' node ldc
+                send socket OK
 
-      success <- bracket acquire release action
-
-      if success
-            then do
-                  putStrLn $ "Client " ++ show (numServed + 1) ++ " served"
-                  bootstrapServerLoop config (numServed + 1) socket ldc
-            else do
-                  putStrLn "Non-BootstrapRequest signal received"
-                  bootstrapServerLoop config (numServed + 1) socket ldc
-
-
-
+      PN.acceptFork serverSock $ \(clientSock, _clientAddr) ->
+            receive clientSock >>= \case
+                  Just (BootstrapRequest benefactor) -> do
+                        putStrLn $ "Sending requests on behalf of " ++ show benefactor
+                        bootstrapRequestH clientSock benefactor
+                        modifyIORef' counter (+1)
+                        putStrLn $ "Client " ++ show count ++ " served"
+                  Just _other_signal -> do
+                        putStrLn "Non-BootstrapRequest signal received"
+                  _no_signal -> do
+                        putStrLn "Non-BootstrapRequest signal received"
 
 
 
 -- | Send bootstrap requests on behalf of the new node to the node pool
 dispatchSignal :: Config
-               -> HostName
-               -> PortNumber
+               -> To -- ^ Benefactor, i.e. 'BootstrapRequest' issuer's server
+                     --   address
                -> Chan NormalSignal
                -> IO ()
-dispatchSignal config host port ldc = do
-      let to = To $ Node host port
-          order dir = forM_ [1.._minNeighbours config] $ \_ ->
-                        writeChan ldc $ edgeRequest config to dir
-      order Incoming
-      order Outgoing
+dispatchSignal config to ldc = order Incoming >> order Outgoing
+      where order dir = forM_ [1.._minNeighbours config] $ \_ ->
+                              writeChan ldc $ edgeRequest config to dir
+
 
 
 

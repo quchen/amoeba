@@ -1,41 +1,59 @@
-{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Utilities (
+
+      -- * Various utilities
         makeTimestamp
-      , toIO
-      , connectToNode
+      , whenM
       , whileM
-      , isContinue
       , catchAll
+      , dbSize
+
+      -- * Concurrency
       , asyncMany
+      , toIO
+      , delay
 
-      -- * Sending/receiving network signals
-      , send'
-      , receive'
-      , request'
-
-      -- * Monomorphic aliases for type safety
+      -- * Networking
+      , connectToNode
+      , connectToNode'
+      , listenOnNode
+      , disconnect
+      , sender
+      , receiver
       , send
       , receive
       , request
 
       -- * Debugging
       , yell
-      , assertNotFull
+      , yellAndRethrow
+
+      -- * Pipe-based communication channels
+      , spawn
+      , getBroadcastOutput
+      , outputThread
 ) where
 
+import           Control.Concurrent (threadDelay)
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
-import           Control.Exception (catch, SomeException)
 import           Control.Monad
 import           Control.Applicative
 import           Control.Exception
-import           Data.Functor
-import           Data.Int
 import           Data.Time.Clock.POSIX (getPOSIXTime)
-import           Network (connectTo, PortID(PortNumber))
-import qualified Data.ByteString.Lazy as BS
-import           System.IO
+import qualified Data.ByteString as BS
+import qualified Data.Foldable as F
+import           Data.Map (Map)
+import qualified Data.Map as Map
+
+import           Pipes
+import qualified Pipes.Prelude as P
+import qualified Pipes.Concurrent as P
+import qualified Pipes.Network.TCP as P
+import qualified Network.Simple.TCP as P
+import qualified Pipes.Binary as P
+import Control.Monad.Catch (MonadCatch)
 
 import Data.Binary
 
@@ -44,11 +62,17 @@ import Types
 
 
 -- | Creates a timestamp, which is a Double representation of the Unix time.
-makeTimestamp :: IO Timestamp
-makeTimestamp = Timestamp . realToFrac <$> getPOSIXTime
+makeTimestamp :: (MonadIO m) => m Timestamp
+makeTimestamp = liftIO $ Timestamp . realToFrac <$> getPOSIXTime
 --   Since Haskell's Time library is borderline retarded, this seems to be the
 --   cleanest way to get something that is easily an instance of Binary and
 --   comparable to seconds.
+
+
+
+-- | Monadic version of 'when'.
+whenM :: Monad m => m Bool -> m () -> m ()
+whenM mp m = mp >>= \p -> when p m
 
 
 
@@ -59,74 +83,103 @@ whileM p m = go
 
 
 
-isContinue :: Proceed -> Bool
-isContinue Continue = True
-isContinue _        = False
+-- | 'Node'-based version of 'P.connect'. Automatically closes when the
+--   operation terminates or throws.
+connectToNode :: (MonadIO io, MonadCatch io)
+              => To
+              -> ((P.Socket, P.SockAddr) -> io r)
+              -> io r
+connectToNode (To node) = P.connect (_host node) (show $ _port node)
+
+
+-- | 'Node'-based version of 'P.connectSock'. Opens the connection, but
+--   contrary to 'connectToNode', it will not be closed automatically. Use
+--   'P.closeSock' to do so.
+connectToNode' :: (MonadIO io)
+               => To
+               -> io (P.Socket, P.SockAddr)
+connectToNode' (To node) = P.connectSock (_host node) (show $ _port node)
 
 
 
--- | Receives a Signal, encoded as Binary with a size header, from a Handle.
---   Inverse of 'send'.
+-- | Closes a connection.
+disconnect :: (MonadIO io)
+           => P.Socket
+           -> io ()
+disconnect s = liftIO (P.closeSock s)
+
+
+
+-- | 'Node'-based version of 'P.listen'
+listenOnNode :: (MonadIO io, MonadCatch io)
+             => Node
+             -> ((P.Socket, P.SockAddr) -> io r)
+             -> io r
+listenOnNode node = P.listen (P.Host $ _host node)
+                             (show   $ _port node)
+
+
+
+-- | Continuously encode and send data to a 'P.Socket'.
+sender :: (MonadIO io, Binary b)
+       => P.Socket
+       -> Consumer b io r
+sender s = encodeMany >-> P.toSocket s
+
+
+
+-- | Continuously receive and decode data from a 'P.Socket'.
+receiver :: (MonadIO io, Binary b)
+         => P.Socket
+         -> Producer b io ()
+receiver s = void (P.decodeMany (P.fromSocket s 4096)) >-> dataOnly
+      where dataOnly = P.map snd
+
+
+
+-- TODO: Requester. Continuously send data downstream and gather results.
+
+
+
+-- | Receives a single piece of data from a 'P.Socket'.
+receive :: (MonadIO io, Binary b)
+        => P.Socket
+        -> io (Maybe b)
+receive s = runEffect $ P.head (receiver s)
+
+
+
+-- | Sends a single piece of data to a 'P.Socket'.
+send :: (MonadIO io, Binary b)
+     => P.Socket
+     -> b
+     -> io ()
+send s x = runEffect $ yield x >-> sender s
+
+
+
+-- | Sends a single piece of data to a 'P.Socket', and waits for a response.
+request :: (MonadIO io, Binary a, Binary b)
+        => P.Socket
+        -> a
+        -> io (Maybe b)
+request s x = send s x >> receive s
+
+
+
+-- | Continuously encodes the given 'Bin.Binary' instance and sends each result
+--   downstream in 'BS.ByteString' chunks.
 --
---   **Note:** receiving limits individual incoming requests with a hard cutoff,
---   currently (maxBound :: Int64) bytes.
-receive' :: Binary a => Handle -> IO a
-receive' h = do
-
-      -- TODO: Add timeout to prevent Slowloris
-
-      -- Read message header = length of the incoming signal
-      let decodeToInt = (fromIntegral :: Int64 -> Int) . decode
-      mLength <- decodeToInt <$> BS.hGet h int64Size
-
-      -- Read the previously determined amount of data
-      decode <$> BS.hGet h mLength
-
-      -- TODO: Handle decoding errors (Maybe?)
-
--- | Size of an encoded Int64 in bytes.
-int64Size :: Int
-int64Size = fromIntegral . BS.length $ encode (maxBound :: Int64)
-
--- | Sends a Signal/ServerResponse, encoded as Binary with a size header, to a
---   Handle. Inverse of 'receive'.
-send' :: Binary a => Handle -> a -> IO ()
-send' h message = do
-      let mSerialized = encode message
-          mLength = encode (BS.length mSerialized :: Int64)
-      BS.hPut h mLength
-      BS.hPut h mSerialized
-      hFlush h
-
--- | Sends out a signal and waits for an answer. Combines 'send\'' and
---   'receive\'' in order to avoid unhandled server responses.
-request' :: (Binary a, Binary b) => Handle -> a -> IO b
-request' h message = send' h message >> receive' h
+--   (Sent a pull request to Pipes-Binary for adding this.)
+encodeMany :: (Monad m, Binary x) => Pipe x BS.ByteString m r
+encodeMany = for cat P.encode
 
 
 
-receive :: Handle -> IO Signal
-receive = receive'
-
-send :: Handle -> Signal -> IO ()
-send = send'
-
-request :: Handle -> Signal -> IO ServerResponse
-request = request'
-
-
-
--- | Sends an IO action, depending on the verbosity level.
+-- | Send an IO action depending on the verbosity level.
 toIO :: Environment -> Verbosity -> IO () -> STM ()
 toIO env verbosity = when p . writeTBQueue (_io env)
       where p = verbosity >= _verbosity (_config env)
-
-
-
--- | Like Network.connectTo, but extracts the connection data from a @Node@
---   object.
-connectToNode :: To -> IO Handle
-connectToNode (To n) = connectTo (_host n) (PortNumber (_port n))
 
 
 
@@ -135,24 +188,71 @@ connectToNode (To n) = connectTo (_host n) (PortNumber (_port n))
 catchAll :: IO a -> IO ()
 catchAll x = void x `catch` handler
       where handler :: SomeException -> IO ()
-            handler e = return ()
+            handler _ = return ()
 
 -- | Easily print colored text for debugging
-yell n text = putStrLn $ "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ "\ESC[0m"
-
-
--- | Check whether a 'TBQueue' is full. Used for debugging. DEBUG
-isFullTBQueue :: TBQueue a -> STM Bool
-isFullTBQueue q = (unGetTBQueue q undefined >> readTBQueue q >> pure False) <|> pure True
-
-assertNotFull :: TBQueue a -> STM ()
-assertNotFull q = do
-      full <- isFullTBQueue q
-      assert (not full) $ return ()
+yell :: MonadIO io => Int -> String -> io ()
+yell n text = liftIO . putStrLn $
+      "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ "\ESC[0m"
 
 
 
--- | Concurrently run multiple IO actions. If one of them returns or throws,
---   all others are 'cancel'ed.
+-- | Identical to 'P.spawn\'', but uses the typesfe 'PChan' type instead of
+--   '(,,)'.
+spawn :: P.Buffer a -> IO (PChan a)
+spawn buffer = toPChan <$> P.spawn' buffer
+      where toPChan (output, input, seal) = PChan output input seal
+
+
+
+-- | Concurrently run multiple IO actions, and wait for the first 'Async' to
+--   complete. If one of them returns or throws, all others are 'cancel'ed.
 asyncMany :: [IO ()] -> IO ()
-asyncMany ios = void $ waitAnyCancel <$> mapM async ios
+asyncMany [] = return ()
+asyncMany (io:ios) = withAsync io $ \a -> do
+      void $ waitAnyCancel <$> mapM async ios
+      wait a
+
+
+
+-- | Retrieves all STSC (server-to-single-client) 'P.Output's and concatenates
+--   them to a single broadcast channel.
+getBroadcastOutput :: Environment
+                   -> STM (P.Output NormalSignal)
+getBroadcastOutput env =
+      F.foldMap (_pOutput . _stsc) <$> readTVar (_downstream env)
+
+
+
+-- | Set up the decicated IO thread. Forks said thread, and returns a 'TBQueue'
+--   to it, along with the 'Async' of the thread (which may be useful for
+--   cancelling it).
+outputThread :: Int                  -- ^ Thread size
+             -> IO ( TBQueue (IO ()) -- Channel
+                   , Async ()        -- Async of the printer thread
+                   )
+outputThread size = do
+      q <- newTBQueueIO size
+      thread <- async $ (forever . join . atomically . readTBQueue) q
+      return (q, thread)
+
+
+-- | Catches all exceptions, 'yell's their contents, and rethrows them.
+yellAndRethrow :: (MonadIO io) => Int -> IO () -> io ()
+yellAndRethrow n = liftIO . handle handler
+      where handler :: SomeException -> IO ()
+            handler (SomeException e) = yell n (show e) >> throw e
+
+
+
+-- | 'MonadIO' version of 'threadDelay'.
+delay :: MonadIO io => Int -> io ()
+delay = liftIO . threadDelay
+
+
+
+-- | Determine the current size of a database
+dbSize :: Environment
+       -> (Environment -> TVar (Map.Map k a)) -- '_upstream' or '_downstream'
+       -> STM Int
+dbSize env db = Map.size <$> readTVar (db env)

@@ -1,19 +1,23 @@
-MAIN = amoeba
+MAIN_NODE = amoeba
 MAIN_BS = bootstrap
 SRC = src
-HSFLAGS = -O
-PROF = -prof -auto-all
+OPTIMIZE = -O2
+PROF = -prof -auto-all -caf-all
 
-all :
-	ghc $(HSFLAGS) -i$(SRC) $(SRC)/Main.hs                -o $(MAIN)
-	ghc $(HSFLAGS) -i$(SRC) $(SRC)/MainBootstrapServer.hs -o $(MAIN_BS)
+opt :
+	ghc $(OPTIMIZE) -i$(SRC) -o $(MAIN_NODE) $(SRC)/Main.hs
+	ghc $(OPTIMIZE) -i$(SRC) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
 
 prof :
-	ghc $(PROF) $(HSFLAGS) -i$(SRC) $(SRC)/Main.hs                -o $(MAIN)
-	ghc $(PROF) $(HSFLAGS) -i$(SRC) $(SRC)/MainBootstrapServer.hs -o $(MAIN_BS)
+	ghc $(PROF) $(OPTIMIZE) -i$(SRC) -o $(MAIN_NODE) $(SRC)/Main.hs
+	ghc $(PROF) $(OPTIMIZE) -i$(SRC) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
+
+fast :
+	ghc -i$(SRC) -o $(MAIN_NODE) $(SRC)/Main.hs
+	ghc -i$(SRC) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
 
 clean :
-	rm -f $(SRC)/*.o
-	rm -f $(SRC)/*.hi
-	rm -f $(MAIN)
+	find $(SRC) -name "*.hi" -delete
+	find $(SRC) -name "*.o" -delete
+	rm -f $(MAIN_NODE)
 	rm -f $(MAIN_BS)

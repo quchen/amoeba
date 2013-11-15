@@ -1,7 +1,6 @@
 module CmdArgParser (parseArgs) where
 
 import Options.Applicative
-import Network
 import Data.Word
 import Data.Monoid
 import Data.Char (toLower)
@@ -55,16 +54,14 @@ config = T.Config
 
 
 
-port :: Parser PortNumber
-port = let toPN = fromIntegral :: Int -> PortNumber
-       in fmap toPN . option $ mconcat
-             [ long    "port"
-             , short   'p'
-             , metavar "PORT"
-             , help    "Server port"
-             ]
+port :: Parser Int
+port = option $ mconcat [ long    "port"
+                        , short   'p'
+                        , metavar "PORT"
+                        , help    "Server port"
+                        ]
 
-minNeighbours :: Parser Word
+minNeighbours :: Parser Int
 minNeighbours = nullOption $ mconcat
       [ reader positive
       , showDefault
@@ -74,7 +71,7 @@ minNeighbours = nullOption $ mconcat
       , help    "Minimum amount of neighbours (up-/downstream separate)"
       ]
 
-maxNeighbours :: Parser Word
+maxNeighbours :: Parser Int
 maxNeighbours = nullOption $ mconcat
       [ reader positive
       , showDefault

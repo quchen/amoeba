@@ -4,69 +4,73 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module Bootstrap (
-      bootstrap
-) where
+module Bootstrap (bootstrap) where
 
 
 
-import Control.Concurrent
-import Network
 import Control.Exception
-import System.IO
-import Data.Either
+import GHC.IO.Exception (ioe_description)
 import Data.Typeable
+import Control.Monad
+import Text.Printf
 
 import Types
-import Utilities (request', connectToNode)
+import Utilities
 
 
 
-data BadBootstrapResponse = BadBootstrapResponse
+data BootstrapError = BadResponse
+                    | NoResponse
       deriving (Show, Typeable)
 
-instance Exception BadBootstrapResponse
+instance Exception BootstrapError
 
 
 
--- | Send out a BootstrapRequest to a bootstrap server and handle the response.
-bootstrap :: Config -> PortNumber -> IO HostName -- TODO: Make it an Either Error Hostname so the problem can be printed
-bootstrap config port = do
+-- | Send out a 'BootstrapRequest' to a bootstrap server and handle the
+--   response.
+bootstrap :: Config
+          -> To -- Own address so other nodes can connect
+          -> IO ()
+bootstrap config self =
+      do putStrLn "Starting bootstrap"
+         go
+         putStrLn "Bootstrap finished"
 
-      -- Send out signal to the bootstrap node
-      let bsServer = getBootstrapServer config
+      where handleMulti action = do catches action [ bootstrapErrorH
+                                                   , ioErrorH
+                                                   ]
 
-      -- Don't recurse directly in case of failure so that bracket can close
-      -- the handle properly. Instead, bind the result to an identifier, and
-      -- check it after the bracketing.
-      --let try' :: IO a -> IO (Either BadBootstrapResponse a)
-      --    try' = try
-      result <- try $ bracket (connectToNode bsServer) hClose $ \h -> do
+            retry = delay (_longTickRate config) >> go
 
-            -- See note [Why send port?]
-            request' h (BootstrapRequest port) >>= \case
-                  (YourHostIs host) -> return host
-                  _                 -> throwIO BadBootstrapResponse
+            bootstrapErrorH = Handler $ \case
+                  BadResponse -> do
+                        putStrLn "Bad response from bootstrap server. Probably a bug."
+                        retry
+                  NoResponse -> do
+                        putStrLn "No response from bootstrap server. Probably a bug."
+                        retry
 
-      case result of
-            Left (SomeException e) -> do
-                  putStrLn $ "Bootstrap failed (" ++ show e ++ ")\
-                             \  (If the bootstrap server is valid,\
-                             \ this is likely a bug.)"
-                  threadDelay (_mediumTickRate config)
-                  bootstrap config port
-            Right r -> return r
+            ioErrorH = Handler $ \e -> do
+                  let _ = e :: IOException
+                  printf "Cound not connect to bootstrap server (%s).\
+                         \ Is it online?\n"
+                         (ioe_description e)
+                  retry
 
--- [Why send port?]
---
--- To issue EdgeRequests in the name of the node to be bootstrapped, the server
--- has to be aware of a return address. While it can deduce the hostname from
--- the incoming connection, the port of the new node's server is unknown.
--- for that reason, the node has to provide it explicitly.
+            go = handleMulti $ do
+                  let bsServer = getBootstrapServer config
+                  connectToNode bsServer $ \(s, _) -> do
+                        request s (BootstrapRequest self) >>= \case
+                              Just OK -> return ()
+                              Just _  -> throwIO BadResponse
+                              Nothing -> throwIO NoResponse
+
 
 
 
 -- | Find the address of a suitable bootstrap server.
-getBootstrapServer :: Config -> To
-getBootstrapServer = head . _bootstrapServers
 -- TODO: Make bootstrap server selection a little more complex :-)
+getBootstrapServer :: Config -> To
+getBootstrapServer = head . _bootstrapServers . setBootstrap
+setBootstrap x = x { _bootstrapServers = [To $ Node "127.0.0.1" 20000] }

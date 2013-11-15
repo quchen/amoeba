@@ -5,20 +5,20 @@
 
 
 module Client  (
-      newClient
+      client
 ) where
 
 
 
 
 import Control.Concurrent.STM
-import Control.Concurrent.Async
-import Control.Exception
-import System.IO
-import System.Timeout
-import Data.Functor
-import Control.Monad
+import Data.Monoid
+import Control.Exception (finally)
 import qualified Data.Map as Map
+
+import Pipes
+import qualified Pipes.Concurrent as P
+import Pipes.Network.TCP (Socket)
 
 
 
@@ -26,72 +26,69 @@ import Types
 import Utilities
 
 
+-- | Start a new client
+client :: Environment
+       -> Socket -- ^ Connection to use (created by the handshake process)
+       -> To -- ^ Node the Socket connects to. Only used for bookkeeping, in
+             --   order to keep the client pool up to date.
+       -> PChan NormalSignal
+       -> IO ()
+client env socket to stsc = (`finally` cleanup) $ runEffect $
+      P.fromInput input >-> signalH env socket to
 
--- TODO: Make sure the client terminates properly in case something fails,
---       i.e. it is removed from the client pool and the handle is closed
---       if necessary
+      where st1c  = _st1c env
+            input = mconcat [ _pInput st1c
+                            , _pInput stsc
+                            ]
+            -- TODO: Implement stc to support flood messages
 
-
-
-
-
--- | Initializes a new client, and then starts the client loop. Does not check
---   whether there is any space in the client pool; that's the job of the
---   function that sends the newClient command (i.e. the server).
-newClient :: Environment
-          -> Handle               -- ^ Connection to use (setup by the handshake
-                                  --   process)
-          -> To                   -- ^ Target downstream neighbour
-          -> TBQueue NormalSignal -- ^ This client's private signal channel
-          -> IO ()
-newClient env h node stsc = do
-
-      let cleanup = (`finally` hClose h) $ do
-            atomically . modifyTVar (_downstream env) $ Map.delete node
-            void . timeout (_longTickRate $ _config env) $
-                  request h $ Normal ShuttingDown
-
-      stc <- atomically $ dupTChan (_stc env)
-
-      (`finally` cleanup) $ clientLoop env h node [ readTChan stc
-                                                  , readTBQueue (_st1c env)
-                                                  , readTBQueue stsc
-                                                  ]
+            cleanup = do
+                  atomically $ modifyTVar (_downstream env) $ Map.delete to
+                  -- TODO: send shutdown notice
+                  disconnect socket
 
 
 
 
--- | Listens to a TChan (signals broadcast to all nodes) and a TBQueue (signals
---   meant to be handled by only one client), and executes their orders.
-clientLoop :: Environment
-           -> Handle             -- ^ Network connection
-           -> To                 -- ^ Target downstream neighbour
-           -> [STM NormalSignal] -- ^ Actions that read incoming channels
-           -> IO ()
-clientLoop env h node chans = whileM isContinue $ do
+signalH :: (MonadIO io)
+        => Environment
+        -> Socket
+        -> To
+        -> Consumer NormalSignal io ()
+signalH env socket to = go
+      where terminate = return ()
+            go = do
+                  signal <- await
+                  request socket (Normal signal) >>= \case
+                        Just OK        -> ok           env to >> go
+                        Just (Error e) -> genericError env e  >> terminate
+                        Just Ignore    -> ignore       env    >> terminate
+                        Just Denied    -> denied       env    >> terminate
+                        Just Illegal   -> illegal      env    >> terminate
+                        Nothing        -> noResponse   env    >> terminate
 
-      -- Receive orders from whatever channel is first available
-      signal <- Normal <$> atomically (msum chans)
-
-      request h signal >>= \case
-            OK     -> ok           env node
-            Error  -> genericError env
-            Ignore -> ignore       env
-            Denied -> denied       env
 
 
 
 -- | Response to sending a signal to a server successfully. (Updates the "last
---   successfully sent signal to" timestamp)
-ok :: Environment
+--   successfully sent signal to" timestamp.)
+ok :: (MonadIO io)
+   => Environment
    -> To          -- ^ Target downstream neighbour
-   -> IO Proceed
-ok env node = do
+   -> io ()
+ok env node = liftIO $ do
       timestamp <- makeTimestamp
       let updateTimestamp client = client { _clientTimestamp = timestamp }
       atomically $ modifyTVar (_downstream env) $
             Map.adjust updateTimestamp node
-      return Continue
+
+
+
+errorPrint :: (MonadIO io)
+           => Environment
+           -> String
+           -> io ()
+errorPrint env = liftIO . atomically . toIO env Debug . putStrLn
 
 
 
@@ -107,26 +104,41 @@ ok env node = do
 --
 --     - If a node doesn't send a signal for too long, it will time out. When it
 --       starts sending new signals, it will be told that it was dropped.
-ignore :: Environment -> IO Proceed
-ignore env = do
-      atomically . toIO env Debug $
-            putStrLn "Server ignores this node, terminating client"
-      return Terminate
+ignore :: (MonadIO io)
+       => Environment
+       -> io ()
+ignore env = errorPrint env "Server ignores this node, terminating client"
 
 
 
 -- | Server sent back a generic error, see docs for 'Error'
-genericError :: Environment -> IO Proceed
-genericError env = do
-      atomically . toIO env Debug $
-            putStrLn "Generic server error, terminating client"
-      return Terminate
+genericError :: (MonadIO io)
+             => Environment
+             -> String
+             -> io ()
+genericError env e = errorPrint env $ "Generic error encountered, terminating\
+                                      \ client (" ++ e ++ ")"
 
 
 
 -- | Server denied a valid request, see docs for 'Denied'
-denied :: Environment -> IO Proceed
-denied env = do
-      atomically . toIO env Debug $
-            putStrLn "Server denied the request"
-      return Terminate
+denied :: (MonadIO io)
+       => Environment
+       -> io ()
+denied env = errorPrint env "Server denied the request"
+
+
+
+-- | Server denied a valid request, see docs for 'Denied'
+illegal :: (MonadIO io)
+        => Environment
+        -> io ()
+illegal env = errorPrint env "Signal illegal"
+
+
+
+-- | Server did not respond
+noResponse :: (MonadIO io)
+           => Environment
+           -> io ()
+noResponse env = errorPrint env "Server did not respond"
