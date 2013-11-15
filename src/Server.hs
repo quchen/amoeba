@@ -392,24 +392,29 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = liftIO $ do
           bounceReset = void $
                 P.send (_pOutput $ _st1c env) . buildSignal $ Left n
 
-      -- Make sure not to connect to itself or to already known nodes
-      relationship <- atomically $ nodeRelationship env origin
-
+      (isRoom, relationship) <- atomically $ do
+            -- Make sure not to connect to itself or to already known nodes
+            rel <- nodeRelationship env origin
+            -- Check whether there is room for another connection
+            room <- case dir of
+                  Incoming -> isRoomIn env _downstream
+                  Outgoing -> isRoomIn env _upstream
+            return (room, rel)
 
       -- Roll whether to accept the query first, then check whether there's
       -- room. In case of failure, bounce on.
       acceptEdge <- (< p) <$> randomRIO (0, 1 :: Double)
 
-      case (relationship, acceptEdge, dir) of
+      case (relationship, dir) of
 
             -- Don't connect to self
-            (IsSelf, _, _) -> atomically $ do
+            (IsSelf, _) -> atomically $ do
                   toIO env Chatty . putStrLn $
                         "Edge to self requested, bouncing"
                   bounceReset
 
             -- Don't connect to the same node multiple times
-            (IsDownstreamNeighbour, _, Incoming) -> atomically $ do
+            (IsDownstreamNeighbour, Incoming) -> atomically $ do
                   -- In case you're wondering about the seemingly different
                   -- directions in that pattern (Incoming+Downstream): The
                   -- direction is from the viewpoint of the requestee, while the
@@ -419,21 +424,35 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = liftIO $ do
                         (show origin)
                   bounceOn
 
+            -- No room
+            _ | not isRoom -> atomically $ do
+                  let -- Direction of the edge (not) to be as seen from the
+                      -- current node. Accepting an Outgoing request would
+                      -- produce an incoming connection for example.
+                      relativeDir Outgoing = "incoming"
+                      relativeDir Incoming = "outgoing"
+                  toIO env Chatty $ printf
+                        "No room for another %s connection to handle the %s\
+                        \ request"
+                        (relativeDir dir)
+                        (show dir)
+                  bounceOn
+
             -- Request randomly denied
-            (_, False, _) -> atomically $ do
+            _ | not acceptEdge -> atomically $ do
                   toIO env Chatty . putStrLn $
                         "Random bounce (accept: p = " ++ show p ++ ")"
                   bounceOn
 
             -- Try accepting an Outgoing request
-            (_, _, Outgoing) -> do
+            (_, Outgoing) -> do
                   atomically . toIO env Chatty . putStrLn $
                         "Outgoing edge request accepted, sending handshake\
                         \ request"
                   sendHandshakeRequest env origin
 
             -- Try accepting an Incoming request
-            (_, _, Incoming) -> do
+            (_, Incoming) -> do
                   atomically . toIO env Chatty . putStrLn $
                         "Incoming edge request accepted, starting handshake"
                   void $ startHandshakeH env origin
@@ -492,9 +511,10 @@ handshakeH env from socket = do
       if isRoom'
             then request socket OK >>= \case
                   Just OK -> return OK
-                  _else -> liftIO . atomically $ do
+                  x -> liftIO . atomically $ do
                         modifyTVar (_upstream env) (Map.delete from)
-                        return $ Error "Handshake request denied"
+                        return $ Error $ "Incoming handshake denied:\
+                                         \ server response <" ++ show x ++ ">"
             else return $ Error "No room for another USN"
 
 
@@ -547,8 +567,6 @@ tryLaunchClient env to socket = do
               (rollback socket)
               $ \thread -> atomically $ do
 
-            let allowed IsUnrelated = True
-                allowed _else       = False
             nodeRelationship env to >>= \case
                   IsSelf -> return $ Error $ "Tried to launch client to self"
                   IsDownstreamNeighbour -> return $ Error $

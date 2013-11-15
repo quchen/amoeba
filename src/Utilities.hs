@@ -7,6 +7,7 @@ module Utilities (
       , whenM
       , whileM
       , catchAll
+      , dbSize
 
       -- * Concurrency
       , asyncMany
@@ -43,6 +44,8 @@ import           Control.Exception
 import           Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
+import           Data.Map (Map)
+import qualified Data.Map as Map
 
 import           Pipes
 import qualified Pipes.Prelude as P
@@ -245,3 +248,11 @@ yellAndRethrow n = liftIO . handle handler
 -- | 'MonadIO' version of 'threadDelay'.
 delay :: MonadIO io => Int -> io ()
 delay = liftIO . threadDelay
+
+
+
+-- | Determine the current size of a database
+dbSize :: Environment
+       -> (Environment -> TVar (Map.Map k a)) -- '_upstream' or '_downstream'
+       -> STM Int
+dbSize env db = Map.size <$> readTVar (db env)

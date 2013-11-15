@@ -4,8 +4,6 @@
 -- TODO: Restart bootstrapping process if all downstream neighbours are lost
 --       (Wait some time for incoming edge requests though? They may contain
 --       potential new downstream neighbours.)
--- TODO: Try to make clients clean up better after themselves. Housekeeping is
---       a hack.
 -- TODO: Configuration sanity checks:
 --           neighbours  -->  max >= min
 --           tickrates   -->  short <= medium <= long

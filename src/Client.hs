@@ -83,11 +83,14 @@ ok env node = liftIO $ do
             Map.adjust updateTimestamp node
 
 
+
 errorPrint :: (MonadIO io)
            => Environment
            -> String
            -> io ()
 errorPrint env = liftIO . atomically . toIO env Debug . putStrLn
+
+
 
 -- | A downstream node has received a signal from this node without having it
 --   in its list of upstream neighbours. A a result, it tells the issuing client

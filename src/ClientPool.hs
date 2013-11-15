@@ -83,28 +83,29 @@ balanceEdges env = forever $ do
 
       (usnDeficit, dsnDeficit) <- liftIO $ atomically $ do
 
-            -- Careful with integer underflows here.
-            -- This piece of code is the reason neighbours are
-            -- Int and not Word.
-            usnDeficit <- (minNeighbours -) <$> dbSize _upstream
-            dsnDeficit <- (minNeighbours -) <$> dbSize _downstream
+            usnCount <- dbSize env _upstream
+            dsnCount <- dbSize env _downstream
 
-            deficitMsg dsnDeficit Outgoing
-            deficitMsg usnDeficit Incoming
-            when (usnDeficit == 0 && dsnDeficit == 0) $
-                  toIO env Debug . putStrLn $ "No deficit, node's fine"
+            -- Print status message: "Network connections: USN 3/5, DSN 2/5"
+            -- to indicate there are 3 of a maximum of 5 upstream neighbours
+            -- currently connected, and similarly for downstream.
+            toIO env Debug $ printf
+                  "Network connections: upstream %d/(%d..%d),\
+                                    \ downstream %d/(%d..%d)\n"
+                  usnCount minNeighbours maxNeighbours
+                  dsnCount minNeighbours maxNeighbours
 
-            return (dsnDeficit, usnDeficit)
+            return ( minNeighbours - usnCount
+                   , minNeighbours - dsnCount
+                   )
 
-      each ~> const (yield Outgoing) $ [1..dsnDeficit]
-      each ~> const (yield Incoming) $ [1..usnDeficit]
+      each (replicate dsnDeficit Outgoing)
+      each (replicate usnDeficit Incoming)
 
       where
 
             minNeighbours = _minNeighbours (_config env)
-
-            dbSize :: (Environment -> TVar (Map.Map k a)) -> STM Int
-            dbSize db = Map.size <$> readTVar (db env)
+            maxNeighbours = _maxNeighbours (_config env)
 
             deficitMsg n dir = when (n > 0) $ toIO env Debug $
                   printf "Deficit of %d %s edge%s detected\n"
@@ -190,7 +191,9 @@ removeTimedOutDsn env = do
 
       when (not $ Map.null kill') $
             atomically . toIO env Debug $
-                 putStrLn "Downstream neighbour housekilled. Is this a bug?"
+                 putStrLn "Downstream neighbour housekilled. This is likely\
+                          \ a bug, as clients should clean themselves up after\
+                          \ termination."
 
       void $ T.traverse (cancel . _clientAsync) kill'
 -- TODO: Find out whether this function is useful, or whether
@@ -224,28 +227,14 @@ removeDeadClients env = do
             F.foldr Map.delete knownNodes deadNodes
 
 
--- | Checks whether a certain part of the pool is full. The second argument is
---   supposed to be either '_upstream' or '_downstream'.
---
---   The third argument allows specifying a comparison function, and will be
---   placed between the current size and the max size. For example 'isRoomIn'
---   is implemented using '<', as the pool size has to be strictly smaller than
---   the maximum size in order to allow another node.
-checkPoolSize :: Environment
-              -> (Environment -> TVar (Map.Map k a)) -- ^ Projector
-              -> (Int -> Int -> Bool) -- ^ Comparison function
-              -> STM Bool
-checkPoolSize env proj cmp = compareWithSize <$> db
-      where compareWithSize m = Map.size m `cmp` maxSize
-            maxSize = fromIntegral . _maxNeighbours $ _config env
-            db = readTVar (proj env)
 
-
-
--- | Checks whether there is room to add another node to the pool. The second
---   argument is supposed to be either '_upstream' or '_downstream'.
+-- | Check whether there is room to add another node to the pool. The second
+--   argument is supposed to be either
 isRoomIn :: Environment
          -> (Environment -> TVar (Map.Map k a))
+            -- ^ Projector from 'Environment' to the database, i.e. either
+            -- '_upstream' or '_downstream'.
          -> STM Bool
-isRoomIn env proj = checkPoolSize env proj (<)
+isRoomIn env db = (maxSize >) <$> dbSize env db
+      where maxSize = (fromIntegral . _maxNeighbours . _config) env
 
