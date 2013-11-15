@@ -43,22 +43,16 @@ server :: (MonadIO io)
 server env serverSocket = liftIO $ do
 
       -- The counter will assign each node a unique name.
-      counter <- newIORef 0
-
-      forks <- newTVarIO 0
+      counter <- newTVarIO 0
 
       withAsync (workerLdc env) $ \_ldcThread -> forever $ do
-            from <- do c <- readIORef counter
-                       modifyIORef' counter (+1)
-                       return (From c)
 
-            void $ PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
-                  let brighty n | n > _maxNeighbours (_config env) = "\ESC[41m" ++ show n
-                                | otherwise = show n
-                  atomically $ do
-                        modifyTVar forks (+1)
-                        f <- readTVar forks
-                        toIO env Debug $ yell 43 ("Forks: " ++ brighty f)
+            from <- atomically $ do
+                  c <- readTVar counter
+                  modifyTVar counter (+1)
+                  return (From c)
+
+            PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
                   atomically . toIO env Debug $
                         printf "New worker %s from %s\n"
                                (show from)
@@ -69,10 +63,6 @@ server env serverSocket = liftIO $ do
                                (show from)
                                (show addr)
                                (show response)
-                  atomically $ do
-                        modifyTVar forks (subtract 1)
-                        f <- readTVar forks
-                        toIO env Debug $ yell 43 ("Forks: " ++ brighty f)
 
 
 
@@ -550,23 +540,27 @@ startHandshakeH :: (MonadIO io)
                 => Environment
                 -> To -- ^ Node to add
                 -> io ServerResponse
-startHandshakeH env to = do
-      -- TODO: make this socket leak proof
-      (socket, _addr) <- connectToNode' to
-      result <- request socket (Special Handshake) >>= liftIO . \case
-            Just OK        -> tryLaunchClient env to socket
-            Just (Error e) -> return $ Error $ "Handshake ServerResponse: " ++ e
-            x              -> return $ Error $
-                                          "Handshake ServerResponse: " ++ show x
-      case result of
-            OK        -> return OK
-            (Error e) -> do disconnect socket
-                            return $ Error $ "Handshake request result: " ++ e
-            x         -> return $ Error $ "Handshake ServerResponse: " ++ show x
+startHandshakeH env to = liftIO $ bracketOnError before after thing
+
+      where before = connectToNode' to
+
+            after (socket, _addr) = disconnect socket
+
+            thing (socket, _addr) = do
+                  response <- request socket (Special Handshake)
+                  case response of
+                        Just OK -> tryLaunchClient env to socket
+                                   -- (Closes socket itself on error)
+                        Just (Error e) -> do
+                              disconnect socket
+                              return $ Error $ "Handshake signal response: " ++ e
+                        x -> do
+                              disconnect socket
+                              return $ Error $ "Handshake ServerResponse: " ++ show x
 
 
 
--- | Starts a new client thread, if the current environment allows it (i.e.
+-- | Start a new client thread, if the current environment allows it (i.e.
 --   there is no connection already, and the downstrean pool isn't full).
 tryLaunchClient :: Environment
                 -> To     -- ^ Target address (for bookkeeping)
@@ -588,8 +582,7 @@ tryLaunchClient env to socket = do
                         if not isRoom
                               then return $ Error $ "No room for new client"
                               else do insertClient (Client time thread stsc)
-                                      toIO env Chatty . putStrLn $
-                                             "New client!"
+                                      toIO env Chatty $ putStrLn "New client!"
                                       return OK
 
       where
