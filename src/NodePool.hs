@@ -85,7 +85,7 @@ statusReport config = forever $ do
 
 
 
--- | Pipes everything from one channel to the other
+-- | Send everything from one channel to the other
 pipeTo :: Chan NormalSignal -> PChan NormalSignal -> IO ()
 pipeTo input output =
 
@@ -97,6 +97,6 @@ pipeTo input output =
 
 
 
--- | Terminate a thread when an MVar is filled
+-- | Terminate a thread when the MVar is filled
 terminationWatch :: MVar () -> Async () -> IO ()
 terminationWatch mVar thread = takeMVar mVar >> cancel thread

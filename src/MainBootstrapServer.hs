@@ -23,6 +23,8 @@ import CmdArgParser
 import Utilities
 import Types
 
+import qualified Unsafe as Unsafe
+
 main :: IO ()
 main = bootstrapServerMain
 

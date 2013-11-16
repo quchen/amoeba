@@ -33,6 +33,8 @@ import Utilities
 import Client
 import ClientPool (isRoomIn)
 
+import qualified Unsafe as Unsafe
+
 
 
 
@@ -53,6 +55,7 @@ server env serverSocket = liftIO $ do
                   return (From c)
 
             PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
+                  Unsafe.inc
                   atomically . toIO env Debug $
                         printf "New worker %s from %s\n"
                                (show from)
@@ -63,6 +66,7 @@ server env serverSocket = liftIO $ do
                                (show from)
                                (show addr)
                                (show response)
+                  Unsafe.dec
 
 
 
@@ -540,13 +544,13 @@ startHandshakeH :: (MonadIO io)
                 => Environment
                 -> To -- ^ Node to add
                 -> io ServerResponse
-startHandshakeH env to = liftIO $ bracketOnError before after thing
+startHandshakeH env to = liftIO $ bracketOnError initialize release action
 
-      where before = connectToNode' to
+      where initialize = connectToNode' to
 
-            after (socket, _addr) = disconnect socket
+            release (socket, _addr) = disconnect socket
 
-            thing (socket, _addr) = do
+            action (socket, _addr) = do
                   response <- request socket (Special Handshake)
                   case response of
                         Just OK -> tryLaunchClient env to socket

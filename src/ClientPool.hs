@@ -108,12 +108,6 @@ balanceEdges env = forever $ do
             minNeighbours = _minNeighbours (_config env)
             maxNeighbours = _maxNeighbours (_config env)
 
-            deficitMsg n dir = when (n > 0) $ toIO env Debug $
-                  printf "Deficit of %d %s edge%s detected\n"
-                         n
-                         (show dir)
-                         (if n > 1 then "s" else "")
-
 
 
 -- | Makes sure other nodes know this node is still running and has them as its
@@ -166,15 +160,16 @@ removeTimedOutUsn env = do
       atomically $ do
             let notTimedOut (Timestamp t) = now - t < (_poolTimeout._config) env
 
-            -- TODO: Remove this, it's only for debugging
-            timedOut <- Map.size . Map.filter (not . notTimedOut) <$> readTVar (_upstream env)
-            when (timedOut > 0) $ toIO env Debug $
-                  putStrLn $ show timedOut ++ " timed out upstream neighbour(s) removed"
+            -- Mention how many USNs have timed out
+            when (_verbosity (_config env) >= Debug) $ do
+                  timedOut <- Map.size . Map.filter (not . notTimedOut)
+                              <$>
+                              readTVar (_upstream env)
+                  when (timedOut > 0) $ toIO env Debug $
+                        putStrLn $ show timedOut ++ " timed out upstream\
+                                   \ neighbour(s) removed"
 
             modifyTVar (_upstream env) (Map.filter notTimedOut)
-            -- TODO: terminate corresponding connection (right now I *think*
-            --       timeouts/exceptions will eventually do this, but explicit
-            --       termination would be a cleaner solution.
 
 
 
@@ -187,14 +182,15 @@ removeTimedOutDsn env = do
                       now - t < (_poolTimeout._config) env
                 ds = _downstream env
             (keep, kill) <- Map.partition notTimedOut <$> readTVar ds
+
+            when (not $ Map.null kill) $ toIO env Debug $
+                       putStrLn "Downstream neighbour housekilled. This is\
+                                \ likely a bug, as clients should clean\
+                                \ themselves up after termination."
+
             writeTVar ds keep
             return kill
 
-      when (not $ Map.null kill') $
-            atomically . toIO env Debug $
-                 putStrLn "Downstream neighbour housekilled. This is likely\
-                          \ a bug, as clients should clean themselves up after\
-                          \ termination."
 
       void $ T.traverse (cancel . _clientAsync) kill'
 -- TODO: Find out whether this function is useful, or whether
