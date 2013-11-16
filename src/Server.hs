@@ -55,7 +55,6 @@ server env serverSocket = liftIO $ do
                   return (From c)
 
             PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
-                  Unsafe.inc
                   atomically . toIO env Debug $
                         printf "New worker %s from %s\n"
                                (show from)
@@ -66,7 +65,6 @@ server env serverSocket = liftIO $ do
                                (show from)
                                (show addr)
                                (show response)
-                  Unsafe.dec
 
 
 
@@ -79,7 +77,10 @@ worker :: (MonadIO io)
        -> From        -- ^ Unique worker ID
        -> Socket      -- ^ Incoming connection
        -> io ServerResponse
-worker env from socket = runEffect $ input >-> dispatch >-> output
+worker env from socket = runEffect $ input
+                                 >-> dispatch
+                                 >-> terminator
+                                 >-> sender socket
 
       where input :: (MonadIO io) => Producer Signal io ServerResponse
             input = DecodeError <$ receiver socket
@@ -89,16 +90,14 @@ worker env from socket = runEffect $ input >-> dispatch >-> output
                   Normal  normal  -> normalH  env from        normal
                   Special special -> specialH env from socket special
 
-            -- Send response back to the client, or terminate the worker if a
-            -- bad signal (not "OK") is received.
-
-            -- TODO: Maybe the termination rule should be relaxed to "n strikes"
-            output :: (MonadIO io) => Consumer ServerResponse io ServerResponse
-            output = do
-                  response <- await
-                  send socket response
-                  case response of
-                        OK -> output
+            -- Pipes incoming signals on, but terminates afterwards if the last
+            -- one was an error.
+            terminator :: (MonadIO io) => Pipe ServerResponse ServerResponse io ServerResponse
+            terminator = do
+                  signal <- await
+                  yield signal
+                  case signal of
+                        OK -> terminator
                         x  -> return x
 
 

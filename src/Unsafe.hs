@@ -2,17 +2,21 @@
 --   functions terminate properly.
 module Unsafe where
 
+import Control.Monad.Trans
 import System.IO.Unsafe
 import Control.Concurrent.STM
 
 import Utilities
 
+leak :: TVar Integer
 leak = unsafePerformIO $ newTVarIO 0
 
 -- | Increment counter
-inc = do x <- atomically $ modifyTVar leak (+1) >> readTVar leak
-         yell 45 $ "Leak counter: " ++ show x
+inc :: MonadIO io => io ()
+inc = liftIO $ do x <- atomically $ modifyTVar leak (+1) >> readTVar leak
+                  yell 45 $ "Leak counter: " ++ show x
 
 -- | Decrement counter
-dec = do x <- atomically $ modifyTVar leak (subtract 1) >> readTVar leak
-         yell 45 $ "Leak counter: " ++ show x
+dec :: MonadIO io => io ()
+dec = liftIO $ do x <- atomically $ modifyTVar leak (subtract 1) >> readTVar leak
+                  yell 45 $ "Leak counter: " ++ show x
