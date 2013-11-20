@@ -83,7 +83,10 @@ worker env from socket = runEffect $ input
                                  >-> sender socket
 
       where input :: (MonadIO io) => Producer Signal io ServerResponse
-            input = receiver socket
+            input = do
+                  r <- receiver socket
+                  removeFromDb
+                  return r
 
             dispatch :: (MonadIO io) => Pipe Signal ServerResponse io r
             dispatch = P.mapM $ \case
@@ -128,7 +131,7 @@ workerLdc env@(_ldc -> Just pChan) = runEffect $ input
             dispatch = P.mapM $ \case
                   EdgeRequest to edge  -> edgeBounceH env to edge
                   Flood tStamp fSignal -> floodSignalH env (tStamp, fSignal)
-                  _else                -> return $ Error "Bad LDC signal"
+                  _else                -> return (Error "Bad LDC signal")
 
             -- Eat up all incoming signals; this is the equivalent to the
             -- 'respond' consumer in the ordinary worker, but in the LDC case

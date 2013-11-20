@@ -145,8 +145,9 @@ removeTimedOutUsn env (Timestamp now) = atomically $ do
       let numDead = Map.size dead
       when (_verbosity (_config env) >= Debug && numDead > 0) $ do
             toIO env Debug $
-                  printf "%d timed out upstream neighbour(s) removed"
+                  printf "%d timed out upstream neighbour%s removed\n"
                          numDead
+                         (if numDead /= 1 then "s" else "")
 
 
 
