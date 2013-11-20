@@ -93,13 +93,22 @@ worker env from socket = runEffect $ input
             -- Pipes incoming signals on, but terminates afterwards if the last
             -- one was an error. In other words it's like P.takeWhile, but also
             -- passes on the first failing element.
-            terminator :: (Monad m) => Pipe ServerResponse ServerResponse m ServerResponse
+            --
+            -- Also removes the 'From' from the database in case of an error.
+            terminator :: (MonadIO io) => Pipe ServerResponse
+                                               ServerResponse
+                                               io
+                                               ServerResponse
             terminator = do
                   signal <- await
                   yield signal
                   case signal of
-                        OK -> terminator
-                        x  -> return x
+                        OK  -> terminator
+                        err -> removeFromDb >> return err
+
+            removeFromDb :: (MonadIO io) => io ()
+            removeFromDb = liftIO . atomically $ modifyTVar (_upstream env)
+                                                            (Map.delete from)
 
 
 
@@ -143,44 +152,45 @@ workerLdc _ = return ()
 
 -- | Handle normal signals, as sent by an upstream neighbour. ("non-normal"
 --   signals include bootstrap requests and the like.)
---
---   Will check whether the sender is a valid upstream neighbour and keep
---   timestamps current, see 'isRequestAllowed'.
 normalH :: (MonadIO io)
         => Environment
         -> From
         -> NormalSignal
         -> io ServerResponse
 normalH env from signal = liftIO $ do
-      allowed <- isRequestAllowed env from
-      if allowed
-            then case signal of
-                  EdgeRequest to edge  -> edgeBounceH   env to edge
-                  Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
-                  KeepAlive            -> keepAliveH    env from
-                  ShuttingDown         -> shuttingDownH env from
+      usn <- atomically $ isUsn env from
+      if usn
+            then do
+                  result <- case signal of
+                        EdgeRequest to edge  -> edgeBounceH   env to edge
+                        Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
+                        KeepAlive            -> keepAliveH    env from
+                        ShuttingDown         -> shuttingDownH env from
+                  when (result == OK) (updateTimestamp env from)
+                  return result
             else do atomically . toIO env Debug . putStrLn $
                           "Illegally contacted by " ++ show from ++ "; ignoring"
                     return Ignore
 
 
 
--- | Check whether the request is allowed and therefore be processed, by
---   checking whether the contacting node is registered as upstream. Also
---   updates the timestamp if the node is already known.
-isRequestAllowed :: (MonadIO io)
-                 => Environment
-                 -> From
-                 -> io Bool
-isRequestAllowed env from = do
-      timestamp <- makeTimestamp
-      liftIO . atomically $ do
-            allowed <- Map.member from <$> readTVar (_upstream env)
-            when allowed $ modifyTVar (_upstream env) $
-                  Map.adjust (const timestamp) from
-            return allowed
+-- | Check whether the contacting node is a registered upstream node (USN)
+isUsn :: Environment
+      -> From
+      -> STM Bool
+isUsn env from = Map.member from <$> readTVar (_upstream env)
 
 
+
+-- | Update the "last heard of" timestmap in the database
+updateTimestamp :: MonadIO io
+                => Environment
+                -> From
+                -> io ()
+updateTimestamp env from = liftIO $ do
+      t <- makeTimestamp
+      atomically $ modifyTVar (_upstream env)
+                              (Map.adjust (const t) from)
 
 
 
@@ -389,7 +399,7 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = liftIO $ do
           -- one the relaying node uses. This prevents "small p" attacks
           -- that bounce indefinitely.
           bounceOn | n >= (_maxSoftBounces $ _config env) =
-                           toIO env Debug $ yell 31 $
+                           toIO env Chatty . putStrLn $
                                  "Too many bounces, swallowing"
                    | otherwise = void . P.send (_pOutput $ _st1c env) $
                            buildSignal $ Right (n+1, p')

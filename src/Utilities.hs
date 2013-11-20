@@ -127,7 +127,7 @@ listenOnNode node = N.listen (N.Host $ _host node)
 sender :: (MonadIO io, Binary b)
        => N.Socket
        -> Consumer b io ServerResponse
-sender s = encodeMany >-> toSocketTimeout (5*10^6) s -- TODO: Don't hardcode timeout
+sender s = encodeMany >-> toSocketTimeout (3*10^6) s -- TODO: Don't hardcode timeout
 
 
 
@@ -154,7 +154,7 @@ receiver :: (MonadIO io, Binary b)
          -> Producer b io ServerResponse
 receiver s = decoded >-> dataOnly
       where dataOnly = P.map snd
-            input = fromSocketTimeout (5*10^6) s 4096 -- TODO: Don't hardcode timeout
+            input = fromSocketTimeout (3*10^6) s 4096 -- TODO: Don't hardcode timeout
 
             decoded = decodeError <$> P.decodeMany input
 
