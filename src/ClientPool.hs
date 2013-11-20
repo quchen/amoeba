@@ -115,66 +115,38 @@ balanceEdges env = forever $ do
 --   nodes.
 housekeeping :: Environment -> IO ()
 housekeeping env = forever $ do
-
-      -- Order matters: remove dead neighbours first, then send KeepAlive
-      -- signals
-
-      removeTimedOutUsn env
-      removeTimedOutDsn env
+      t <- makeTimestamp
+      removeTimedOutUsn env t
+      removeTimedOutDsn env t
       removeDeadClients env
-      sendKeepAlive env
+      sendKeepAlive     env t
       delay (_mediumTickRate $ _config env)
 
 
 
--- | Sends KeepAlive signals to DownStream Nodes so they can update their "last
---   heard of" timestamp
-sendKeepAlive :: Environment -> IO ()
-sendKeepAlive env = do
 
-      (Timestamp now) <- makeTimestamp
+-- | Remove timed out upstream nodes (USNs). Timestamps are updated by the
+--   server every time a signal is received and accepted.
+removeTimedOutUsn :: Environment -> Timestamp -> IO ()
+removeTimedOutUsn env (Timestamp now) = atomically $ do
+      let timedOut (Timestamp t) = now - t > (_poolTimeout . _config) env
+      (dead, alive) <- Map.partition timedOut <$> readTVar (_upstream env)
 
-      -- Get a map of all registered downstream clients
-      clients <- atomically $ readTVar (_downstream env)
+      -- Keep only alive USNs
+      writeTVar (_upstream env) alive
 
-      -- Find out which ones haven't been contacted in a while
-      let lastHeard client = let (Timestamp t) = _clientTimestamp client
-                             in  now - t
-          threshold = (_poolTimeout._config) env / 5 -- TODO: make the factor an option
-          needsRefreshing client = lastHeard client >= threshold
-          needKeepAlive = Map.filter needsRefreshing clients
-          -- Sends a KeepAlive signal to the client's dedicated channel
-          sendSignal node = atomically $ do
-                P.send (_pOutput $ _stsc node) KeepAlive
-
-      void $ T.traverse sendSignal needKeepAlive
-
-
-
-
--- | Remove timed out UpStream Nodes. Timestamps are updated by the server every
---   time a signal is received and accepted.
-removeTimedOutUsn :: Environment -> IO ()
-removeTimedOutUsn env = do
-      (Timestamp now) <- makeTimestamp
-      atomically $ do
-            let timedOut (Timestamp t) = now - t > (_poolTimeout (_config env))
-            (dead, alive) <- Map.partition timedOut <$> readTVar (_upstream env)
-            writeTVar (_upstream env) alive
-
-            let numDead = Map.size dead
-            when (_verbosity (_config env) >= Debug && numDead > 0) $ do
-                  toIO env Debug $
-                        printf "%d timed out upstream neighbour(s) removed"
-                               numDead
-
+      -- Log message about dead USNs
+      let numDead = Map.size dead
+      when (_verbosity (_config env) >= Debug && numDead > 0) $ do
+            toIO env Debug $
+                  printf "%d timed out upstream neighbour(s) removed"
+                         numDead
 
 
 
 -- | Kick all clients that haven't been sent an order in some time.
-removeTimedOutDsn :: Environment -> IO ()
-removeTimedOutDsn env = do
-      Timestamp now <- makeTimestamp
+removeTimedOutDsn :: Environment -> Timestamp -> IO ()
+removeTimedOutDsn env (Timestamp now) = do
       kill' <- atomically $ do
             let notTimedOut (Client { _clientTimestamp = Timestamp t }) =
                       now - t < (_poolTimeout._config) env
@@ -185,21 +157,16 @@ removeTimedOutDsn env = do
                        putStrLn "Downstream neighbour housekilled. This is\
                                 \ likely a bug, as clients should clean\
                                 \ themselves up after termination."
+                                -- TODO: Verify this claim
 
             writeTVar ds keep
             return kill
 
-
       void $ T.traverse (cancel . _clientAsync) kill'
--- TODO: Find out whether this function is useful, or whether
---       'removeDeadClients' is enough
--- TODO: Clients are bracketed to remove themselves from the thread pool once
---       they terminate for some reason. This function may be totally
---       unnecessary.
 
 
 
--- | Poll all clients and removes those that are not running anymore.
+-- | Poll all clients and remove those that are not running anymore.
 removeDeadClients :: Environment -> IO ()
 removeDeadClients env = do
 
@@ -216,10 +183,32 @@ removeDeadClients env = do
             atomically . toIO env Debug $
                  putStrLn "Client housekilled. This may be a bug\
                           \ (client should cleanup itself).\n"
+                          -- TODO: Verify this claim
 
       -- Finally, remove all dead nodes by their just found out keys
       atomically $ modifyTVar (_downstream env) $ \knownNodes ->
             F.foldr Map.delete knownNodes deadNodes
+
+
+
+-- | Send 'KeepAlive' signals to downstream nodes (DSNs) so they can update
+--   their "last heard of" timestamp
+sendKeepAlive :: Environment -> Timestamp -> IO ()
+sendKeepAlive env (Timestamp now) = do
+
+      -- Get a map of all registered downstream clients
+      clients <- atomically $ readTVar (_downstream env)
+
+      -- Find out which ones haven't been contacted in a while
+      let lastHeard client = let Timestamp t = _clientTimestamp client
+                             in  now - t
+          threshold = (_poolTimeout._config) env / 5 -- TODO: make the factor an option
+          needsRefreshing client = lastHeard client >= threshold
+          needKeepAlive = Map.filter needsRefreshing clients
+          sendSignal node = atomically $ do
+                P.send ((_pOutput . _stsc) node) KeepAlive
+
+      void $ T.traverse sendSignal needKeepAlive
 
 
 
