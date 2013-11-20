@@ -147,7 +147,7 @@ removeTimedOutUsn env (Timestamp now) = atomically $ do
             toIO env Debug $
                   printf "%d timed out upstream neighbour%s removed\n"
                          numDead
-                         (if numDead /= 1 then "s" else "")
+                         (pluralS numDead)
 
 
 

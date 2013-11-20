@@ -9,6 +9,7 @@ module Utilities (
       , whileM
       , catchAll
       , dbSize
+      , pluralS
 
       -- * Concurrency
       , asyncMany
@@ -297,3 +298,9 @@ dbSize :: Environment
        -> (Environment -> TVar (Map.Map k a)) -- '_upstream' or '_downstream'
        -> STM Int
 dbSize env db = Map.size <$> readTVar (db env)
+
+
+-- | Add an \"s\" in print statements
+pluralS :: (Eq a, Num a) => String
+pluralS 1 = ""
+pluralS _ = "s"
