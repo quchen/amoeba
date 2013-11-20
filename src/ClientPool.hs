@@ -100,13 +100,19 @@ balanceEdges env = forever $ do
                    , minNeighbours - dsnCount
                    )
 
-      each (replicate dsnDeficit Outgoing)
-      each (replicate usnDeficit Incoming)
+      each $ mergeLists (replicate dsnDeficit Outgoing)
+                        (replicate usnDeficit Incoming)
 
-      where
 
-            minNeighbours = _minNeighbours (_config env)
+      where minNeighbours = _minNeighbours (_config env)
             maxNeighbours = _maxNeighbours (_config env)
+
+            -- mergeLists [a,b] [w,x,y,z]  ==  [a,w,b,x,y,z]
+            --
+            -- Should be equivalent to 'concat . transpose' in terms of
+            -- functionality, but I don't understand 'transpose' entirely.
+            mergeLists []     ys = ys
+            mergeLists (x:xs) ys = x : mergeLists ys xs
 
 
 

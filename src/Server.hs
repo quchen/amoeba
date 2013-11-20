@@ -510,17 +510,24 @@ handshakeH :: (MonadIO io)
            -> From
            -> Socket
            -> io ServerResponse
-handshakeH env from socket = do -- Seems to leak.
+handshakeH env from socket = liftIO $ do -- Seems to leak.
       timestamp <- makeTimestamp
-      isRoom' <- liftIO . atomically $ do
+
+      isRoom' <- atomically $ do
             isRoom <- isRoomIn env _upstream
-            when isRoom $ modifyTVar (_upstream env) (Map.insert from timestamp)
+            -- Reserve slot temporarily
+            when isRoom
+                 (modifyTVar (_upstream env)
+                             (Map.insert from timestamp))
             return isRoom
+
       if isRoom'
             then request socket OK >>= \case
                   Just OK -> return OK
-                  x -> liftIO . atomically $ do
-                        modifyTVar (_upstream env) (Map.delete from)
+                  x -> atomically $ do
+                        -- Remove temporary slot again on failure
+                        modifyTVar (_upstream env)
+                                   (Map.delete from)
                         return $ Error $ "Incoming handshake denied:\
                                          \ server response <" ++ show x ++ ">"
             else return $ Error "No room for another USN"
