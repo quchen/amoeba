@@ -110,6 +110,10 @@ data ServerResponse =
         --   format
       | DecodeError
 
+      | Timeout
+
+      | ConnectionClosed
+
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary ServerResponse

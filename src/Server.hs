@@ -11,11 +11,13 @@
 module Server (server) where
 
 import           Control.Concurrent.Async
+import           Control.Concurrent (killThread)
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
 import           Control.Applicative
 import           Data.IORef
+import           System.Timeout
 import           System.Random
 import           Text.Printf
 import qualified Data.Map as Map
@@ -59,14 +61,12 @@ server env serverSocket = liftIO $ do
                         printf "New worker %s from %s\n"
                                (show from)
                                (show addr)
-                  response <- worker env from clientSocket
+                  terminationReason <- worker env from clientSocket
                   atomically . toIO env Debug $
                         printf "Worker %s from %s terminated (%s)\n"
                                (show from)
                                (show addr)
-                               (show response)
-
-
+                               (show terminationReason)
 
 
 
@@ -83,7 +83,7 @@ worker env from socket = runEffect $ input
                                  >-> sender socket
 
       where input :: (MonadIO io) => Producer Signal io ServerResponse
-            input = DecodeError <$ receiver socket
+            input = receiver socket
 
             dispatch :: (MonadIO io) => Pipe Signal ServerResponse io r
             dispatch = P.mapM $ \case
@@ -91,8 +91,9 @@ worker env from socket = runEffect $ input
                   Special special -> specialH env from socket special
 
             -- Pipes incoming signals on, but terminates afterwards if the last
-            -- one was an error.
-            terminator :: (MonadIO io) => Pipe ServerResponse ServerResponse io ServerResponse
+            -- one was an error. In other words it's like P.takeWhile, but also
+            -- passes on the first failing element.
+            terminator :: (Monad m) => Pipe ServerResponse ServerResponse m ServerResponse
             terminator = do
                   signal <- await
                   yield signal
@@ -107,7 +108,9 @@ worker env from socket = runEffect $ input
 workerLdc :: (MonadIO io)
           => Environment
           -> io ()
-workerLdc env@(_ldc -> Just pChan) = runEffect $ input >-> dispatch >-> discard
+workerLdc env@(_ldc -> Just pChan) = runEffect $ input
+                                             >-> dispatch
+                                             >-> discard
 
       where input :: (MonadIO io) => Producer NormalSignal io ()
             input = P.fromInput (_pInput pChan)
@@ -125,7 +128,7 @@ workerLdc env@(_ldc -> Just pChan) = runEffect $ input >-> dispatch >-> discard
             -- This is a bit of a hack of course. The dispatch pipe above is
             -- built from Producers, so their re-emitted server responses have
             -- to be destroyed.
-            discard :: (MonadIO io) => Consumer ServerResponse io r
+            discard :: (Monad m) => Consumer a m ()
             discard = forever await
 
 workerLdc _ = return ()
@@ -507,7 +510,7 @@ handshakeH :: (MonadIO io)
            -> From
            -> Socket
            -> io ServerResponse
-handshakeH env from socket = do
+handshakeH env from socket = do -- Seems to leak.
       timestamp <- makeTimestamp
       isRoom' <- liftIO . atomically $ do
             isRoom <- isRoomIn env _upstream
@@ -543,7 +546,7 @@ startHandshakeH :: (MonadIO io)
                 => Environment
                 -> To -- ^ Node to add
                 -> io ServerResponse
-startHandshakeH env to = liftIO $ bracketOnError initialize release action
+startHandshakeH env to = liftIO $ bracketOnError initialize release action -- Does not seem to leak.
 
       where initialize = connectToNode' to
 
@@ -569,7 +572,7 @@ tryLaunchClient :: Environment
                 -> To     -- ^ Target address (for bookkeeping)
                 -> Socket -- ^ Connection
                 -> IO ServerResponse
-tryLaunchClient env to socket = do
+tryLaunchClient env to socket = do -- Does not seem to leak.
       time <- makeTimestamp
       stsc <- spawn buffer
       bracket (async $ client env socket to stsc)
@@ -595,10 +598,11 @@ tryLaunchClient env to socket = do
             -- Cancel the client thread if it is not found in the database
             -- after the procedure has finished
             rollback socket thread = do
-                  p <- atomically $ Map.member to <$> readTVar (_downstream env)
+                  p <- atomically $ isClientIn _downstream
                   unless p $ cancel thread >> disconnect socket
 
             insertClient = modifyTVar (_downstream env) . Map.insert to
+            isClientIn db = Map.member to <$> readTVar (db env)
 
 
 

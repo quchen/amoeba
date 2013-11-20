@@ -10,6 +10,7 @@ module NodePool (nodePool) where
 
 
 
+import Control.Concurrent (forkIO)
 import Control.Concurrent.Async
 import Control.Concurrent.MVar
 import Control.Concurrent.Chan
@@ -45,7 +46,7 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
 nodePool n config ldc output terminate = forM_ [1..n] $ \portOffset ->
       let port = _serverPort config + fromIntegral portOffset
           config' = config { _serverPort = port }
-      in  async $ janitor config' ldc output terminate
+      in  forkIO $ janitor config' ldc output terminate
 
 
 

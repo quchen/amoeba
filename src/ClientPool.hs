@@ -158,18 +158,16 @@ removeTimedOutUsn :: Environment -> IO ()
 removeTimedOutUsn env = do
       (Timestamp now) <- makeTimestamp
       atomically $ do
-            let notTimedOut (Timestamp t) = now - t < (_poolTimeout._config) env
+            let timedOut (Timestamp t) = now - t > (_poolTimeout (_config env))
+            (dead, alive) <- Map.partition timedOut <$> readTVar (_upstream env)
+            writeTVar (_upstream env) alive
 
-            -- Mention how many USNs have timed out
-            when (_verbosity (_config env) >= Debug) $ do
-                  timedOut <- Map.size . Map.filter (not . notTimedOut)
-                              <$>
-                              readTVar (_upstream env)
-                  when (timedOut > 0) $ toIO env Debug $
-                        putStrLn $ show timedOut ++ " timed out upstream\
-                                   \ neighbour(s) removed"
+            let numDead = Map.size dead
+            when (_verbosity (_config env) >= Debug && numDead > 0) $ do
+                  toIO env Debug $
+                        printf "%d timed out upstream neighbour(s) removed"
+                               numDead
 
-            modifyTVar (_upstream env) (Map.filter notTimedOut)
 
 
 

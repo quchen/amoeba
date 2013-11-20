@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Utilities (
 
@@ -46,12 +47,13 @@ import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
 import           Data.Map (Map)
 import qualified Data.Map as Map
+import           System.Timeout
 
 import           Pipes
 import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
-import qualified Pipes.Network.TCP as P
-import qualified Network.Simple.TCP as P
+import qualified Pipes.Network.TCP as PN
+import qualified Network.Simple.TCP as N
 import qualified Pipes.Binary as P
 import Control.Monad.Catch (MonadCatch)
 
@@ -87,9 +89,9 @@ whileM p m = go
 --   operation terminates or throws.
 connectToNode :: (MonadIO io, MonadCatch io)
               => To
-              -> ((P.Socket, P.SockAddr) -> io r)
+              -> ((N.Socket, N.SockAddr) -> io r)
               -> io r
-connectToNode (To node) = P.connect (_host node) (show $ _port node)
+connectToNode (To node) = N.connect (_host node) (show $ _port node)
 
 
 -- | 'Node'-based version of 'P.connectSock'. Opens the connection, but
@@ -97,43 +99,66 @@ connectToNode (To node) = P.connect (_host node) (show $ _port node)
 --   'P.closeSock' to do so.
 connectToNode' :: (MonadIO io)
                => To
-               -> io (P.Socket, P.SockAddr)
-connectToNode' (To node) = P.connectSock (_host node) (show $ _port node)
+               -> io (N.Socket, N.SockAddr)
+connectToNode' (To node) = N.connectSock (_host node) (show $ _port node)
 
 
 
 -- | Closes a connection.
 disconnect :: (MonadIO io)
-           => P.Socket
+           => N.Socket
            -> io ()
-disconnect s = liftIO (P.closeSock s)
+disconnect s = liftIO (N.closeSock s)
 
 
 
 -- | 'Node'-based version of 'P.listen'
 listenOnNode :: (MonadIO io, MonadCatch io)
              => Node
-             -> ((P.Socket, P.SockAddr) -> io r)
+             -> ((N.Socket, N.SockAddr) -> io r)
              -> io r
-listenOnNode node = P.listen (P.Host $ _host node)
+listenOnNode node = N.listen (N.Host $ _host node)
                              (show   $ _port node)
 
 
 
--- | Continuously encode and send data to a 'P.Socket'.
+-- | Continuously encode and send data to a 'N.Socket'.
 sender :: (MonadIO io, Binary b)
-       => P.Socket
+       => N.Socket
        -> Consumer b io r
-sender s = encodeMany >-> P.toSocket s
+sender s = encodeMany >-> PN.toSocket s
 
 
 
--- | Continuously receive and decode data from a 'P.Socket'.
+-- | Continuously receive and decode data from a 'N.Socket'.
+--
+--   Returns if the connection is closed, times out, or decoding fails.
 receiver :: (MonadIO io, Binary b)
-         => P.Socket
-         -> Producer b io ()
-receiver s = void (P.decodeMany (P.fromSocket s 4096)) >-> dataOnly
+         => N.Socket
+         -> Producer b io ServerResponse
+receiver s = decoded >-> dataOnly
       where dataOnly = P.map snd
+            input = fromSocketTimeout (5*10^6) s 4096 -- TODO: Don't hardcode timeout
+
+            decoded = decodeError <$> P.decodeMany input
+
+            decodeError (Right r) = r
+            decodeError (Left _)  = DecodeError
+
+
+
+-- | Same as 'PN.fromSocketTimeout', but issues 'ServerResponse' instead of
+--   throwing an 'IOError'.
+fromSocketTimeout :: (MonadIO io)
+                  => Int
+                  -> N.Socket
+                  -> Int
+                  -> Producer' BS.ByteString io ServerResponse
+fromSocketTimeout t socket nBytes = loop where
+      loop = liftIO (timeout t (N.recv socket nBytes)) >>= \case
+            Just (Just bs) -> yield bs >> loop
+            Just Nothing   -> return ConnectionClosed
+            Nothing        -> return Timeout
 
 
 
@@ -141,26 +166,26 @@ receiver s = void (P.decodeMany (P.fromSocket s 4096)) >-> dataOnly
 
 
 
--- | Receives a single piece of data from a 'P.Socket'.
+-- | Receives a single piece of data from a 'N.Socket'.
 receive :: (MonadIO io, Binary b)
-        => P.Socket
+        => N.Socket
         -> io (Maybe b)
-receive s = runEffect $ P.head (receiver s)
+receive s = runEffect (P.head (void (receiver s)))
 
 
 
--- | Sends a single piece of data to a 'P.Socket'.
+-- | Sends a single piece of data to a 'N.Socket'.
 send :: (MonadIO io, Binary b)
-     => P.Socket
+     => N.Socket
      -> b
      -> io ()
 send s x = runEffect $ yield x >-> sender s
 
 
 
--- | Sends a single piece of data to a 'P.Socket', and waits for a response.
+-- | Sends a single piece of data to a 'N.Socket', and waits for a response.
 request :: (MonadIO io, Binary a, Binary b)
-        => P.Socket
+        => N.Socket
         -> a
         -> io (Maybe b)
 request s x = send s x >> receive s

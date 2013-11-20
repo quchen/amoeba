@@ -10,6 +10,7 @@
 module Main where
 
 import Data.IORef
+import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Control.Concurrent hiding (yield)
@@ -45,7 +46,7 @@ bootstrapServerMain = do
 
       -- Bootstrap service
       putStrLn $ "Starting bootstrap server with " ++ show poolSize ++ " nodes"
-      async $ restartLoop terminate
+      forkIO $ restartLoop terminate
       bootstrapServer config ldc
 
 

@@ -15,6 +15,7 @@ import Control.Concurrent.STM
 import Data.Monoid
 import Control.Exception (finally)
 import qualified Data.Map as Map
+import System.Timeout
 
 import Pipes
 import qualified Pipes.Concurrent as P
@@ -42,11 +43,13 @@ client env socket to stsc = (`finally` cleanup) $ runEffect $
                             ]
             -- TODO: Implement stc to support flood messages
 
-            cleanup = do
-                  atomically $ modifyTVar (_downstream env) $ Map.delete to
-                  -- TODO: send shutdown notice
-                  disconnect socket
+            cleanup = (`finally` disconnect socket) $ do
 
+                  atomically $ modifyTVar (_downstream env) $ Map.delete to
+
+                  -- Send shutdown notice as a courtesy
+                  timeout (_mediumTickRate (_config env))
+                          (send socket (Normal ShuttingDown))
 
 
 
