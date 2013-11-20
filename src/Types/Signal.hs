@@ -150,7 +150,7 @@ instance Binary SpecialSignal
 --   network.
 data EdgeData = EdgeData {
         _direction   :: Direction
-      , _bounceParam :: Either Word (Word, Double)
+      , _bounceParam :: BounceParameter
             -- ^ Left n: Hard bounces left, i.e. how many times more the
             --           request will definitely be relayed
             --   Right (n, p): n: Counter how many times the signal was bounced
@@ -164,12 +164,29 @@ instance Show EdgeData where
       show ed = printf "%s edge (%s)"(show $ _direction ed) bp
             where bp :: String
                   bp = case _bounceParam ed of
-                        Left n -> printf "%d bounce%s left"
-                                         n
-                                         (if n /= 1 then "s" else "")
-                        Right (n,p) -> printf "bounces: %d, accept: %.2f" n p
+                        HardBounce n -> printf "%d bounce%s left"
+                                        n
+                                        (if n /= 1 then "s" else "")
+                        SoftBounce n p -> printf "bounces: %d, accept: %.2f" n p
 
 instance Binary EdgeData
+
+
+
+-- | Stores how many times an 'EdgeRequest' should be bounced on. A hard bounce
+--   means the bounces are guaranteed to happen a certain number of times,
+--   a soft bounce happens with a certain probability. The 'Word' parameter of
+--   soft bounces is to provide a hard upper bound for bounces that aren't
+--   accepted a certain number of times.
+--
+--   > HardBounce 10    -- Will bounce 10 times before entering soft bounce mode
+--   > SoftBounce 3 0.8 -- Will be accepted with probability 0.8. It was bounced
+--                         3 times already without being accepted.
+data BounceParameter = HardBounce Word
+                     | SoftBounce Word Double
+                     deriving (Eq, Ord, Generic)
+
+instance Binary BounceParameter
 
 
 

@@ -301,6 +301,6 @@ dbSize env db = Map.size <$> readTVar (db env)
 
 
 -- | Add an \"s\" in print statements
-pluralS :: (Eq a, Num a) => String
+pluralS :: (Eq a, Num a) => a -> String
 pluralS 1 = ""
 pluralS _ = "s"

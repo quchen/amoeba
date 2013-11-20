@@ -361,13 +361,16 @@ edgeBounceH :: (MonadIO io)
             -> EdgeData
             -> io ServerResponse
 
--- Phase 1 ends: Left counter reaches 0, start soft bounce phase
-edgeBounceH env origin (EdgeData dir (Left 0)) =
-      edgeBounceH env origin $
-      EdgeData dir . Right $ (0, _acceptP $ _config env)
+-- Phase 1 ends: Hard bounce counter reaches 0, start soft bounce phase
+edgeBounceH env origin (EdgeData dir (HardBounce 0)) =
+      edgeBounceH env
+                  origin
+                  (EdgeData dir
+                            (SoftBounce 0
+                                        ((_acceptP . _config) env)))
 
--- Phase 1: Left value, bounce on.
-edgeBounceH env origin (EdgeData dir (Left n)) = liftIO $ do
+-- Phase 1: Hard bounce, bounce on.
+edgeBounceH env origin (EdgeData dir (HardBounce n)) = liftIO $ do
 
       let buildSignal = EdgeRequest origin . EdgeData dir
           nMax = _bounces $ _config env
@@ -375,7 +378,7 @@ edgeBounceH env origin (EdgeData dir (Left n)) = liftIO $ do
       atomically $ do
 
             -- FIXME: The TQueue is now a PQueue.
-            P.send (_pOutput $ _st1c env) . buildSignal $ Left $ min (n - 1) nMax
+            P.send (_pOutput $ _st1c env) . buildSignal $ HardBounce $ min (n - 1) nMax
                                 -- Cap the number of hard    ^
                                 -- bounces with the current  |
                                 -- node's configuration to   |
@@ -393,7 +396,7 @@ edgeBounceH env origin (EdgeData dir (Left n)) = liftIO $ do
 --
 -- (Note that bouncing on always decreases the denial probability, even in case
 -- the reason was not enough room.)
-edgeBounceH env origin (EdgeData dir (Right (n, p))) = liftIO $ do
+edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = liftIO $ do
 
       -- Build "bounce on" action to relay signal if necessary
       let buildSignal = EdgeRequest origin . EdgeData dir
@@ -405,13 +408,13 @@ edgeBounceH env origin (EdgeData dir (Right (n, p))) = liftIO $ do
                            toIO env Chatty . putStrLn $
                                  "Too many bounces, swallowing"
                    | otherwise = void . P.send (_pOutput $ _st1c env) $
-                           buildSignal $ Right (n+1, p')
+                           buildSignal $ SoftBounce (n+1) p'
 
       -- Build "bounce again from the beginning" signal. This is invoked if
       -- an EdgeRequest reaches the issuing node again.
       let n = _bounces $ _config env
           bounceReset = void $
-                P.send (_pOutput $ _st1c env) . buildSignal $ Left n
+                P.send (_pOutput $ _st1c env) . buildSignal $ HardBounce n
 
       (isRoom, relationship) <- atomically $ do
             -- Make sure not to connect to itself or to already known nodes

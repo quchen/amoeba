@@ -126,14 +126,15 @@ dispatchSignal config to ldc = order Incoming >> order Outgoing
 
 
 
--- | Construct an edge request
+-- | Construct a new edge request
 edgeRequest :: Config
             -> To
             -> Direction
             -> NormalSignal
-edgeRequest config to dir = EdgeRequest to $
-                            EdgeData dir $
-                            Left $ _bounces config
+edgeRequest config to dir =
+      EdgeRequest to
+                  (EdgeData dir
+                            (HardBounce (_bounces config)))
 
 
 
