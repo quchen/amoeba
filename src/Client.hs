@@ -34,7 +34,7 @@ client :: Environment
              --   order to keep the client pool up to date.
        -> PChan NormalSignal
        -> IO ()
-client env socket to stsc = (`finally` cleanup) $ runEffect $
+client env socket to stsc = (`finally` cleanup) . runEffect $
       P.fromInput input >-> signalH env socket to
 
       where st1c  = _st1c env

@@ -131,10 +131,9 @@ edgeRequest :: Config
             -> To
             -> Direction
             -> NormalSignal
-edgeRequest config to dir =
-      EdgeRequest to
-                  (EdgeData dir
-                            (HardBounce (_bounces config)))
+edgeRequest config to dir = EdgeRequest to edgeData
+      where edgeData      = EdgeData dir bounceParam
+            bounceParam   = HardBounce (_bounces config)
 
 
 

@@ -62,7 +62,7 @@ server env serverSocket = liftIO $ do
                                (show from)
                                (show addr)
                   terminationReason <- worker env from clientSocket
-                  atomically . toIO env Debug $
+                  atomically $ toIO env Debug $
                         printf "Worker %s from %s terminated (%s)\n"
                                (show from)
                                (show addr)
@@ -77,27 +77,18 @@ worker :: (MonadIO io)
        -> From        -- ^ Unique worker ID
        -> Socket      -- ^ Incoming connection
        -> io ServerResponse
-worker env from socket = runEffect $ input
-                                 >-> dispatch
-                                 >-> terminator
-                                 >-> sender socket
+worker env from socket =
 
-      where input :: (MonadIO io) => Producer Signal io ServerResponse
-            input = do
-                  r <- receiver socket
-                  removeFromDb
-                  return r
+      runEffect $ receiver socket >-> dispatch >-> terminator >-> sender socket
 
-            dispatch :: (MonadIO io) => Pipe Signal ServerResponse io r
+      where dispatch :: (MonadIO io) => Pipe Signal ServerResponse io r
             dispatch = P.mapM $ \case
                   Normal  normal  -> normalH  env from        normal
                   Special special -> specialH env from socket special
 
             -- Pipes incoming signals on, but terminates afterwards if the last
-            -- one was an error. In other words it's like P.takeWhile, but also
-            -- passes on the first failing element.
-            --
-            -- Also removes the 'From' from the database in case of an error.
+            -- one was an error. In other words it's similar P.takeWhile, but
+            -- passes on the first failing element before returning it.
             terminator :: (MonadIO io) => Pipe ServerResponse
                                                ServerResponse
                                                io
@@ -107,11 +98,7 @@ worker env from socket = runEffect $ input
                   yield signal
                   case signal of
                         OK  -> terminator
-                        err -> removeFromDb >> return err
-
-            removeFromDb :: (MonadIO io) => io ()
-            removeFromDb = liftIO . atomically $ modifyTVar (_upstream env)
-                                                            (Map.delete from)
+                        err -> return err
 
 
 
@@ -120,9 +107,9 @@ worker env from socket = runEffect $ input
 workerLdc :: (MonadIO io)
           => Environment
           -> io ()
-workerLdc env@(_ldc -> Just pChan) = runEffect $ input
-                                             >-> dispatch
-                                             >-> discard
+workerLdc env@(_ldc -> Just pChan) =
+
+      runEffect $ input >-> dispatch >-> discard
 
       where input :: (MonadIO io) => Producer NormalSignal io ()
             input = P.fromInput (_pInput pChan)
@@ -206,8 +193,8 @@ specialH :: (MonadIO io)
          -> io ServerResponse
 specialH env from socket signal = case signal of
       BootstrapRequest {} -> illegalBootstrapSignalH env
-      Handshake           -> handshakeH env from socket
-      HandshakeRequest to -> startHandshakeH env to
+      Handshake           -> handshakeH              env from socket
+      HandshakeRequest to -> startHandshakeH         env to
 
 
 
@@ -303,7 +290,7 @@ shuttingDownH env from = liftIO . atomically $ do
       modifyTVar (_upstream env) (Map.delete from)
       toIO env Debug . putStrLn $
             "Shutdown notice from %s" ++ show from
-      return OK
+      return ConnectionClosed
 
 
 
@@ -378,12 +365,12 @@ edgeBounceH env origin (EdgeData dir (HardBounce n)) = liftIO $ do
       atomically $ do
 
             -- FIXME: The TQueue is now a PQueue.
-            P.send (_pOutput $ _st1c env) . buildSignal $ HardBounce $ min (n - 1) nMax
-                                -- Cap the number of hard    ^
-                                -- bounces with the current  |
-                                -- node's configuration to   |
-                                -- prevent "maxBound bounces |
-                                -- left" attacks             |
+            P.send (_pOutput (_st1c env)) . buildSignal $ HardBounce $ min (n - 1) nMax
+                                          -- Cap the number of hard    ^
+                                          -- bounces with the current  |
+                                          -- node's configuration to   |
+                                          -- prevent "maxBound bounces |
+                                          -- left" attacks             |
             toIO env Chatty $ printf "Hardbounced %s request from %s (%d left)\n"
                                      (show dir)
                                      (show origin)
@@ -398,31 +385,18 @@ edgeBounceH env origin (EdgeData dir (HardBounce n)) = liftIO $ do
 -- the reason was not enough room.)
 edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = liftIO $ do
 
-      -- Build "bounce on" action to relay signal if necessary
-      let buildSignal = EdgeRequest origin . EdgeData dir
-          p' = max p $ (_acceptP._config) env
-          -- ^ The relayed acceptance probability is at least as high as the
-          -- one the relaying node uses. This prevents "small p" attacks
-          -- that bounce indefinitely.
-          bounceOn | n >= (_maxSoftBounces $ _config env) =
-                           toIO env Chatty . putStrLn $
-                                 "Too many bounces, swallowing"
-                   | otherwise = void . P.send (_pOutput $ _st1c env) $
-                           buildSignal $ SoftBounce (n+1) p'
-
-      -- Build "bounce again from the beginning" signal. This is invoked if
-      -- an EdgeRequest reaches the issuing node again.
-      let n = _bounces $ _config env
-          bounceReset = void $
-                P.send (_pOutput $ _st1c env) . buildSignal $ HardBounce n
-
       (isRoom, relationship) <- atomically $ do
+
             -- Make sure not to connect to itself or to already known nodes
             rel <- nodeRelationship env origin
-            -- Check whether there is room for another connection
+
+            -- Check whether there is room for another connection. Note that
+            -- an Incoming request will construct a downstream neighbour from
+            -- this node, so the database lookups are flipped.
             room <- case dir of
                   Incoming -> isRoomIn env _downstream
                   Outgoing -> isRoomIn env _upstream
+
             return (room, rel)
 
       -- Roll whether to accept the query first, then check whether there's
@@ -446,7 +420,7 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = liftIO $ do
                   toIO env Chatty $ printf
                         "Edge to %s already exists, bouncing\n"
                         (show origin)
-                  bounceOn
+                  bounceOn -- TODO: bounceReset here to avoid clustering?
 
             -- No room
             _ | not isRoom -> atomically $ do
@@ -472,7 +446,7 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = liftIO $ do
             (_, Outgoing) -> do
                   atomically . toIO env Chatty . putStrLn $
                         "Outgoing edge request accepted, sending handshake\
-                        \ request"
+                        \ request" ++ show dir
                   sendHandshakeRequest env origin
 
             -- Try accepting an Incoming request
@@ -485,6 +459,34 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = liftIO $ do
 
       return OK -- The upstream neighbour that relayed the EdgeRequest has
                 -- nothing to do with whether the handshake fails etc.
+
+
+      where
+
+            buildSignal = EdgeRequest origin . EdgeData dir
+
+
+            -- Build "bounce on" action to relay signal if necessary
+            bounceOn | n >= _maxSoftBounces (_config env) =
+                             toIO env Chatty . putStrLn $
+                                   "Too many bounces, swallowing"
+                     | otherwise =
+                           let p' = max p (_acceptP (_config env))
+                               -- ^ The relayed acceptance probability is at
+                               --   least as high as the one the relaying node
+                               --   uses. This prevents "small p" attacks that
+                               --   bounce indefinitely.
+                           in  void $ P.send (_pOutput (_st1c env))
+                                             (buildSignal (SoftBounce (n+1) p'))
+
+            -- Build "bounce again from the beginning" signal. This is invoked
+            -- if an EdgeRequest reaches the issuing node again.
+            bounceReset = let n = _bounces (_config env)
+                          in  void $ P.send (_pOutput (_st1c env))
+                                            (buildSignal (HardBounce n))
+            -- TODO: Maybe swallowing the request in this case makes more sense.
+            --       The node is spamming the network with requests anyway after
+            --       all.
 
 
 
@@ -502,7 +504,7 @@ sendHandshakeRequest env to =
                   -- Nothing to do here, the handshake is a one-way command,
                   -- waiting for response is just a courtesy
 
-      where signal = Special . HandshakeRequest $ _self env
+      where signal = (Special . HandshakeRequest) (_self env)
 
 
 
@@ -526,7 +528,7 @@ handshakeH :: (MonadIO io)
            -> From
            -> Socket
            -> io ServerResponse
-handshakeH env from socket = liftIO $ do -- Seems to leak.
+handshakeH env from socket = liftIO $ do
       timestamp <- makeTimestamp
 
       isRoom' <- atomically $ do
@@ -538,15 +540,15 @@ handshakeH env from socket = liftIO $ do -- Seems to leak.
             return isRoom
 
       if isRoom'
-            then request socket OK >>= \case
+            then send socket OK >> receive socket >>= \case
                   Just OK -> return OK
                   x -> atomically $ do
                         -- Remove temporary slot again on failure
                         modifyTVar (_upstream env)
                                    (Map.delete from)
-                        return $ Error $ "Incoming handshake denied:\
-                                         \ server response <" ++ show x ++ ">"
-            else return $ Error "No room for another USN"
+                        (return . Error) ("Incoming handshake denied:\
+                                          \ server response <" ++ show x ++ ">")
+            else (return . Error) "No room for another USN"
 
 
 
@@ -569,23 +571,22 @@ startHandshakeH :: (MonadIO io)
                 => Environment
                 -> To -- ^ Node to add
                 -> io ServerResponse
-startHandshakeH env to = liftIO $ bracketOnError initialize release action -- Does not seem to leak.
+startHandshakeH env to = liftIO $ bracketOnError initialize release action
 
       where initialize = connectToNode' to
 
             release (socket, _addr) = disconnect socket
 
-            action (socket, _addr) = do
-                  response <- request socket (Special Handshake)
-                  case response of
+            action (socket, _addr) =
+                  request socket (Special Handshake) >>= \case
                         Just OK -> tryLaunchClient env to socket
                                    -- (Closes socket itself on error)
                         Just (Error e) -> do
                               disconnect socket
-                              return $ Error $ "Handshake signal response: " ++ e
+                              (return . Error) ("Handshake signal response: " ++ e)
                         x -> do
                               disconnect socket
-                              return $ Error $ "Handshake ServerResponse: " ++ show x
+                              (return . Error) ("Handshake signal response: " ++ show x)
 
 
 
@@ -595,34 +596,34 @@ tryLaunchClient :: Environment
                 -> To     -- ^ Target address (for bookkeeping)
                 -> Socket -- ^ Connection
                 -> IO ServerResponse
-tryLaunchClient env to socket = do -- Does not seem to leak.
+tryLaunchClient env to socket = do
       time <- makeTimestamp
       stsc <- spawn buffer
-      bracket (async $ client env socket to stsc)
+      bracket (async (client env socket to stsc))
               (rollback socket)
               $ \thread -> atomically $ do
 
             nodeRelationship env to >>= \case
-                  IsSelf -> return $ Error $ "Tried to launch client to self"
-                  IsDownstreamNeighbour -> return $ Error $
+                  IsSelf -> (return . Error) "Tried to launch client to self"
+                  IsDownstreamNeighbour -> (return . Error)
                         "Tried to launch client to already known node"
                   IsUnrelated -> do
                         isRoom <- isRoomIn env _downstream
                         if not isRoom
-                              then return $ Error $ "No room for new client"
+                              then (return . Error) "No room for new client"
                               else do insertClient (Client time thread stsc)
                                       toIO env Chatty $ putStrLn "New client!"
                                       return OK
 
       where
 
-            buffer = P.Bounded (_maxChanSize $ _config env)
+            buffer = P.Bounded (_maxChanSize (_config env))
 
             -- Cancel the client thread if it is not found in the database
             -- after the procedure has finished
             rollback socket thread = do
                   p <- atomically $ isClientIn _downstream
-                  unless p $ cancel thread >> disconnect socket
+                  unless p (cancel thread >> disconnect socket)
 
             insertClient = modifyTVar (_downstream env) . Map.insert to
             isClientIn db = Map.member to <$> readTVar (db env)

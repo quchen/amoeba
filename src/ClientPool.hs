@@ -62,7 +62,7 @@ fillPool env = (`finally` yell 42 "fillPool terminated! Should never happen!") $
       where
             -- Send signal to the single worker channel
             dispatch :: Consumer NormalSignal IO ()
-            dispatch = P.toOutput (_pOutput $ _st1c env)
+            dispatch = P.toOutput ((_pOutput . _st1c) env)
 
             -- Create an 'EdgeRequest' from a 'Direction'
             edgeRequest :: Direction
@@ -80,7 +80,7 @@ fillPool env = (`finally` yell 42 "fillPool terminated! Should never happen!") $
 balanceEdges :: Environment -> Producer Direction IO r
 balanceEdges env = forever $ do
 
-      delay (_mediumTickRate $ _config env)
+      delay ((_mediumTickRate . _config) env)
 
       (usnDeficit, dsnDeficit) <- liftIO $ atomically $ do
 
