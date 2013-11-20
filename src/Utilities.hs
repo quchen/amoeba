@@ -54,6 +54,7 @@ import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
 import qualified Pipes.Network.TCP as PN
 import qualified Network.Simple.TCP as N
+import qualified Network.Socket.ByteString as NSB
 import qualified Pipes.Binary as P
 import Control.Monad.Catch (MonadCatch)
 
@@ -125,8 +126,23 @@ listenOnNode node = N.listen (N.Host $ _host node)
 -- | Continuously encode and send data to a 'N.Socket'.
 sender :: (MonadIO io, Binary b)
        => N.Socket
-       -> Consumer b io r
-sender s = encodeMany >-> PN.toSocket s
+       -> Consumer b io ServerResponse
+sender s = encodeMany >-> toSocketTimeout (5*10^6) s -- TODO: Don't hardcode timeout
+
+
+
+-- | Same as 'PN.toSocketTimeout', but returns '()' instead of throwing an
+--   'IOError' on timeout.
+toSocketTimeout :: (MonadIO io)
+                => Int
+                -> N.Socket
+                -> Consumer BS.ByteString io ServerResponse
+toSocketTimeout t socket = loop where
+      loop = do
+            bs <- await
+            liftIO (timeout t (NSB.sendAll socket bs)) >>= \case
+                  Just _ -> loop
+                  Nothing -> return Timeout
 
 
 
@@ -166,11 +182,11 @@ fromSocketTimeout t socket nBytes = loop where
 
 
 
--- | Receives a single piece of data from a 'N.Socket'.
+-- | Receives a single piece of 'Binary' data from a 'N.Socket'.
 receive :: (MonadIO io, Binary b)
         => N.Socket
         -> io (Maybe b)
-receive s = runEffect (P.head (void (receiver s)))
+receive s = runEffect $ (P.head . void . receiver) s
 
 
 
@@ -179,7 +195,7 @@ send :: (MonadIO io, Binary b)
      => N.Socket
      -> b
      -> io ()
-send s x = runEffect $ yield x >-> sender s
+send s x = runEffect $ yield x >-> void (sender s)
 
 
 
