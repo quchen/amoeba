@@ -86,30 +86,28 @@ balanceEdges env = forever $ do
             usnCount <- dbSize env _upstream
             dsnCount <- dbSize env _downstream
 
-            -- Print status message: "Network connections: USN 3/5, DSN 2/5"
-            -- to indicate there are 3 of a maximum of 5 upstream neighbours
-            -- currently connected, and similarly for downstream.
+            -- Print status message: "Network connections: upstream 7/(5..10),
+            -- downstream 5/(5..10)"to indicate there are 7 of a minimum of 5,
+            -- and a maximum of 10, upstream connections (and similarly for
+            -- downstream).
             toIO env Debug $ printf
                   "Network connections: upstream %d/(%d..%d),\
                                     \ downstream %d/(%d..%d)\n"
-                  usnCount minNeighbours maxNeighbours
-                  dsnCount minNeighbours maxNeighbours
+                  usnCount minN maxN
+                  dsnCount minN maxN
 
-            return ( minNeighbours - usnCount
-                   , minNeighbours - dsnCount
+            return ( minN - usnCount
+                   , minN - dsnCount
                    )
 
       each $ mergeLists (replicate dsnDeficit Outgoing)
                         (replicate usnDeficit Incoming)
 
 
-      where minNeighbours = _minNeighbours (_config env)
-            maxNeighbours = _maxNeighbours (_config env)
+      where minN = _minNeighbours (_config env)
+            maxN = _maxNeighbours (_config env)
 
             -- mergeLists [a,b] [w,x,y,z]  ==  [a,w,b,x,y,z]
-            --
-            -- Should be equivalent to 'concat . transpose' in terms of
-            -- functionality, but I don't understand 'transpose' entirely.
             mergeLists []     ys = ys
             mergeLists (x:xs) ys = x : mergeLists ys xs
 
