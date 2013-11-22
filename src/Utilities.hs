@@ -280,10 +280,14 @@ outputThread size = do
 
 
 -- | Catches all exceptions, 'yell's their contents, and rethrows them.
-yellAndRethrow :: (MonadIO io) => Int -> IO () -> io ()
-yellAndRethrow n = liftIO . handle handler
+yellAndRethrow :: (MonadIO io)
+               => Int
+               -> (String -> String) -- ^ Modify error message, e.g. (++ "foo")
+               -> IO ()
+               -> io ()
+yellAndRethrow n f = liftIO . handle handler
       where handler :: SomeException -> IO ()
-            handler (SomeException e) = yell n (show e) >> throw e
+            handler (SomeException e) = yell n (f (show e)) >> throw e
 
 
 
