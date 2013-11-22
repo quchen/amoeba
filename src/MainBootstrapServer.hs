@@ -40,6 +40,8 @@ bootstrapServerMain = do
       let poolSize = _minNeighbours config * 2
       (output, _) <- outputThread (_maxChanSize config)
 
+      -- TODO: Add self to the list of bootstrap servers in the config
+
       -- Node pool
       ldc <- newChan
       terminate <- newEmptyMVar
@@ -57,10 +59,10 @@ bootstrapServerMain = do
 --   is a larger network present.
 restartLoop :: MVar () -> IO ()
 restartLoop trigger = forever $ do
-      delay (2*10^6)
+      delay (3*10^6)
       yell 34 "restart sent"
-      yell 34 "RESTART LOOP DISABLED FOR DEBUGGING"
-      -- tryPutMVar trigger ()
+      --yell 34 "RESTART LOOP DISABLED FOR DEBUGGING"
+      tryPutMVar trigger ()
 
 
 
@@ -80,7 +82,7 @@ restarter trigger = do
 
       where go c = forever $ do
                   delay (2*10^6) -- TODO: Read from config
-                  void $ takeMVar c
+                  void (takeMVar c)
                   putMVar trigger ()
 
 
@@ -91,10 +93,10 @@ bootstrapServer :: Config
 bootstrapServer config ldc =
       PN.listen (PN.Host "127.0.0.1")
                 (show $ _serverPort config)
-                $ \(sock, addr) -> do
-                        putStrLn $ "Bootstrap server listening on " ++ show addr
-                        counter <- newTVarIO 1
-                        bootstrapServerLoop config counter sock ldc
+                (\(sock, addr) -> do
+                      putStrLn $ "Bootstrap server listening on " ++ show addr
+                      counter <- newTVarIO 1
+                      bootstrapServerLoop config counter sock ldc)
 
 
 

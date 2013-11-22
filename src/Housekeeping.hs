@@ -1,4 +1,4 @@
--- | Watches the databases and cleans up dead or orphaned entries.
+-- | Watch the databases and clean up dead or orphaned entries.
 
 {-# LANGUAGE LambdaCase #-}
 
@@ -136,6 +136,7 @@ workerWatcher env from tid =
 
             watch = do
                   delay t
+                  makeTimestamp >>= removeTimedOutUsn env
                   known <- atomically $ fmap (Map.member from)
                                              (readTVar (_upstream env))
                   if known then watch

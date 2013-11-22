@@ -38,6 +38,7 @@ import qualified Pipes.Concurrent as P
 import Types
 import Housekeeping
 import Utilities
+import Unsafe
 
 
 -- | Sets up the client pool by forking the housekeeping thread, and then starts
@@ -115,7 +116,6 @@ balanceEdges env = forever $ do
 clientPoolHousekeeping :: Environment -> IO ()
 clientPoolHousekeeping env = forever $ do
       t <- makeTimestamp
-      removeTimedOutUsn env t
       removeTimedOutDsn env t
       removeDeadClients env
       sendKeepAlive     env t

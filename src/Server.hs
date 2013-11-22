@@ -93,10 +93,11 @@ worker env from socket =
             -- Pipes incoming signals on, but terminates afterwards if the last
             -- one was an error. In other words it's similar P.takeWhile, but
             -- passes on the first failing element before returning it.
-            terminator :: (MonadIO io) => Pipe ServerResponse
-                                               ServerResponse
-                                               io
-                                               ServerResponse
+            terminator :: (MonadIO io)
+                       => Pipe ServerResponse
+                               ServerResponse
+                               io
+                               ServerResponse
             terminator = do
                   signal <- await
                   yield signal
@@ -198,7 +199,7 @@ specialH :: (MonadIO io)
          -> io ServerResponse
 specialH env from socket signal = case signal of
       BootstrapRequest {} -> illegalBootstrapSignalH env
-      Handshake           -> handshakeH              env from socket
+      Handshake           -> incomingHandshakeH      env from socket
       HandshakeRequest to -> startHandshakeH         env to
 
 
@@ -465,7 +466,6 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = liftIO $ do
       return OK -- The upstream neighbour that relayed the EdgeRequest has
                 -- nothing to do with whether the handshake fails etc.
 
-
       where
 
             buildSignal = EdgeRequest origin . EdgeData dir
@@ -528,12 +528,12 @@ sendHandshakeRequest env to =
 --      permanent, and the connection can stay open and both parties know that
 --      the other one has done their part.
 --   4. If something goes wrong, remove the temporary partner and terminate.
-handshakeH :: (MonadIO io)
-           => Environment
-           -> From
-           -> Socket
-           -> io ServerResponse
-handshakeH env from socket = liftIO $ do
+incomingHandshakeH :: (MonadIO io)
+                   => Environment
+                   -> From
+                   -> Socket
+                   -> io ServerResponse
+incomingHandshakeH env from socket = liftIO $ do
       timestamp <- makeTimestamp
 
       isRoom' <- atomically $ do
@@ -550,7 +550,6 @@ handshakeH env from socket = liftIO $ do
                   x -> (return . Error) ("Incoming handshake denied:\
                                          \ server response <" ++ show x ++ ">")
             else (return . Error) "No room for another USN"
-
 
       case result of
             OK -> return OK
@@ -591,9 +590,6 @@ startHandshakeH env to = liftIO $ bracketOnError initialize release action
                   request socket (Special Handshake) >>= \case
                         Just OK -> tryLaunchClient env to socket
                                    -- (Closes socket itself on error)
-                        Just (Error e) -> do
-                              disconnect socket
-                              (return . Error) ("Handshake signal response: " ++ e)
                         x -> do
                               disconnect socket
                               (return . Error) ("Handshake signal response: " ++ show x)
@@ -611,8 +607,13 @@ tryLaunchClient env to socket = do
       stsc <- spawn buffer
       bracket (async (client env socket to stsc))
               (rollback socket)
-              $ \thread -> atomically $ do
+              (tryLaunch time stsc)
 
+      where
+
+      tryLaunch time stsc thread = atomically $
+            -- Checking the node relationship ensures no double downstream
+            -- connections are made.
             nodeRelationship env to >>= \case
                   IsSelf -> (return . Error) "Tried to launch client to self"
                   IsDownstreamNeighbour -> (return . Error)
@@ -625,15 +626,13 @@ tryLaunchClient env to socket = do
                                       toIO env Chatty $ putStrLn "New client!"
                                       return OK
 
-      where
+      buffer = P.Bounded (_maxChanSize (_config env))
 
-            buffer = P.Bounded (_maxChanSize (_config env))
+      -- Cancel the client thread if it is not found in the database
+      -- after the procedure has finished
+      rollback socket thread = do
+            p <- atomically $ isClientIn _downstream
+            unless p (cancel thread >> disconnect socket)
 
-            -- Cancel the client thread if it is not found in the database
-            -- after the procedure has finished
-            rollback socket thread = do
-                  p <- atomically $ isClientIn _downstream
-                  unless p (cancel thread >> disconnect socket)
-
-            insertClient = modifyTVar (_downstream env) . Map.insert to
-            isClientIn db = Map.member to <$> readTVar (db env)
+      insertClient = modifyTVar (_downstream env) . Map.insert to
+      isClientIn db = Map.member to <$> readTVar (db env)

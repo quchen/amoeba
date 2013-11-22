@@ -41,22 +41,24 @@ bootstrap config self =
                                                    , ioErrorH
                                                    ]
 
-            retry = delay (_longTickRate config) >> go
+            retryBootstrap = delay (_longTickRate config) >> go
 
             bootstrapErrorH = Handler $ \case
                   BadResponse -> do
-                        putStrLn "Bad response from bootstrap server. Probably a bug."
-                        retry
+                        putStrLn "Bad response from bootstrap server. Probably\
+                                 \ a bug."
+                        retryBootstrap
                   NoResponse -> do
-                        putStrLn "No response from bootstrap server. Probably a bug."
-                        retry
+                        putStrLn "No response from bootstrap server (altough it\
+                                 \ is online). Probably a bug."
+                        retryBootstrap
 
             ioErrorH = Handler $ \e -> do
                   let _ = e :: IOException
                   printf "Cound not connect to bootstrap server (%s).\
                          \ Is it online?\n"
                          (ioe_description e)
-                  retry
+                  retryBootstrap
 
             go = handleMulti $ do
                   let bsServer = getBootstrapServer config
