@@ -107,10 +107,6 @@ balanceEdges env = forever $ do
       where minN = _minNeighbours (_config env)
             maxN = _maxNeighbours (_config env)
 
-            -- mergeLists [a,b] [w,x,y,z]  ==  [a,w,b,x,y,z]
-            mergeLists []     ys = ys
-            mergeLists (x:xs) ys = x : mergeLists ys xs
-
 
 
 -- | Makes sure other nodes know this node is still running and has them as its

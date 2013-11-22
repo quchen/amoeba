@@ -10,6 +10,7 @@ module Utilities (
       , catchAll
       , dbSize
       , pluralS
+      , mergeLists
 
       -- * Concurrency
       , asyncMany
@@ -308,3 +309,10 @@ dbSize env db = Map.size <$> readTVar (db env)
 pluralS :: (Eq a, Num a) => a -> String
 pluralS 1 = ""
 pluralS _ = "s"
+
+-- | Merges two lists by alternatingly taking one element of each.
+--
+--   > mergeLists [a,b] [w,x,y,z]  ==  [a,w,b,x,y,z]
+mergeLists :: [a] -> [a] -> [a]
+mergeLists []     ys = ys
+mergeLists (x:xs) ys = x : mergeLists ys xs

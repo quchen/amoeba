@@ -15,6 +15,7 @@ import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Control.Concurrent hiding (yield)
 import Control.Monad
+import Data.Functor
 
 import Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
@@ -141,10 +142,11 @@ dispatchSignal :: Config
                      --   address
                -> Chan NormalSignal
                -> IO ()
-dispatchSignal config to ldc = order Incoming >> order Outgoing
-      where order dir = forM_ [1.._minNeighbours config] $ \_ ->
-                              writeChan ldc $ edgeRequest config to dir
-
+dispatchSignal config to ldc = mapM_ order edges
+      where order dir = writeChan ldc (edgeRequest config to dir)
+            edges = mergeLists (replicate n Incoming)
+                               (replicate n Outgoing)
+            n = _minNeighbours config
 
 
 
