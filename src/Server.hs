@@ -33,6 +33,7 @@ import           Control.Monad.Catch (MonadCatch)
 import Types
 import Utilities
 import Client
+import Housekeeping
 import ClientPool (isRoomIn)
 
 import qualified Unsafe as Unsafe
@@ -69,42 +70,6 @@ server env serverSocket = liftIO $ do
                                (show terminationReason)
 
             forkIO (workerWatcher env from pid)
-
-
-
--- | Periodically check whether the worker is allowed to be; if not, kill its
---   thread.
---
---   Starts by giving the worker a grace period after it is created. If it is
---   not entered as an upstream neighbour in this time, it is killed.
---   If it is in the DB, periodically check whether this hasn't changed.
-workerWatcher :: Environment -> From -> ThreadId -> IO ()
-workerWatcher env from tid = do
-      winner <- race waitForEntry gracePeriod
-      case winner of
-            Left  _ -> watch
-            Right _ -> kill
-
-
-      where waitForEntry = atomically $ do
-                  known <- fmap (Map.member from) (readTVar (_upstream env))
-                  when (not known) retry
-
-            gracePeriod = delay t
-
-            kill = do
-                  yell 31 "Worker killed"
-                  atomically $ modifyTVar (_upstream env) (Map.delete from)
-                  killThread tid
-
-            watch = do
-                  delay t
-                  known <- atomically $ fmap (Map.member from)
-                                             (readTVar (_upstream env))
-                  if known then watch
-                           else kill
-
-            t = round ((_poolTimeout . _config) env * 10^6)
 
 
 
