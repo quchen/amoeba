@@ -58,7 +58,8 @@ restartLoop :: MVar () -> IO ()
 restartLoop trigger = forever $ do
       delay (2*10^6)
       yell 34 "restart sent"
-      tryPutMVar trigger ()
+      yell 34 "RESTART LOOP DISABLED FOR DEBUGGING"
+      -- tryPutMVar trigger ()
 
 
 

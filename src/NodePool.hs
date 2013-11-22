@@ -73,16 +73,7 @@ janitor config fromPool output terminate = handle (\(SomeException e) -> yell 41
             withAsync (startNode (Just toNode) output config) $ \node ->
              withAsync (fromPool `pipeTo` toNode) $ \_ ->
               withAsync (terminationWatch terminate node) $ \_ ->
-               withAsync (statusReport config) $ \_ ->
-                wait node
-
-
-
--- | Periodically say hello for DEBUG
-statusReport :: Config -> IO ()
-statusReport config = forever $ do
-      delay (10^7)
-      yell 35 $ "Janitor for " ++ show (_serverPort config) ++ " reporting in"
+               wait node
 
 
 

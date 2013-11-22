@@ -130,7 +130,6 @@ housekeeping env = forever $ do
 
 
 
-
 -- | Remove timed out upstream nodes (USNs). Timestamps are updated by the
 --   server every time a signal is received and accepted.
 removeTimedOutUsn :: Environment -> Timestamp -> IO ()

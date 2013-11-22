@@ -11,7 +11,7 @@
 module Server (server) where
 
 import           Control.Concurrent.Async
-import           Control.Concurrent (killThread)
+import           Control.Concurrent (ThreadId, killThread, forkIO)
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
@@ -56,7 +56,7 @@ server env serverSocket = liftIO $ do
                   modifyTVar counter (+1)
                   return (From c)
 
-            PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
+            pid <- PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
                   atomically . toIO env Debug $
                         printf "New worker %s from %s\n"
                                (show from)
@@ -67,6 +67,44 @@ server env serverSocket = liftIO $ do
                                (show from)
                                (show addr)
                                (show terminationReason)
+
+            forkIO (workerWatcher env from pid)
+
+
+
+-- | Periodically check whether the worker is allowed to be; if not, kill its
+--   thread.
+--
+--   Starts by giving the worker a grace period after it is created. If it is
+--   not entered as an upstream neighbour in this time, it is killed.
+--   If it is in the DB, periodically check whether this hasn't changed.
+workerWatcher :: Environment -> From -> ThreadId -> IO ()
+workerWatcher env from tid = do
+      winner <- race waitForEntry gracePeriod
+      case winner of
+            Left  _ -> watch
+            Right _ -> kill
+
+
+      where waitForEntry = atomically $ do
+                  known <- fmap (Map.member from) (readTVar (_upstream env))
+                  when (not known) retry
+
+            gracePeriod = delay t
+
+            kill = do
+                  yell 31 "Worker killed"
+                  atomically $ modifyTVar (_upstream env) (Map.delete from)
+                  killThread tid
+
+            watch = do
+                  delay t
+                  known <- atomically $ fmap (Map.member from)
+                                             (readTVar (_upstream env))
+                  if known then watch
+                           else kill
+
+            t = round ((_poolTimeout . _config) env * 10^6)
 
 
 
@@ -79,7 +117,8 @@ worker :: (MonadIO io)
        -> io ServerResponse
 worker env from socket =
 
-      runEffect $ receiver socket >-> dispatch >-> terminator >-> sender socket
+      liftIO . (`finally` release) . runEffect $
+            receiver socket >-> dispatch >-> terminator >-> sender socket
 
       where dispatch :: (MonadIO io) => Pipe Signal ServerResponse io r
             dispatch = P.mapM $ \case
@@ -100,6 +139,7 @@ worker env from socket =
                         OK  -> terminator
                         err -> return err
 
+            release = atomically $ modifyTVar (_upstream env) (Map.delete from)
 
 
 -- | Handles 'Signal's coming in from the LDC (local direct connection).
@@ -539,16 +579,21 @@ handshakeH env from socket = liftIO $ do
                              (Map.insert from timestamp))
             return isRoom
 
-      if isRoom'
+      result <- if isRoom'
             then send socket OK >> receive socket >>= \case
                   Just OK -> return OK
-                  x -> atomically $ do
-                        -- Remove temporary slot again on failure
-                        modifyTVar (_upstream env)
-                                   (Map.delete from)
-                        (return . Error) ("Incoming handshake denied:\
-                                          \ server response <" ++ show x ++ ">")
+                  x -> (return . Error) ("Incoming handshake denied:\
+                                         \ server response <" ++ show x ++ ">")
             else (return . Error) "No room for another USN"
+
+
+      case result of
+            OK -> return OK
+            x -> atomically $ do
+                  -- Remove temporary slot again on failure
+                  modifyTVar (_upstream env)
+                             (Map.delete from)
+                  return x
 
 
 
@@ -627,23 +672,3 @@ tryLaunchClient env to socket = do
 
             insertClient = modifyTVar (_downstream env) . Map.insert to
             isClientIn db = Map.member to <$> readTVar (db env)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
