@@ -63,6 +63,27 @@ restartLoop trigger = forever $ do
 
 
 
+-- | Restarts nodes in the own pool as more external nodes connect. This ensures
+--   that the bootstrap server pool won't predominantly connect to itself, but
+--   open up to the general network over time.
+--
+--   Waits a certain amount of time, and then kills a random pool node when a
+--   new node is bootstrapped.
+restarter :: MVar ()               -- ^ Will kill a pool node when filled
+          -> IO (Async(), MVar ()) -- ^ Thread async, and 'MVar' filled when a
+                                   --   new client is bootstrapped
+restarter trigger = do
+      newClient <- newEmptyMVar
+      thread <- async (go newClient)
+      return (thread, newClient)
+
+      where go c = forever $ do
+                  delay (2*10^6) -- TODO: Read from config
+                  void $ takeMVar c
+                  putMVar trigger ()
+
+
+
 bootstrapServer :: Config
                 -> Chan NormalSignal
                 -> IO ()
