@@ -7,6 +7,7 @@
 -- TODO: Configuration sanity checks:
 --           neighbours  -->  max >= min
 --           tickrates   -->  short <= medium <= long
+-- TODO: Database utilities module
 
 
 

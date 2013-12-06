@@ -4,13 +4,14 @@
 module Utilities (
 
       -- * Various utilities
-        makeTimestamp
-      , whenM
+        whenM
       , whileM
-      , catchAll
-      , dbSize
       , pluralS
       , mergeLists
+
+      -- * Database-related functions
+      , makeTimestamp
+      , dbSize
       , nodeRelationship
 
       -- * Concurrency
@@ -32,6 +33,7 @@ module Utilities (
       -- * Debugging
       , yell
       , yellAndRethrow
+      , catchAll
 
       -- * Pipe-based communication channels
       , spawn

@@ -133,7 +133,7 @@ workerLdc env@(_ldc -> Just pChan) =
             -- This is a bit of a hack of course. The dispatch pipe above is
             -- built from Producers, so their re-emitted server responses have
             -- to be destroyed.
-            discard :: (Monad m) => Consumer a m ()
+            discard :: (Monad m) => Consumer a m () -- TODO: why () and not r?
             discard = forever await
 
 workerLdc _ = return ()
@@ -200,7 +200,10 @@ specialH :: (MonadIO io)
 specialH env from socket signal = case signal of
       BootstrapRequest {} -> illegalBootstrapSignalH env
       Handshake           -> incomingHandshakeH      env from socket
-      HandshakeRequest to -> Client.startHandshakeH  env to
+      HandshakeRequest to -> Client.startHandshakeH  env to >> return OK
+                                                               -- ^ Sender doesn't handle
+                                                               -- this response anyway,
+                                                               -- see sendHandshakeRequest
 
 
 
