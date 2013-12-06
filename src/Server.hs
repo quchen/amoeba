@@ -200,7 +200,7 @@ specialH :: (MonadIO io)
 specialH env from socket signal = case signal of
       BootstrapRequest {} -> illegalBootstrapSignalH env
       Handshake           -> incomingHandshakeH      env from socket
-      HandshakeRequest to -> startHandshakeH         env to
+      HandshakeRequest to -> Client.startHandshakeH  env to
 
 
 
@@ -297,25 +297,6 @@ shuttingDownH env from = liftIO . atomically $ do
       toIO env Debug . putStrLn $
             "Shutdown notice from %s" ++ show from
       return ConnectionClosed
-
-
-
--- | Check whether a connection to a certain node is allowed. A node must not
---   connect to itself or to known neighbours multiple times.
---
---   Due to the fact that an 'EdgeRequest' does not contain the upstream address
---   of the connection to be established, it cannot be checked whether the node
---   is already an upstream neighbour directly; timeouts will have to take care
---   of that.
-nodeRelationship :: Environment
-                 -> To
-                 -> STM NodeRelationship
-nodeRelationship env node =
-      if node == _self env
-            then return IsSelf
-            else do isDS <- Map.member node <$> readTVar (_downstream env)
-                    return $ if isDS then IsDownstreamNeighbour
-                                     else IsUnrelated
 
 
 
@@ -459,7 +440,7 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = liftIO $ do
             (_, Incoming) -> do
                   atomically . toIO env Chatty . putStrLn $
                         "Incoming edge request accepted, starting handshake"
-                  void $ startHandshakeH env origin
+                  void $ Client.startHandshakeH env origin
                   -- TODO: Bounce on if failed, otherwise an almost saturated
                   --       network won't allow new nodes
 
@@ -516,7 +497,7 @@ sendHandshakeRequest env to =
 -- | Handle an incoming handshake, i.e. a remote node wants to add this node
 --   as its downstream neighbour.
 --
---   Counterpart of 'startHandshakeH'.
+--   Counterpart of 'Client.startHandshakeH'.
 --
 --   The procedure is as follows:
 --
@@ -558,81 +539,3 @@ incomingHandshakeH env from socket = liftIO $ do
                   modifyTVar (_upstream env)
                              (Map.delete from)
                   return x
-
-
-
--- | Initiate a handshake with a remote node, with the purpose of adding it as
---   a downstream neighbour.
---
---   Counterpart of 'handshakeH'.
---
---   The procedure is as follows:
---
---   1. Open a connection to the new node and send it the 'Handshake' signal.
---   2. When the answer is 'OK', attempt to launch a new client. If not, close
---      the connection and stop.
---   3. With its 'OK', the downstream node stated that it has space and reserved
---      a slot for the new connection. Therefore, a new client can be spawned,
---      but will only done so if this node has room for it, and the downstream
---      neighbour is not yet known.
---   4. Spawn a new client with the connection just opened.
-startHandshakeH :: (MonadIO io)
-                => Environment
-                -> To -- ^ Node to add
-                -> io ServerResponse
-startHandshakeH env to = liftIO $ bracketOnError initialize release action
-
-      where initialize = connectToNode' to
-
-            release (socket, _addr) = disconnect socket
-
-            action (socket, _addr) =
-                  request socket (Special Handshake) >>= \case
-                        Just OK -> tryLaunchClient env to socket
-                                   -- (Closes socket itself on error)
-                        x -> do
-                              disconnect socket
-                              (return . Error) ("Handshake signal response: " ++ show x)
-
-
-
--- | Start a new client thread, if the current environment allows it (i.e.
---   there is no connection already, and the downstrean pool isn't full).
-tryLaunchClient :: Environment
-                -> To     -- ^ Target address (for bookkeeping)
-                -> Socket -- ^ Connection
-                -> IO ServerResponse
-tryLaunchClient env to socket = do
-      time <- makeTimestamp
-      stsc <- spawn buffer
-      bracket (async (client env socket to stsc))
-              (rollback socket)
-              (tryLaunch time stsc)
-
-      where
-
-      tryLaunch time stsc thread = atomically $
-            -- Checking the node relationship ensures no double downstream
-            -- connections are made.
-            nodeRelationship env to >>= \case
-                  IsSelf -> (return . Error) "Tried to launch client to self"
-                  IsDownstreamNeighbour -> (return . Error)
-                        "Tried to launch client to already known node"
-                  IsUnrelated -> do
-                        isRoom <- isRoomIn env _downstream
-                        if not isRoom
-                              then (return . Error) "No room for new client"
-                              else do insertClient (Client time thread stsc)
-                                      toIO env Chatty $ putStrLn "New client!"
-                                      return OK
-
-      buffer = P.Bounded (_maxChanSize (_config env))
-
-      -- Cancel the client thread if it is not found in the database
-      -- after the procedure has finished
-      rollback socket thread = do
-            p <- atomically $ isClientIn _downstream
-            unless p (cancel thread >> disconnect socket)
-
-      insertClient = modifyTVar (_downstream env) . Map.insert to
-      isClientIn db = Map.member to <$> readTVar (db env)

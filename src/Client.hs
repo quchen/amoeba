@@ -5,17 +5,21 @@
 
 
 module Client  (
-      client
+      startHandshakeH
 ) where
 
 
 
 
+import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Data.Monoid
 import Control.Exception (finally)
 import qualified Data.Map as Map
 import System.Timeout
+import Control.Monad
+import Control.Exception
+import Control.Applicative
 
 import Pipes
 import qualified Pipes.Concurrent as P
@@ -24,7 +28,90 @@ import Pipes.Network.TCP (Socket)
 
 
 import Types
+import ClientPool
 import Utilities
+
+
+
+
+-- | Initiate a handshake with a remote node, with the purpose of adding it as
+--   a downstream neighbour.
+--
+--   Counterpart of 'Server.handshakeH'.
+--
+--   The procedure is as follows:
+--
+--   1. Open a connection to the new node and send it the 'Handshake' signal.
+--   2. When the answer is 'OK', attempt to launch a new client. If not, close
+--      the connection and stop.
+--   3. With its 'OK', the downstream node stated that it has space and reserved
+--      a slot for the new connection. Therefore, a new client can be spawned,
+--      but will only done so if this node has room for it, and the downstream
+--      neighbour is not yet known.
+--   4. Spawn a new client with the connection just opened.
+startHandshakeH :: (MonadIO io)
+                => Environment
+                -> To -- ^ Node to add
+                -> io ServerResponse
+startHandshakeH env to = liftIO $ bracketOnError initialize release action
+
+      where initialize = connectToNode' to
+
+            release (socket, _addr) = disconnect socket
+
+            action (socket, _addr) =
+                  request socket (Special Handshake) >>= \case
+                        Just OK -> tryLaunchClient env to socket
+                                   -- (Closes socket itself on error)
+                        x -> do
+                              disconnect socket
+                              (return . Error) ("Handshake signal response: " ++ show x)
+
+
+
+-- | Start a new client thread, if the current environment allows it (i.e.
+--   there is no connection already, and the downstrean pool isn't full).
+tryLaunchClient :: Environment
+                -> To     -- ^ Target address (for bookkeeping)
+                -> Socket -- ^ Connection
+                -> IO ServerResponse
+tryLaunchClient env to socket = do
+      time <- makeTimestamp
+      stsc <- spawn buffer
+      bracket (async (client env socket to stsc))
+              (rollback socket)
+              (tryLaunch time stsc)
+
+      where
+
+      tryLaunch time stsc thread = atomically $
+            -- Checking the node relationship ensures no double downstream
+            -- connections are made.
+            nodeRelationship env to >>= \case
+                  IsSelf -> (return . Error) "Tried to launch client to self"
+                  IsDownstreamNeighbour -> (return . Error)
+                        "Tried to launch client to already known node"
+                  IsUnrelated -> do
+                        isRoom <- isRoomIn env _downstream
+                        if not isRoom
+                              then (return . Error) "No room for new client"
+                              else do insertClient (Client time thread stsc)
+                                      toIO env Chatty $ putStrLn "New client!"
+                                      return OK
+
+      buffer = P.Bounded (_maxChanSize (_config env))
+
+      -- Cancel the client thread if it is not found in the database
+      -- after the procedure has finished
+      rollback socket thread = do
+            p <- atomically $ isClientIn _downstream
+            unless p (cancel thread >> disconnect socket)
+
+      insertClient = modifyTVar (_downstream env) . Map.insert to
+      isClientIn db = Map.member to <$> readTVar (db env)
+
+
+
 
 
 -- | Start a new client

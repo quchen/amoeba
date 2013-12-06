@@ -11,6 +11,7 @@ module Utilities (
       , dbSize
       , pluralS
       , mergeLists
+      , nodeRelationship
 
       -- * Concurrency
       , asyncMany
@@ -316,3 +317,23 @@ pluralS _ = "s"
 mergeLists :: [a] -> [a] -> [a]
 mergeLists []     ys = ys
 mergeLists (x:xs) ys = x : mergeLists ys xs
+
+
+
+
+-- | Check whether a connection to a certain node is allowed. A node must not
+--   connect to itself or to known neighbours multiple times.
+--
+--   Due to the fact that an 'EdgeRequest' does not contain the upstream address
+--   of the connection to be established, it cannot be checked whether the node
+--   is already an upstream neighbour directly; timeouts will have to take care
+--   of that.
+nodeRelationship :: Environment
+                 -> To
+                 -> STM NodeRelationship
+nodeRelationship env node =
+      if node == _self env
+            then return IsSelf
+            else do isDS <- Map.member node <$> readTVar (_downstream env)
+                    return $ if isDS then IsDownstreamNeighbour
+                                     else IsUnrelated
