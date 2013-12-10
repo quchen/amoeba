@@ -16,12 +16,12 @@ module Node (startNode) where
 
 
 
+import           Text.Printf
 import           Control.Applicative
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import           Data.Maybe (isJust, fromJust)
 import           Control.Exception (assert)
 
 import qualified Pipes.Concurrent as P
@@ -70,8 +70,12 @@ getSelfInfo addr = fromJust' <$> NS.getNameInfo flags True True addr
       where flags = [ NS.NI_NUMERICHOST -- "IP address, not DNS"
                     , NS.NI_NUMERICSERV -- "Port as a number please"
                     ]
-            fromJust' (a,b) = assert (isJust a && isJust b)
-                                     (fromJust a, fromJust b)
+            fromJust' (Just x, Just y) = (x,y)
+            fromJust' (x, y) =
+                  let msg = "Address lookup failed! This is a bug.\
+                            \ (host: %s, port: %s)"
+                  in  error (printf msg (show x) (show y))
+
 
 
 -- | Initializes node environment by setting up the communication channels etc.

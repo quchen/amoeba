@@ -298,7 +298,7 @@ shuttingDownH :: (MonadIO io)
 shuttingDownH env from = liftIO . atomically $ do
       modifyTVar (_upstream env) (Map.delete from)
       toIO env Debug . putStrLn $
-            "Shutdown notice from %s" ++ show from
+            "Shutdown notice from " ++ show from
       return ConnectionClosed
 
 
