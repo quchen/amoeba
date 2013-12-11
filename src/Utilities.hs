@@ -97,7 +97,9 @@ connectToNode :: (MonadIO io, MonadCatch io)
               => To
               -> ((N.Socket, N.SockAddr) -> io r)
               -> io r
-connectToNode (To node) = N.connect (_host node) (show $ _port node)
+connectToNode (To node) = N.connect (_host node)
+                                    (show (_port node))
+
 
 
 -- | 'Node'-based version of 'P.connectSock'. Opens the connection, but
@@ -106,7 +108,8 @@ connectToNode (To node) = N.connect (_host node) (show $ _port node)
 connectToNode' :: (MonadIO io)
                => To
                -> io (N.Socket, N.SockAddr)
-connectToNode' (To node) = N.connectSock (_host node) (show $ _port node)
+connectToNode' (To node) = N.connectSock (_host node)
+                                         (show (_port node))
 
 
 
@@ -123,8 +126,8 @@ listenOnNode :: (MonadIO io, MonadCatch io)
              => Node
              -> ((N.Socket, N.SockAddr) -> io r)
              -> io r
-listenOnNode node = N.listen (N.Host $ _host node)
-                             (show   $ _port node)
+listenOnNode node = N.listen (N.Host (_host node))
+                             (show   (_port node))
 
 
 
@@ -146,7 +149,7 @@ toSocketTimeout t socket = loop where
       loop = do
             bs <- await
             liftIO (timeout t (NSB.sendAll socket bs)) >>= \case
-                  Just _ -> loop
+                  Just _  -> loop
                   Nothing -> return Timeout
 
 
@@ -283,6 +286,7 @@ outputThread size = do
       return (q, thread)
 
 
+
 -- | Catches all exceptions, 'yell's their contents, and rethrows them.
 yellAndRethrow :: (MonadIO io)
                => Int
@@ -308,10 +312,13 @@ dbSize :: Environment
 dbSize env db = Map.size <$> readTVar (db env)
 
 
+
 -- | Add an \"s\" in print statements
 pluralS :: (Eq a, Num a) => a -> String
 pluralS 1 = ""
 pluralS _ = "s"
+
+
 
 -- | Merges two lists by alternatingly taking one element of each.
 --

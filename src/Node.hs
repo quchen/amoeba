@@ -51,7 +51,7 @@ startNode ldc output config = do
 
             (selfHost, selfPort) <- getSelfInfo addr
             assert (port == read selfPort) $ return ()
-            let self = To $ Node selfHost port
+            let self = To (Node selfHost port)
 
             bootstrap config self
 
@@ -73,7 +73,7 @@ getSelfInfo addr = fromJust' <$> NS.getNameInfo flags True True addr
             fromJust' (Just x, Just y) = (x,y)
             fromJust' (x, y) =
                   let msg = "Address lookup failed! This is a bug.\
-                            \ (host: %s, port: %s)"
+                            \ (Host: %s, Port: %s)"
                   in  error (printf msg (show x) (show y))
 
 
