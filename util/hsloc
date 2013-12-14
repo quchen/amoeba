@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+# Get the current number of Haskell source lines in the project
+
+echo -n "Haskell SLOC: "
+# SED:
+#   Line starts with * whitespace
+#   Then: possibly a comment
+#     Comment: "--" followed by either nothing or by whitespace and arbitrary text
+#   EOL
+find .. -name '*.hs' | xargs cat | sed '/^\s*\(--\(\s\+.*\)\?\)\?$/d'
