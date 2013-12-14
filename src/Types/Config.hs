@@ -38,7 +38,7 @@ data Environment = Environment {
                                           --   Sending a signal here will
                                           --   semi-randomly reach one of them.
 
-      , _io         :: TBQueue (IO ()) -- ^ Send action to the output thread
+      , _io         :: IOQueue         -- ^ Send action to the output thread
                                        --   (so that concurrent prints don't
                                        --   get interleaved)
 

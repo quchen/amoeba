@@ -226,8 +226,11 @@ encodeMany = for cat P.encode
 
 
 -- | Send an IO action depending on the verbosity level.
-toIO :: Environment -> Verbosity -> IO () -> STM ()
-toIO env verbosity = when p . writeTBQueue (_io env)
+toIO :: Environment
+     -> Verbosity
+     -> IO ()
+     -> STM ()
+toIO env verbosity io = when p (writeTBQueue (_getIOQueue (_io env)) io)
       where p = verbosity >= _verbosity (_config env)
 
 
@@ -276,14 +279,14 @@ getBroadcastOutput env =
 -- | Set up the decicated IO thread. Forks said thread, and returns a 'TBQueue'
 --   to it, along with the 'Async' of the thread (which may be useful for
 --   cancelling it).
-outputThread :: Int                  -- ^ Thread size
-             -> IO ( TBQueue (IO ()) -- Channel
-                   , Async ()        -- Async of the printer thread
+outputThread :: Int           -- ^ Thread size
+             -> IO ( IOQueue  -- Channel
+                   , Async () -- Async of the printer thread
                    )
 outputThread size = do
       q <- newTBQueueIO size
       thread <- async $ (forever . join . atomically . readTBQueue) q
-      return (q, thread)
+      return (IOQueue q, thread)
 
 
 

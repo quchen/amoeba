@@ -39,7 +39,7 @@ import Utilities
 -- | Node main function. Bootstraps, launches server loop, client pool,
 --   IO thread.
 startNode :: Maybe (PChan NormalSignal) -- ^ Local direct connection (LDC)
-          -> TBQueue (IO ()) -- ^ Channel to output thread
+          -> IOQueue -- ^ Channel to output thread
           -> Config -- ^ Configuration, most likely given by command line
                     --   parameters
           -> IO ()
@@ -81,7 +81,7 @@ getSelfInfo addr = fromJust' <$> NS.getNameInfo flags True True addr
 -- | Initializes node environment by setting up the communication channels etc.
 initEnvironment :: To                         -- ^ Own address
                 -> Maybe (PChan NormalSignal) -- ^ Local direct connection
-                -> TBQueue (IO ())            -- ^ Channel to output thread
+                -> IOQueue                    -- ^ Channel to output thread
                 -> Config
                 -> IO Environment
 initEnvironment node ldc output config = Environment
