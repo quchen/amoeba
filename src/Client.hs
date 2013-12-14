@@ -10,24 +10,25 @@ module Client  (
 
 
 
-import Control.Concurrent.Async
-import Control.Concurrent.STM
-import Data.Monoid
+import           Control.Concurrent.Async
+import           Control.Concurrent.STM
+import           Control.Concurrent (forkIO)
+import           Data.Monoid
 import qualified Data.Map as Map
-import System.Timeout
-import Control.Monad
-import Control.Exception
-import Control.Applicative
+import           System.Timeout
+import           Control.Monad
+import           Control.Exception
+import           Control.Applicative
 
-import Pipes
+import           Pipes
 import qualified Pipes.Concurrent as P
-import Pipes.Network.TCP (Socket)
+import           Pipes.Network.TCP (Socket)
 
 
 
-import Types
-import ClientPool
-import Utilities
+import           Types
+import           ClientPool
+import           Utilities
 
 
 
@@ -50,25 +51,23 @@ startHandshakeH :: MonadIO io
                 => Environment
                 -> To -- ^ Node to add
                 -> io ()
--- FIXME: Fork this somewhere, otherwise the worker issuing this handler will
---        never close (and potentially leave the incoming handle open)
-startHandshakeH env to = liftIO $ connectToNode to $ \(socket, _addr) -> do
+startHandshakeH env to = liftIO . void . forkIO $ connectToNode to $ \(socket, _addr) -> do
       request socket (Special Handshake) >>= \case
-            Just OK -> forkClient env to socket
+            Just OK -> newClient env to socket
             x -> errorPrint env ("Handshake signal response: " ++ show x)
 
 
 
 -- | Check whether everything is alright on this end of the connection, and
 --   start the client in that case.
-forkClient :: Environment
-           -> To     -- ^ Target address (for bookkeeping)
-           -> Socket -- ^ Connection
-           -> IO ()
-forkClient env to socket = whenM allowed . (`finally` cleanup) $ do
-      time <- makeTimestamp
-      stsc <- (spawn . P.Bounded . _maxChanSize . _config) env
-      thread <- async (client env socket to stsc)
+newClient :: Environment
+          -> To     -- ^ Target address (for bookkeeping)
+          -> Socket -- ^ Connection
+          -> IO ()
+newClient env to socket = whenM allowed . (`finally` cleanup) $ do
+      time   <- makeTimestamp
+      stsc   <- (spawn . P.Bounded . _maxChanSize . _config) env
+      thread <- async (clientLoop env socket to stsc)
       -- (Client waits until its entry is in the DB before it starts working.)
       let self = Client time thread stsc
       atomically (modifyTVar (_downstream env)
@@ -99,16 +98,15 @@ forkClient env to socket = whenM allowed . (`finally` cleanup) $ do
 
 
 
-
-
--- | Start a new client
-client :: Environment
-       -> Socket -- ^ Connection to use (created by the handshake process)
-       -> To     -- ^ Node the 'Socket' connects to. Only used for bookkeeping,
-                 --   in order to keep the client pool up to date.
-       -> PChan NormalSignal -- ^ Channel to this client
-       -> IO ()
-client env socket to stsc = do
+-- | Main client function; read the communication channels and execute orders.
+clientLoop :: Environment
+           -> Socket -- ^ Connection to use (created by the handshake process)
+           -> To     -- ^ Node the 'Socket' connects to. Only used for
+                     --   bookkeeping, in order to keep the client pool up to
+                     --   date.
+           -> PChan NormalSignal -- ^ Channel to this client
+           -> IO ()
+clientLoop env socket to stsc = do
       waitForDBEntry
       runEffect (P.fromInput input >-> signalH env socket to)
 

@@ -91,9 +91,11 @@ balanceEdges env = forever $ do
             -- downstream 5/(5..10)"to indicate there are 7 of a minimum of 5,
             -- and a maximum of 10, upstream connections (and similarly for
             -- downstream).
-            toIO env Debug $ printf
-                  "Network connections: upstream %d/(%d..%d),\
+            toIO env Debug $ printf -- DEBUG colours
+                  "[\ESC[3%dm%d\ESC[0m] Network connections: upstream %d/(%d..%d),\
                                     \ downstream %d/(%d..%d)\n"
+                  (_serverPort (_config env) `mod` 6 + 1)
+                  (_serverPort (_config env))
                   usnCount minN maxN
                   dsnCount minN maxN
 
