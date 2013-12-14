@@ -6,6 +6,7 @@ module CmdArgParser (
 import Options.Applicative
 import Data.Word
 import Data.Monoid
+import Text.Printf
 import Data.Char (toLower)
 import Text.Read (readEither)
 
@@ -226,25 +227,25 @@ verbosity = (nullOption . mconcat)
 -- | 0 <= p <= 1
 probability :: (Num a, Ord a, Read a) => String -> ReadM a
 probability x = case readEither x of
-      Right x' | x' >= 0 && x' <= 1 -> pure x'
-      Right _  -> readerError ("Bad probability " ++ x ++ "; 0 <= p <= 1")
-      Left  _  -> readerError ("Parse error on double " ++ x)
+      Right y | y >= 0 && y <= 1 -> pure y
+      Right _ -> readerError (printf "Bad probability %s; 0 <= p <= 1" x)
+      Left  _ -> readerError (printf "Parse error on double %s" x)
 
 
 
 positive :: (Num a, Ord a, Read a) => String -> ReadM a
 positive x = case readEither x of
-      Right x' | x' > 0 -> pure x'
-      Right _  -> readerError ("Positive number expected ( " ++ x ++ " given)")
-      Left  _  -> readerError ("Parse error on integer " ++ x)
+      Right y | y > 0 -> pure y
+      Right _ -> readerError (printf "Positive number expected (%s given)" x)
+      Left  _ -> readerError (printf "Parse error on integer %s" x)
 
 
 
 nonnegative :: (Num a, Ord a, Read a) => String -> ReadM a
 nonnegative x = case readEither x of
-      Right x' | x' >= 0 -> pure x'
-      Right _  -> readerError ("Nonnegative number expected ( " ++ x ++ " given)")
-      Left  _  -> readerError ("Parse error on integer " ++ x)
+      Right y | y >= 0 -> pure y
+      Right _ -> readerError (printf "Nonnegative number expected (%s given)" x)
+      Left  _ -> readerError (printf "Parse error on integer %s" x)
 
 
 
@@ -255,4 +256,4 @@ readVerbosity x = case map toLower x of
       "default" -> pure T.Default
       "debug"   -> pure T.Debug
       "chatty"  -> pure T.Chatty
-      _else     -> readerError ("Unrecognized verbosity level \"" ++ x ++ "\"")
+      _else     -> readerError (printf "Unrecognized verbosity level \"%d\"" x)
