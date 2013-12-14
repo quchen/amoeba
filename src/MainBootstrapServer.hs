@@ -16,6 +16,7 @@ import Control.Concurrent.STM
 import Control.Concurrent hiding (yield)
 import Control.Monad
 import Data.Functor
+import Text.Printf
 
 import Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
@@ -36,21 +37,21 @@ bootstrapServerMain :: IO ()
 bootstrapServerMain = do
 
       -- Preliminaries
-      config <- parseArgs
-      let poolSize = _minNeighbours config * 2
-      (output, _) <- outputThread (_maxChanSize config)
+      (nodeConfig, bsConfig) <- parseBSArgs
+      (output, _) <- outputThread (_maxChanSize nodeConfig)
 
       -- TODO: Add self to the list of bootstrap servers in the config
 
       -- Node pool
       ldc <- newChan
       terminate <- newEmptyMVar
-      nodePool poolSize config ldc output terminate
+      nodePool (_poolSize bsConfig) nodeConfig ldc output terminate
 
       -- Bootstrap service
-      putStrLn $ "Starting bootstrap server with " ++ show poolSize ++ " nodes"
+      printf "Starting bootstrap server with %d nodes"
+             (_poolSize bsConfig)
       forkIO $ restartLoop terminate
-      bootstrapServer config ldc
+      bootstrapServer nodeConfig ldc
 
 
 

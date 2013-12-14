@@ -106,3 +106,11 @@ data Config = Config {
                                       --   statically known
 
       }
+
+
+
+-- ^ Configuration of the bootstrap server
+data BSConfig = BSConfig {
+        _poolSize :: Int -- ^ Number of nodes in the server's pool
+
+      }

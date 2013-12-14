@@ -1,4 +1,7 @@
-module CmdArgParser (parseArgs) where
+module CmdArgParser (
+        parseNodeArgs
+      , parseBSArgs
+) where
 
 import Options.Applicative
 import Data.Word
@@ -10,9 +13,9 @@ import qualified Types as T
 
 
 
-parseArgs :: IO T.Config
-parseArgs = execParser parser
-      where parser = info (helper <*> config) infoMod
+parseNodeArgs :: IO T.Config
+parseNodeArgs = execParser parser
+      where parser = info (helper <*> nodeConfig) infoMod
             infoMod = mconcat
                   [ fullDesc
                   , progDesc "Amoeba client"
@@ -21,9 +24,22 @@ parseArgs = execParser parser
 
 
 
--- | Default configuration, used to set the values of optional parameters.
-defaultConfig :: T.Config
-defaultConfig = T.Config {
+parseBSArgs :: IO (T.Config, T.BSConfig)
+parseBSArgs = execParser parser
+      where parser = info (helper <*> p) infoMod
+            p = (,) <$> nodeConfig <*> bsConfig
+            infoMod = mconcat
+                  [ fullDesc
+                  , progDesc "Amoeba bootstrap server"
+                  , header "Start a bootstrap server to allow new nodes to\
+                           \ connect to an existing network"
+                  ]
+
+
+
+-- | Default node configuration, used to set the values of optional parameters.
+defaultNodeConfig :: T.Config
+defaultNodeConfig = T.Config {
         T._serverPort        = 21000
       , T._maxNeighbours     = 6
       , T._minNeighbours     = 3
@@ -41,8 +57,16 @@ defaultConfig = T.Config {
 
 
 
-config :: Parser T.Config
-config = T.Config
+-- | Default bootstrap server config
+defaultBSConfig :: T.BSConfig
+defaultBSConfig = T.BSConfig {
+        T._poolSize = 5
+      }
+
+
+
+nodeConfig :: Parser T.Config
+nodeConfig = T.Config
      <$> port
      <*> minNeighbours
      <*> maxNeighbours
@@ -58,21 +82,38 @@ config = T.Config
      <*> pure [] -- TODO: specify bootstrap servers via command line
 
 
+bsConfig :: Parser T.BSConfig
+bsConfig = T.BSConfig
+      <$> poolSize
 
+
+-- TODO: ensure epositive
 port :: Parser Int
-port = (option . mconcat) [ long    "port"
-                          , short   'p'
-                          , metavar "PORT"
-                          , help    "Server port"
-                          ]
+port = (option . mconcat)
+      [ long    "port"
+      , short   'p'
+      , metavar "PORT"
+      , help    "Server port"
+      ]
 
 
 
+poolSize :: Parser Int
+poolSize = (option . mconcat)
+      [ long    "poolsize"
+      , short   'n'
+      , metavar "<INT > 0>"
+      , help    "Number of nodes in the pool"
+      ]
+
+
+
+-- TODO: ensure epositive
 minNeighbours :: Parser Int
 minNeighbours = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._maxNeighbours defaultConfig)
+      , value   (T._maxNeighbours defaultNodeConfig)
       , long    "maxn"
       , metavar "<INT > 0>"
       , help    "Minimum amount of neighbours (up-/downstream separate)"
@@ -80,11 +121,12 @@ minNeighbours = (nullOption . mconcat)
 
 
 
+-- TODO: ensure epositive
 maxNeighbours :: Parser Int
 maxNeighbours = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._minNeighbours defaultConfig)
+      , value   (T._minNeighbours defaultNodeConfig)
       , long    "minn"
       , metavar "<INT > 0>"
       , help    "Maximum amount of neighbours (up-/downstream separate)"
@@ -92,11 +134,12 @@ maxNeighbours = (nullOption . mconcat)
 
 
 
+-- TODO: ensure epositive
 maxChanSize :: Parser Int
 maxChanSize = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._maxChanSize defaultConfig)
+      , value   (T._maxChanSize defaultNodeConfig)
       , long    "chansize"
       , metavar "<INT > 0>"
       , help    "Maximum communication channel size"
@@ -108,7 +151,7 @@ bounces :: Parser Word
 bounces = (nullOption . mconcat)
       [ reader nonnegative
       , showDefault
-      , value   (T._bounces defaultConfig)
+      , value   (T._bounces defaultNodeConfig)
       , long    "bounces"
       , metavar "<INT >= 0>"
       , help    "Minimum edge search hard bounces"
@@ -120,7 +163,7 @@ maxSoftBounces :: Parser Word
 maxSoftBounces = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._maxSoftBounces defaultConfig)
+      , value   (T._maxSoftBounces defaultNodeConfig)
       , long    "hbounce"
       , metavar "<INT > 0>"
       , help    "Maximum edge search soft bounces"
@@ -132,19 +175,24 @@ acceptP :: Parser Double
 acceptP = (nullOption . mconcat)
       [ reader probability
       , showDefault
-      , value   (T._acceptP defaultConfig)
+      , value   (T._acceptP defaultNodeConfig)
       , long    "acceptp"
       , metavar "<0 < p <= 1>"
       , help    "Edge request soft bounce acceptance probability"
       ]
 
 
-
-tickRate :: Char -> String -> (T.Config -> Int) -> Parser Int
+-- | Function to get s/m/l tickrate parser. Example use:
+--
+--   > tickRate 's' "short"  T._shortTickRate
+tickRate :: Char              -- ^ short parameter name
+         -> String            -- ^ Long parameter name
+         -> (T.Config -> Int) -- ^ Accessor to get the default value
+         -> Parser Int
 tickRate shortName name getter = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (getter defaultConfig)
+      , value   (getter defaultNodeConfig)
       , long    (shortName : "tick")
       , metavar "MILLISECONDS"
       , help    ("Tick rate of " ++ name ++ " loops")
@@ -156,7 +204,7 @@ poolTimeout :: Parser Double
 poolTimeout = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._poolTimeout defaultConfig)
+      , value   (T._poolTimeout defaultNodeConfig)
       , long    "timeout"
       , metavar "SECONDS"
       , help    "Timeout threshold"
@@ -167,7 +215,7 @@ poolTimeout = (nullOption . mconcat)
 verbosity :: Parser T.Verbosity
 verbosity = (nullOption . mconcat)
       [ reader readVerbosity
-      , value   (T._verbosity defaultConfig)
+      , value   (T._verbosity defaultNodeConfig)
       , long    "verbosity"
       , metavar "<mute|quiet|default|debug|chatty>"
       , help    "Verbosity level, increasing from left to right"
