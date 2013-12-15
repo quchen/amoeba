@@ -5,8 +5,8 @@ SRC = src
 DOC = doc
 
 # Flags
-OPTIMIZE = -O2
-PROF = -prof -auto-all -caf-all
+OPTIMIZE = -O2 -threaded
+PROF = -prof -auto-all -caf-all -threaded
 OPTIONS = -hide-package monads-tf
 
 
