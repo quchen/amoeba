@@ -235,10 +235,12 @@ instance Binary Timestamp
 
 
 -- | Unifies everything the list of known nodes has to store
-data Client = Client { _clientTimestamp :: Timestamp
-                     , _clientAsync     :: Async ()
-                     , _stsc            :: PChan NormalSignal
-                     }
+data Client = Client {
+        _clientTimestamp :: Timestamp          -- ^ Last downstream contact
+      , _clientAsync     :: Async ()           -- ^ Client thread
+      , _stsc            :: PChan NormalSignal -- ^ Direct channel, e.g. to send
+                                               --   "KeepAlive" signals
+      }
 
 
 

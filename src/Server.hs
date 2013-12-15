@@ -355,18 +355,19 @@ edgeBounceH env origin (EdgeData dir (HardBounce n)) = liftIO $ do
       atomically $ do
 
             -- FIXME: The TQueue is now a PQueue.
-            P.send (_pOutput (_st1c env)) . buildSignal $ HardBounce $ min (n - 1) nMax
-                                          -- Cap the number of hard    ^
-                                          -- bounces with the current  |
-                                          -- node's configuration to   |
-                                          -- prevent "maxBound bounces |
-                                          -- left" attacks             |
+            P.send (_pOutput (_st1c env))
+                   (buildSignal (HardBounce (min (n - 1) nMax)))
+                                          -- ^ Cap the number of hard
+                                          -- | bounces with the current
+                                          -- | node's configuration to
+                                          -- | prevent "maxBound bounces
+                                          -- | left" attacks
             toIO env Chatty $ printf "Hardbounced %s request from %s (%d left)\n"
                                      (show dir)
                                      (show origin)
                                      n
 
-      return OK
+            return OK
 
 -- Phase 2: either accept or bounce on with adjusted acceptance
 -- probability.
@@ -465,14 +466,14 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = liftIO $ do
                                --   least as high as the one the relaying node
                                --   uses. This prevents "small p" attacks that
                                --   bounce indefinitely.
-                           in  void $ P.send (_pOutput (_st1c env))
-                                             (buildSignal (SoftBounce (n+1) p'))
+                           in  void (P.send (_pOutput (_st1c env))
+                                            (buildSignal (SoftBounce (n+1) p')))
 
             -- Build "bounce again from the beginning" signal. This is invoked
             -- if an EdgeRequest reaches the issuing node again.
             bounceReset = let n = _bounces (_config env)
-                          in  void $ P.send (_pOutput (_st1c env))
-                                            (buildSignal (HardBounce n))
+                          in  void (P.send (_pOutput (_st1c env))
+                                           (buildSignal (HardBounce n)))
             -- TODO: Maybe swallowing the request in this case makes more sense.
             --       The node is spamming the network with requests anyway after
             --       all.

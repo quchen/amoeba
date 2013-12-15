@@ -121,7 +121,7 @@ clientPoolHousekeeping env = forever $ do
       removeTimedOutDsn env t
       removeDeadClients env
       sendKeepAlive     env t
-      delay (_mediumTickRate $ _config env)
+      delay (_mediumTickRate (_config env))
 
 
 
@@ -130,8 +130,8 @@ clientPoolHousekeeping env = forever $ do
 isRoomIn :: Environment
          -> (Environment -> TVar (Map.Map k a))
             -- ^ Projector from 'Environment' to the database, i.e. either
-            -- '_upstream' or '_downstream'.
+            -- "_upstream" or "_downstream".
          -> STM Bool
 isRoomIn env db = (maxSize >) <$> dbSize env db
-      where maxSize = (fromIntegral . _maxNeighbours . _config) env
+      where maxSize = fromIntegral (_maxNeighbours (_config env))
 

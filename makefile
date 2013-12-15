@@ -1,7 +1,10 @@
+# Filenames
 MAIN_NODE = amoeba
 MAIN_BS = bootstrap
 SRC = src
 DOC = doc
+
+# Flags
 OPTIMIZE = -O2
 PROF = -prof -auto-all -caf-all
 OPTIONS = -hide-package monads-tf
