@@ -12,6 +12,6 @@ import Utilities
 -- | Starts a single node.
 main :: IO ()
 main = do
-      config <- parseArgs
+      config <- parseNodeArgs
       (output, _) <- outputThread (_maxChanSize config)
       startNode Nothing output config

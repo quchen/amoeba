@@ -15,6 +15,8 @@ import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Control.Concurrent hiding (yield)
 import Control.Monad
+import Data.Functor
+import Text.Printf
 
 import Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
@@ -35,19 +37,21 @@ bootstrapServerMain :: IO ()
 bootstrapServerMain = do
 
       -- Preliminaries
-      config <- parseArgs
-      let poolSize = _minNeighbours config * 2
-      (output, _) <- outputThread (_maxChanSize config)
+      (nodeConfig, bsConfig) <- parseBSArgs
+      (output, _) <- outputThread (_maxChanSize nodeConfig)
+
+      -- TODO: Add self to the list of bootstrap servers in the config
 
       -- Node pool
       ldc <- newChan
       terminate <- newEmptyMVar
-      nodePool poolSize config ldc output terminate
+      nodePool (_poolSize bsConfig) nodeConfig ldc output terminate
 
       -- Bootstrap service
-      putStrLn $ "Starting bootstrap server with " ++ show poolSize ++ " nodes"
+      printf "Starting bootstrap server with %d nodes"
+             (_poolSize bsConfig)
       forkIO $ restartLoop terminate
-      bootstrapServer config ldc
+      bootstrapServer nodeConfig ldc
 
 
 
@@ -56,10 +60,10 @@ bootstrapServerMain = do
 --   is a larger network present.
 restartLoop :: MVar () -> IO ()
 restartLoop trigger = forever $ do
-      delay (2*10^6)
+      delay (3*10^6)
       yell 34 "restart sent"
-      yell 34 "RESTART LOOP DISABLED FOR DEBUGGING"
-      -- tryPutMVar trigger ()
+      --yell 34 "RESTART LOOP DISABLED FOR DEBUGGING"
+      tryPutMVar trigger ()
 
 
 
@@ -79,7 +83,7 @@ restarter trigger = do
 
       where go c = forever $ do
                   delay (2*10^6) -- TODO: Read from config
-                  void $ takeMVar c
+                  void (takeMVar c)
                   putMVar trigger ()
 
 
@@ -90,10 +94,10 @@ bootstrapServer :: Config
 bootstrapServer config ldc =
       PN.listen (PN.Host "127.0.0.1")
                 (show $ _serverPort config)
-                $ \(sock, addr) -> do
-                        putStrLn $ "Bootstrap server listening on " ++ show addr
-                        counter <- newTVarIO 1
-                        bootstrapServerLoop config counter sock ldc
+                (\(sock, addr) -> do
+                      putStrLn $ "Bootstrap server listening on " ++ show addr
+                      counter <- newTVarIO 1
+                      bootstrapServerLoop config counter sock ldc)
 
 
 
@@ -141,10 +145,11 @@ dispatchSignal :: Config
                      --   address
                -> Chan NormalSignal
                -> IO ()
-dispatchSignal config to ldc = order Incoming >> order Outgoing
-      where order dir = forM_ [1.._minNeighbours config] $ \_ ->
-                              writeChan ldc $ edgeRequest config to dir
-
+dispatchSignal config to ldc = mapM_ order edges
+      where order dir = writeChan ldc (edgeRequest config to dir)
+            edges = mergeLists (replicate n Incoming)
+                               (replicate n Outgoing)
+            n = _minNeighbours config
 
 
 

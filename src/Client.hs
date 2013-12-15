@@ -1,55 +1,125 @@
 -- | A client represents one connection to a downstream node.
---
 
 {-# LANGUAGE LambdaCase #-}
 
 
 module Client  (
-      client
+      startHandshakeH
 ) where
 
 
 
 
-import Control.Concurrent.STM
-import Data.Monoid
-import Control.Exception (finally)
+import           Control.Concurrent.Async
+import           Control.Concurrent.STM
+import           Control.Concurrent (forkIO)
+import           Data.Monoid
 import qualified Data.Map as Map
-import System.Timeout
+import           System.Timeout
+import           Control.Monad
+import           Control.Exception
+import           Control.Applicative
 
-import Pipes
+import           Pipes
 import qualified Pipes.Concurrent as P
-import Pipes.Network.TCP (Socket)
+import           Pipes.Network.TCP (Socket)
 
 
 
-import Types
-import Utilities
+import           Types
+import           ClientPool
+import           Utilities
 
 
--- | Start a new client
-client :: Environment
-       -> Socket -- ^ Connection to use (created by the handshake process)
-       -> To -- ^ Node the Socket connects to. Only used for bookkeeping, in
-             --   order to keep the client pool up to date.
-       -> PChan NormalSignal
-       -> IO ()
-client env socket to stsc = (`finally` cleanup) . runEffect $
-      P.fromInput input >-> signalH env socket to
 
-      where st1c  = _st1c env
-            input = mconcat [ _pInput st1c
-                            , _pInput stsc
-                            ]
-            -- TODO: Implement stc to support flood messages
+-- | Initiate a handshake with a remote node, with the purpose of adding it as
+--   a downstream neighbour and launching a new client.
+--
+--   Counterpart of 'Server.handshakeH'.
+--
+--   The procedure is as follows:
+--
+--   1. Open a connection to the new node and send it the 'Handshake' signal.
+--   2. When the answer is 'OK', attempt to launch a new client. If not, close
+--      the connection and stop.
+--   3. With its 'OK', the downstream node stated that it has space and reserved
+--      a slot for the new connection. Therefore, a new client can be spawned,
+--      but will only done so if this node has room for it, and the downstream
+--      neighbour is not yet known.
+--   4. Spawn a new client with the connection just opened.
+startHandshakeH :: MonadIO io
+                => Environment
+                -> To -- ^ Node to add
+                -> io ()
+startHandshakeH env to = liftIO . void . forkIO $ connectToNode to $ \(socket, _addr) -> do
+      request socket (Special Handshake) >>= \case
+            Just OK -> newClient env to socket
+            x -> errorPrint env ("Handshake signal response: " ++ show x)
 
-            cleanup = (`finally` disconnect socket) $ do
 
-                  atomically $ modifyTVar (_downstream env) $ Map.delete to
 
-                  -- Send shutdown notice as a courtesy
+-- | Check whether everything is alright on this end of the connection, and
+--   start the client in that case.
+newClient :: Environment
+          -> To     -- ^ Target address (for bookkeeping)
+          -> Socket -- ^ Connection
+          -> IO ()
+newClient env to socket = whenM allowed . (`finally` cleanup) $ do
+      time   <- makeTimestamp
+      stsc   <- (spawn . P.Bounded . _maxChanSize . _config) env
+      thread <- async (clientLoop env socket to stsc)
+      -- (Client waits until its entry is in the DB before it starts working.)
+      let self = Client time thread stsc
+      atomically (modifyTVar (_downstream env)
+                             (Map.insert to self))
+      wait thread
+
+      where
+
+            allowed = atomically $ nodeRelationship env to >>= \case
+                  IsSelf -> do
+                        toIO env Debug (putStrLn "Tried to launch client to self")
+                        return False
+                  IsDownstreamNeighbour -> do
+                        toIO env Debug (putStrLn "Tried to launch client to already known node")
+                        return False
+                  IsUnrelated -> do
+                        isRoom <- isRoomIn env _downstream
+                        if not isRoom
+                              then do toIO env Debug (putStrLn "No room for new client")
+                                      return False
+                              else return True
+
+            cleanup = do
+                  atomically (modifyTVar (_downstream env)
+                                         (Map.delete to))
                   timeout (_mediumTickRate (_config env))
                           (send socket (Normal ShuttingDown))
+
+
+
+-- | Main client function; read the communication channels and execute orders.
+clientLoop :: Environment
+           -> Socket -- ^ Connection to use (created by the handshake process)
+           -> To     -- ^ Node the 'Socket' connects to. Only used for
+                     --   bookkeeping, in order to keep the client pool up to
+                     --   date.
+           -> PChan NormalSignal -- ^ Channel to this client
+           -> IO ()
+clientLoop env socket to stsc = do
+      waitForDBEntry
+      runEffect (P.fromInput input >-> signalH env socket to)
+
+      where input = mconcat [ _pInput (_st1c env)
+                            , _pInput stsc
+                            ]
+
+            -- Retry until the client is inserted into the DB.
+            -- Hack to allow forking the client and having it insert its
+            -- own async in the DB (so it can clean up when it terminates).
+            waitForDBEntry = atomically $
+                  whenM (Map.notMember to <$> readTVar (_downstream env))
+                        retry
 
 
 
@@ -69,7 +139,6 @@ signalH env socket to = go
                         Just Denied    -> denied       env    >> terminate
                         Just Illegal   -> illegal      env    >> terminate
                         Nothing        -> noResponse   env    >> terminate
-
 
 
 

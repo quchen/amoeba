@@ -38,6 +38,7 @@ import qualified Pipes.Concurrent as P
 import Types
 import Housekeeping
 import Utilities
+import Unsafe
 
 
 -- | Sets up the client pool by forking the housekeeping thread, and then starts
@@ -46,7 +47,7 @@ import Utilities
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
 clientPool env = withAsync hkeep $ \_ -> fillPool env
-      where hkeep = clientPoolHousekeeping env
+      where hkeep = dsnHousekeeping env
 
 
 -- | Watches the count of nodes in the database, and issues 'EdgeRequest's
@@ -90,9 +91,11 @@ balanceEdges env = forever $ do
             -- downstream 5/(5..10)"to indicate there are 7 of a minimum of 5,
             -- and a maximum of 10, upstream connections (and similarly for
             -- downstream).
-            toIO env Debug $ printf
-                  "Network connections: upstream %d/(%d..%d),\
+            toIO env Debug $ printf -- DEBUG colours
+                  "[\ESC[3%dm%d\ESC[0m] Network connections: upstream %d/(%d..%d),\
                                     \ downstream %d/(%d..%d)\n"
+                  (_serverPort (_config env) `mod` 6 + 1)
+                  (_serverPort (_config env))
                   usnCount minN maxN
                   dsnCount minN maxN
 
@@ -107,24 +110,6 @@ balanceEdges env = forever $ do
       where minN = _minNeighbours (_config env)
             maxN = _maxNeighbours (_config env)
 
-            -- mergeLists [a,b] [w,x,y,z]  ==  [a,w,b,x,y,z]
-            mergeLists []     ys = ys
-            mergeLists (x:xs) ys = x : mergeLists ys xs
-
-
-
--- | Makes sure other nodes know this node is still running and has them as its
---   neighbour, removes timed out upstream nodes and dead clients/downstream
---   nodes.
-clientPoolHousekeeping :: Environment -> IO ()
-clientPoolHousekeeping env = forever $ do
-      t <- makeTimestamp
-      removeTimedOutUsn env t
-      removeTimedOutDsn env t
-      removeDeadClients env
-      sendKeepAlive     env t
-      delay (_mediumTickRate $ _config env)
-
 
 
 -- | Check whether there is room to add another node to the pool. The second
@@ -132,8 +117,8 @@ clientPoolHousekeeping env = forever $ do
 isRoomIn :: Environment
          -> (Environment -> TVar (Map.Map k a))
             -- ^ Projector from 'Environment' to the database, i.e. either
-            -- '_upstream' or '_downstream'.
+            -- "_upstream" or "_downstream".
          -> STM Bool
 isRoomIn env db = (maxSize >) <$> dbSize env db
-      where maxSize = (fromIntegral . _maxNeighbours . _config) env
+      where maxSize = fromIntegral (_maxNeighbours (_config env))
 

@@ -5,6 +5,8 @@ module Unsafe where
 import Control.Monad.Trans
 import System.IO.Unsafe
 import Control.Concurrent.STM
+import Pipes
+import qualified Pipes.Prelude as P
 
 import Utilities
 
@@ -29,3 +31,10 @@ wrap io = do
       r <- io
       dec
       return r
+
+debugYell :: MonadIO io => io ()
+debugYell = yell 43 "YELL"
+
+
+yellPipe :: (MonadIO io, Show a) => Pipe a a io r
+yellPipe = for cat $ \x -> yell 43 ("YELLPIPE: " ++ show x) >> yield x

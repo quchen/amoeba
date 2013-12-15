@@ -51,6 +51,6 @@ In order to avoid this problem, the bootstrapping server restarts single nodes i
 
 - Periodically: When a lot of nodes connect within one period, the pool's sub-network fills up all the way, making it difficult to form new connections to the network.
 
-- Every `n` new nodes: Suppose the pool has `k` nodes; when `k*n` new clients connect simultaneously, the server restarts its whole pool simultaneously and looses its connection to the network entirely.
+- Every `n` new nodes: Suppose the pool has `k` nodes; when `k*n` new clients connect simultaneously, the server restarts its entire pool at once and loses its connection to the network.
 
 The best solution is probably a hybrid: restart a node on every `n` new clients, require a period of at least `t` to pass since the last event.

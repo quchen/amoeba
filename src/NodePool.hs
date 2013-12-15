@@ -28,7 +28,7 @@ import Utilities
 
 
 
--- | Starts a node pool of a certain size, and provides a channel to
+-- | Start a node pool of a certain size, and provide a channel to
 --   communitcate with (random nodes in) it
 nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
          -> Config  -- ^ Configuration for a single node. Of particular
@@ -38,7 +38,7 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
                     -- ^ Local direct connection to one node (taking
                     --   turns). 'Chan' instead of 'TQueue' because of the
                     --   lack of fairness in STM.
-         -> TBQueue (IO ()) -- ^ Channel to output thread
+         -> IOQueue -- ^ Channel to output thread
          -> MVar () -- ^ Termination lock. If the MVar is filled, the next
                     --   node (due to fairness) is killed and restarted,
                     --   see 'janitor'.
@@ -50,7 +50,7 @@ nodePool n config ldc output terminate = forM_ [1..n] $ \portOffset ->
 
 
 
--- | Spawns a new node, restarts it should it crash, and listens for signals
+-- | Spawn a new node, restart it should it crash, and listen for signals
 --   sent to it.
 --
 --   The termination parameter is useful to make the pool replace old nodes, for
@@ -59,7 +59,7 @@ nodePool n config ldc output terminate = forM_ [1..n] $ \portOffset ->
 --   more natural neighbourships.
 janitor :: Config            -- ^ Node configuration
         -> Chan NormalSignal -- ^ Local direct connection
-        -> TBQueue (IO ())   -- ^ Channel to output thread
+        -> IOQueue           -- ^ Channel to output thread
         -> MVar ()           -- ^ Termination MVar. If filled, a node is
                              --   terminated (and replaced by a new one by the
                              --   janitor). Also see 'terminationWatch'.

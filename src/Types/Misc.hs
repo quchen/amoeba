@@ -2,6 +2,8 @@
 
 module Types.Misc where
 
+import Control.Concurrent.STM.TBQueue
+
 
 
 -- | How many messages should be printed?
@@ -33,3 +35,7 @@ data NodeRelationship = IsSelf
                       | IsUnrelated
                    -- | IsUpstreamNeighbour -- Currently unused
 
+
+
+-- | Wrapper around the queue to the output thread
+newtype IOQueue = IOQueue { _getIOQueue :: TBQueue (IO ()) }

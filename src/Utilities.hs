@@ -4,12 +4,15 @@
 module Utilities (
 
       -- * Various utilities
-        makeTimestamp
-      , whenM
+        whenM
       , whileM
-      , catchAll
-      , dbSize
       , pluralS
+      , mergeLists
+
+      -- * Database-related functions
+      , makeTimestamp
+      , dbSize
+      , nodeRelationship
 
       -- * Concurrency
       , asyncMany
@@ -30,6 +33,7 @@ module Utilities (
       -- * Debugging
       , yell
       , yellAndRethrow
+      , catchAll
 
       -- * Pipe-based communication channels
       , spawn
@@ -93,7 +97,9 @@ connectToNode :: (MonadIO io, MonadCatch io)
               => To
               -> ((N.Socket, N.SockAddr) -> io r)
               -> io r
-connectToNode (To node) = N.connect (_host node) (show $ _port node)
+connectToNode (To node) = N.connect (_host node)
+                                    (show (_port node))
+
 
 
 -- | 'Node'-based version of 'P.connectSock'. Opens the connection, but
@@ -102,7 +108,8 @@ connectToNode (To node) = N.connect (_host node) (show $ _port node)
 connectToNode' :: (MonadIO io)
                => To
                -> io (N.Socket, N.SockAddr)
-connectToNode' (To node) = N.connectSock (_host node) (show $ _port node)
+connectToNode' (To node) = N.connectSock (_host node)
+                                         (show (_port node))
 
 
 
@@ -119,8 +126,8 @@ listenOnNode :: (MonadIO io, MonadCatch io)
              => Node
              -> ((N.Socket, N.SockAddr) -> io r)
              -> io r
-listenOnNode node = N.listen (N.Host $ _host node)
-                             (show   $ _port node)
+listenOnNode node = N.listen (N.Host (_host node))
+                             (show   (_port node))
 
 
 
@@ -142,7 +149,7 @@ toSocketTimeout t socket = loop where
       loop = do
             bs <- await
             liftIO (timeout t (NSB.sendAll socket bs)) >>= \case
-                  Just _ -> loop
+                  Just _  -> loop
                   Nothing -> return Timeout
 
 
@@ -219,8 +226,11 @@ encodeMany = for cat P.encode
 
 
 -- | Send an IO action depending on the verbosity level.
-toIO :: Environment -> Verbosity -> IO () -> STM ()
-toIO env verbosity = when p . writeTBQueue (_io env)
+toIO :: Environment
+     -> Verbosity
+     -> IO ()
+     -> STM ()
+toIO env verbosity io = when p (writeTBQueue (_getIOQueue (_io env)) io)
       where p = verbosity >= _verbosity (_config env)
 
 
@@ -269,14 +279,15 @@ getBroadcastOutput env =
 -- | Set up the decicated IO thread. Forks said thread, and returns a 'TBQueue'
 --   to it, along with the 'Async' of the thread (which may be useful for
 --   cancelling it).
-outputThread :: Int                  -- ^ Thread size
-             -> IO ( TBQueue (IO ()) -- Channel
-                   , Async ()        -- Async of the printer thread
+outputThread :: Int           -- ^ Thread size
+             -> IO ( IOQueue  -- Channel
+                   , Async () -- Async of the printer thread
                    )
 outputThread size = do
       q <- newTBQueueIO size
       thread <- async $ (forever . join . atomically . readTBQueue) q
-      return (q, thread)
+      return (IOQueue q, thread)
+
 
 
 -- | Catches all exceptions, 'yell's their contents, and rethrows them.
@@ -304,7 +315,37 @@ dbSize :: Environment
 dbSize env db = Map.size <$> readTVar (db env)
 
 
+
 -- | Add an \"s\" in print statements
 pluralS :: (Eq a, Num a) => a -> String
 pluralS 1 = ""
 pluralS _ = "s"
+
+
+
+-- | Merges two lists by alternatingly taking one element of each.
+--
+--   > mergeLists [a,b] [w,x,y,z]  ==  [a,w,b,x,y,z]
+mergeLists :: [a] -> [a] -> [a]
+mergeLists []     ys = ys
+mergeLists (x:xs) ys = x : mergeLists ys xs
+
+
+
+
+-- | Check whether a connection to a certain node is allowed. A node must not
+--   connect to itself or to known neighbours multiple times.
+--
+--   Due to the fact that an 'EdgeRequest' does not contain the upstream address
+--   of the connection to be established, it cannot be checked whether the node
+--   is already an upstream neighbour directly; timeouts will have to take care
+--   of that.
+nodeRelationship :: Environment
+                 -> To
+                 -> STM NodeRelationship
+nodeRelationship env node =
+      if node == _self env
+            then return IsSelf
+            else do isDS <- Map.member node <$> readTVar (_downstream env)
+                    return $ if isDS then IsDownstreamNeighbour
+                                     else IsUnrelated

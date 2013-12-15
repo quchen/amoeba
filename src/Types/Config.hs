@@ -38,7 +38,7 @@ data Environment = Environment {
                                           --   Sending a signal here will
                                           --   semi-randomly reach one of them.
 
-      , _io         :: TBQueue (IO ()) -- ^ Send action to the output thread
+      , _io         :: IOQueue         -- ^ Send action to the output thread
                                        --   (so that concurrent prints don't
                                        --   get interleaved)
 
@@ -104,5 +104,13 @@ data Config = Config {
 
       , _bootstrapServers :: [To]     -- ^ Addresses of bootstrap servers
                                       --   statically known
+
+      }
+
+
+
+-- ^ Configuration of the bootstrap server
+data BSConfig = BSConfig {
+        _poolSize :: Int -- ^ Number of nodes in the server's pool
 
       }
