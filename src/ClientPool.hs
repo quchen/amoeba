@@ -47,7 +47,7 @@ import Unsafe
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
 clientPool env = withAsync hkeep $ \_ -> fillPool env
-      where hkeep = clientPoolHousekeeping env
+      where hkeep = dsnHousekeeping env
 
 
 -- | Watches the count of nodes in the database, and issues 'EdgeRequest's
@@ -109,19 +109,6 @@ balanceEdges env = forever $ do
 
       where minN = _minNeighbours (_config env)
             maxN = _maxNeighbours (_config env)
-
-
-
--- | Makes sure other nodes know this node is still running and has them as its
---   neighbour, removes timed out upstream nodes and dead clients/downstream
---   nodes.
-clientPoolHousekeeping :: Environment -> IO ()
-clientPoolHousekeeping env = forever $ do
-      t <- makeTimestamp
-      removeTimedOutDsn env t
-      removeDeadClients env
-      sendKeepAlive     env t
-      delay (_mediumTickRate (_config env))
 
 
 
