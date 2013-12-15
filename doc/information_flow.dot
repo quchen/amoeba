@@ -1,0 +1,78 @@
+// CPP because GraphViz doesn't support custom styles
+#define NETWORK   [color = olivedrab3]
+#define STM       [color = darkorchid3]
+#define PARAMETER [color = orangered1, style = dashed]
+
+digraph G {
+
+      node [shape = box, fontname = "Courier", color = gray70]
+      nodesep = 0.33
+      ranksep = 0.5
+
+      subgraph cluster_node {
+
+            label = "Node X"
+            color = black
+            labelloc = t
+
+            Server
+            Worker1 [label = "Worker A"]
+            Worker2 [label = "Worker B"]
+            Worker3 [label = "Worker C"]
+
+            Client1 [label = "Client S"]
+            Client2 [label = "Client T"]
+            Client3 [label = "Client U"]
+
+            CP [label = "Client pool"]
+
+            ClientChannels [label = "STC\nST1C\nSTSC", shape = ellipse]
+
+
+
+
+            Server -> Worker1 PARAMETER
+            Server -> Worker2 PARAMETER
+            Server -> Worker3 PARAMETER
+
+
+            Worker1 -> ClientChannels STM
+            Worker2 -> ClientChannels STM
+            Worker3 -> ClientChannels STM
+
+            ClientChannels -> Client1 STM
+            ClientChannels -> Client2 STM
+            ClientChannels -> Client3 STM
+
+
+
+
+            subgraph _cp {
+                  rank = "same"
+                  CP -> ClientChannels [rank = same] STM
+            }
+
+
+      }
+
+      Dsn1 [label = "Node S"]
+      Dsn2 [label = "Node T"]
+      Dsn3 [label = "Node U"]
+
+      Client1 -> Dsn1 NETWORK
+      Client2 -> Dsn2 NETWORK
+      Client3 -> Dsn3 NETWORK
+
+      Usn1 [label = "Node A"]
+      Usn2 [label = "Node B"]
+      Usn3 [label = "Node C"]
+
+      Usn1 -> Worker1 NETWORK
+      Usn2 -> Worker2 NETWORK
+      Usn3 -> Worker3 NETWORK
+      Usn1 -> Server [style = dashed] NETWORK
+      Usn2 -> Server [style = dashed] NETWORK
+      Usn3 -> Server [style = dashed] NETWORK
+
+
+}
