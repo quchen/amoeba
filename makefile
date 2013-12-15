@@ -47,3 +47,4 @@ clean :
 	rm -f $(MAIN_NODE)
 	rm -f $(MAIN_BS)
 	rm -f $(DOC)/information_flow.png
+	rm -f $(DOC)/network.png
