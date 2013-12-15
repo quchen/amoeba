@@ -34,7 +34,7 @@ fast :
 
 # Documentation
 .PHONY : doc
-doc : $(DOC)/channels.dot
+doc : $(DOC)/information_flow.dot
 	cat $(DOC)/information_flow.dot | cpp | dot -Tpng > $(DOC)/information_flow.png
 
 
