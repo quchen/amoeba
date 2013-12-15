@@ -1,3 +1,11 @@
+-- TODO: Warn/error on bad parameters instead of blindly taking them
+--
+--       - short < medium < long tickrate, timeout > long
+--       - Port should be between 0 and 2^16-1
+--       - poolsize > minneighbours: the BS server can't satisfy itself otherwise
+--       - restartEvery should be larger than 1, otherwise every restart triggers another one
+
+
 module CmdArgParser (
         parseNodeArgs
       , parseBSArgs
@@ -25,10 +33,9 @@ parseNodeArgs = execParser parser
 
 
 
-parseBSArgs :: IO (T.Config, T.BSConfig)
+parseBSArgs :: IO T.BSConfig
 parseBSArgs = execParser parser
-      where parser = info (helper <*> p) infoMod
-            p = (,) <$> nodeConfig <*> bsConfig
+      where parser = info (helper <*> bsConfig) infoMod
             infoMod = mconcat
                   [ fullDesc
                   , progDesc "Amoeba bootstrap server"
@@ -42,8 +49,8 @@ parseBSArgs = execParser parser
 defaultNodeConfig :: T.Config
 defaultNodeConfig = T.Config {
         T._serverPort        = 21000
-      , T._maxNeighbours     = 6
-      , T._minNeighbours     = 3
+      , T._maxNeighbours     = 10
+      , T._minNeighbours     = 5
       , T._maxChanSize       = 100
       , T._bounces           = 1
       , T._acceptP           = 0.5
@@ -61,7 +68,10 @@ defaultNodeConfig = T.Config {
 -- | Default bootstrap server config
 defaultBSConfig :: T.BSConfig
 defaultBSConfig = T.BSConfig {
-        T._poolSize = 5
+        T._poolSize     = 5
+      , T._restartEvery = 5
+      , T._restartMinimumPeriod = 10^6
+      , T._nodeConfig   = defaultNodeConfig
       }
 
 
@@ -86,9 +96,11 @@ nodeConfig = T.Config
 bsConfig :: Parser T.BSConfig
 bsConfig = T.BSConfig
       <$> poolSize
+      <*> restartEvery
+      <*> restartMinimumPeriod
+      <*> nodeConfig
 
 
--- TODO: ensure epositive
 port :: Parser Int
 port = (option . mconcat)
       [ long    "port"
@@ -99,50 +111,74 @@ port = (option . mconcat)
 
 
 
+restartEvery :: Parser Int
+restartEvery = (nullOption . mconcat)
+      [ reader positive
+      , long    "restart-every"
+      , showDefault
+      , value   (T._restartEvery defaultBSConfig)
+      , metavar "(Int > 0)"
+      , help    "Restart a random pool node every n new nodes. (Note that a restart is one new node by itself already.)"
+      ]
+
+
+
+restartMinimumPeriod :: Parser Int
+restartMinimumPeriod = (nullOption . mconcat)
+      [ reader positive
+      , long    "restart-minperiod"
+      , showDefault
+      , value   (T._restartMinimumPeriod defaultBSConfig)
+      , metavar "[ms]"
+      , help    "Restart a random pool node every n new nodes. (Note that a restart is one new node by itself already.)"
+      ]
+
+
+
 poolSize :: Parser Int
-poolSize = (option . mconcat)
-      [ long    "poolsize"
+poolSize = (nullOption . mconcat)
+      [ reader positive
+      , long    "poolsize"
       , short   'n'
-      , metavar "<INT > 0>"
+      , showDefault
+      , value   (T._poolSize defaultBSConfig)
+      , metavar "(Int > 0)"
       , help    "Number of nodes in the pool"
       ]
 
 
 
--- TODO: ensure epositive
 minNeighbours :: Parser Int
 minNeighbours = (nullOption . mconcat)
       [ reader positive
       , showDefault
       , value   (T._maxNeighbours defaultNodeConfig)
       , long    "maxn"
-      , metavar "<INT > 0>"
+      , metavar "(Int > 0)"
       , help    "Minimum amount of neighbours (up-/downstream separate)"
       ]
 
 
 
--- TODO: ensure epositive
 maxNeighbours :: Parser Int
 maxNeighbours = (nullOption . mconcat)
       [ reader positive
       , showDefault
       , value   (T._minNeighbours defaultNodeConfig)
       , long    "minn"
-      , metavar "<INT > 0>"
+      , metavar "(Int > 0)"
       , help    "Maximum amount of neighbours (up-/downstream separate)"
       ]
 
 
 
--- TODO: ensure epositive
 maxChanSize :: Parser Int
 maxChanSize = (nullOption . mconcat)
       [ reader positive
       , showDefault
       , value   (T._maxChanSize defaultNodeConfig)
       , long    "chansize"
-      , metavar "<INT > 0>"
+      , metavar "(Int > 0)"
       , help    "Maximum communication channel size"
       ]
 
@@ -154,7 +190,7 @@ bounces = (nullOption . mconcat)
       , showDefault
       , value   (T._bounces defaultNodeConfig)
       , long    "bounces"
-      , metavar "<INT >= 0>"
+      , metavar "(Int >= 0)"
       , help    "Minimum edge search hard bounces"
       ]
 
@@ -166,7 +202,7 @@ maxSoftBounces = (nullOption . mconcat)
       , showDefault
       , value   (T._maxSoftBounces defaultNodeConfig)
       , long    "hbounce"
-      , metavar "<INT > 0>"
+      , metavar "(Int > 0)"
       , help    "Maximum edge search soft bounces"
       ]
 
@@ -178,7 +214,7 @@ acceptP = (nullOption . mconcat)
       , showDefault
       , value   (T._acceptP defaultNodeConfig)
       , long    "acceptp"
-      , metavar "<0 < p <= 1>"
+      , metavar "(0 < p <= 1)"
       , help    "Edge request soft bounce acceptance probability"
       ]
 
@@ -195,7 +231,7 @@ tickRate shortName name getter = (nullOption . mconcat)
       , showDefault
       , value   (getter defaultNodeConfig)
       , long    (shortName : "tick")
-      , metavar "MILLISECONDS"
+      , metavar "[ms]"
       , help    ("Tick rate of " ++ name ++ " loops")
       ]
 
@@ -207,7 +243,7 @@ poolTimeout = (nullOption . mconcat)
       , showDefault
       , value   (T._poolTimeout defaultNodeConfig)
       , long    "timeout"
-      , metavar "SECONDS"
+      , metavar "[s]"
       , help    "Timeout threshold"
       ]
 
@@ -218,13 +254,12 @@ verbosity = (nullOption . mconcat)
       [ reader readVerbosity
       , value   (T._verbosity defaultNodeConfig)
       , long    "verbosity"
-      , metavar "<mute|quiet|default|debug|chatty>"
+      , metavar "(mute|quiet|default|debug|chatty)"
       , help    "Verbosity level, increasing from left to right"
       ]
 
 
-
--- | 0 <= p <= 1
+-- | Numerical value between 0 and 1 (inclusive)
 probability :: (Num a, Ord a, Read a) => String -> ReadM a
 probability x = case readEither x of
       Right y | y >= 0 && y <= 1 -> pure y
@@ -233,6 +268,7 @@ probability x = case readEither x of
 
 
 
+-- | Strictly positive numerical value
 positive :: (Num a, Ord a, Read a) => String -> ReadM a
 positive x = case readEither x of
       Right y | y > 0 -> pure y
@@ -241,6 +277,7 @@ positive x = case readEither x of
 
 
 
+-- | Non-negative numerical value
 nonnegative :: (Num a, Ord a, Read a) => String -> ReadM a
 nonnegative x = case readEither x of
       Right y | y >= 0 -> pure y

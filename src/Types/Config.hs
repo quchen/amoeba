@@ -111,6 +111,15 @@ data Config = Config {
 
 -- ^ Configuration of the bootstrap server
 data BSConfig = BSConfig {
-        _poolSize :: Int -- ^ Number of nodes in the server's pool
+
+        _poolSize :: Int     -- ^ Number of nodes in the server's pool
+
+      , _restartEvery :: Int -- ^ Every n connected nodes, one client is
+                             --   restarted at random
+
+      , _restartMinimumPeriod :: Int -- ^ Limit the maximal frequency at which
+                                     --   restarts can happen
+
+      , _nodeConfig :: Config -- ^ Configuration of the node pool's nodes
 
       }

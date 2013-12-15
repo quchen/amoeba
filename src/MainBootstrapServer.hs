@@ -37,21 +37,26 @@ bootstrapServerMain :: IO ()
 bootstrapServerMain = do
 
       -- Preliminaries
-      (nodeConfig, bsConfig) <- parseBSArgs
-      (output, _) <- outputThread (_maxChanSize nodeConfig)
+      bsConfig <- parseBSArgs
+      (output, _) <- outputThread (_maxChanSize (_nodeConfig bsConfig))
 
       -- TODO: Add self to the list of bootstrap servers in the config
 
       -- Node pool
       ldc <- newChan
       terminate <- newEmptyMVar
-      nodePool (_poolSize bsConfig) nodeConfig ldc output terminate
+      nodePool (_poolSize bsConfig)
+               (_nodeConfig bsConfig)
+               ldc
+               output
+               terminate
 
       -- Bootstrap service
       printf "Starting bootstrap server with %d nodes"
              (_poolSize bsConfig)
-      (_rthread, restart) <- restarter terminate
-      bootstrapServer nodeConfig ldc restart
+      (_rthread, restart) <- restarter (_restartMinimumPeriod bsConfig)
+                                       terminate
+      bootstrapServer bsConfig ldc restart
 
 
 
@@ -74,30 +79,32 @@ restartLoop trigger = forever $ do
 --   new node is bootstrapped.
 --
 --   Does not block.
-restarter :: MVar ()              -- ^ Will kill a pool node when filled
+restarter :: Int                  -- ^ Minimum amount of time between
+                                  --   consecutive restarts
+          -> MVar ()              -- ^ Will kill a pool node when filled
           -> IO (Async (), IO ()) -- ^ Thread async, and action that when
                                   --   executed restarts a node.
-restarter trigger = do
+restarter minPeriod trigger = do
       newClient <- newEmptyMVar
       thread <- async (go newClient)
       let restart = void (tryPutMVar newClient ())
       return (thread, restart)
 
       where go c = forever $ do
-                  delay (3*10^6) -- Cooldown TODO: Read from config
+                  delay minPeriod -- Cooldown TODO: Read from config
                   void (takeMVar c)
                   yell 44 "Restart triggered!"
                   tryPutMVar trigger ()
 
 
 
-bootstrapServer :: Config
+bootstrapServer :: BSConfig
                 -> Chan NormalSignal
                 -> IO () -- ^ Restarting action, see "restarter"
                 -> IO ()
 bootstrapServer config ldc restart =
       PN.listen (PN.Host "127.0.0.1")
-                (show $ _serverPort config)
+                (show (_serverPort (_nodeConfig config)))
                 (\(sock, addr) -> do
                       putStrLn ("Bootstrap server listening on " ++ show addr)
                       counter <- newTVarIO 1
@@ -106,7 +113,7 @@ bootstrapServer config ldc restart =
 
 
 bootstrapServerLoop
-      :: Config            -- ^ Configuration to determine how many requests to
+      :: BSConfig          -- ^ Configuration to determine how many requests to
                            --   send out per new node
       -> TVar Integer      -- ^ Number of total clients served
       -> Socket            -- ^ Socket to listen on for bootstrap requests
@@ -120,11 +127,12 @@ bootstrapServerLoop config counter serverSock ldc restartTrigger = forever $ do
       -- enough nodes to relay the requests (hence the queues fill up and the
       -- nodes block indefinitely.
       count <- atomically (readTVar counter)
-      let config' = if count <= fromIntegral (_minNeighbours config)
-                          then config { _bounces = 0 }
-                          else config
-          bootstrapRequestH socket node = do
-                dispatchSignal config' node ldc
+      let nodeConfig | count <= minn = (_nodeConfig config) { _bounces = 0 }
+                     | otherwise     = _nodeConfig config
+          minn = fromIntegral (_minNeighbours (_nodeConfig config))
+
+      let bootstrapRequestH socket node = do
+                dispatchSignal nodeConfig node ldc
                 send socket OK
 
       PN.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
@@ -168,6 +176,3 @@ edgeRequest :: Config
 edgeRequest config to dir = EdgeRequest to edgeData
       where edgeData      = EdgeData dir bounceParam
             bounceParam   = HardBounce (_bounces config)
-
-
-
