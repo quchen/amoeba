@@ -50,8 +50,8 @@ bootstrapServerMain = do
       -- Bootstrap service
       printf "Starting bootstrap server with %d nodes"
              (_poolSize bsConfig)
-      forkIO $ restartLoop terminate
-      bootstrapServer nodeConfig ldc
+      (_rthread, restart) <- restarter terminate
+      bootstrapServer nodeConfig ldc restart
 
 
 
@@ -61,8 +61,7 @@ bootstrapServerMain = do
 restartLoop :: MVar () -> IO ()
 restartLoop trigger = forever $ do
       delay (3*10^6)
-      yell 34 "restart sent"
-      --yell 34 "RESTART LOOP DISABLED FOR DEBUGGING"
+      yell 44 "restart sent"
       tryPutMVar trigger ()
 
 
@@ -73,64 +72,72 @@ restartLoop trigger = forever $ do
 --
 --   Waits a certain amount of time, and then kills a random pool node when a
 --   new node is bootstrapped.
-restarter :: MVar ()               -- ^ Will kill a pool node when filled
-          -> IO (Async(), MVar ()) -- ^ Thread async, and 'MVar' filled when a
-                                   --   new client is bootstrapped
+--
+--   Does not block.
+restarter :: MVar ()              -- ^ Will kill a pool node when filled
+          -> IO (Async (), IO ()) -- ^ Thread async, and action that when
+                                  --   executed restarts a node.
 restarter trigger = do
       newClient <- newEmptyMVar
       thread <- async (go newClient)
-      return (thread, newClient)
+      let restart = void (tryPutMVar newClient ())
+      return (thread, restart)
 
       where go c = forever $ do
-                  delay (2*10^6) -- TODO: Read from config
+                  delay (3*10^6) -- Cooldown TODO: Read from config
                   void (takeMVar c)
-                  putMVar trigger ()
+                  yell 44 "Restart triggered!"
+                  tryPutMVar trigger ()
 
 
 
 bootstrapServer :: Config
                 -> Chan NormalSignal
+                -> IO () -- ^ Restarting action, see "restarter"
                 -> IO ()
-bootstrapServer config ldc =
+bootstrapServer config ldc restart =
       PN.listen (PN.Host "127.0.0.1")
                 (show $ _serverPort config)
                 (\(sock, addr) -> do
-                      putStrLn $ "Bootstrap server listening on " ++ show addr
+                      putStrLn ("Bootstrap server listening on " ++ show addr)
                       counter <- newTVarIO 1
-                      bootstrapServerLoop config counter sock ldc)
+                      bootstrapServerLoop config counter sock ldc restart)
 
 
 
-bootstrapServerLoop :: Config  -- ^ Configuration to determine how many requests
-                               --   to send out per new node
-                    -> TVar Integer -- ^ Number of total clients served
-                    -> Socket  -- ^ Socket to listen on for bootstrap requests
-                    -> Chan NormalSignal -- ^  LDC to the node pool
-                    -> IO r
-bootstrapServerLoop config counter serverSock ldc = forever $ do
+bootstrapServerLoop
+      :: Config            -- ^ Configuration to determine how many requests to
+                           --   send out per new node
+      -> TVar Integer      -- ^ Number of total clients served
+      -> Socket            -- ^ Socket to listen on for bootstrap requests
+      -> Chan NormalSignal -- ^ LDC to the node pool
+      -> IO ()             -- ^ Restarting action, see "restarter"
+      -> IO r
+bootstrapServerLoop config counter serverSock ldc restartTrigger = forever $ do
 
 
       -- The first couple of new nodes should not bounce, as there are not
       -- enough nodes to relay the requests (hence the queues fill up and the
       -- nodes block indefinitely.
-      count <- atomically $ readTVar counter
+      count <- atomically (readTVar counter)
       let config' = if count <= fromIntegral (_minNeighbours config)
-                then config { _bounces = 0 }
-                else config
+                          then config { _bounces = 0 }
+                          else config
           bootstrapRequestH socket node = do
                 dispatchSignal config' node ldc
                 send socket OK
 
-      PN.acceptFork serverSock $ \(clientSock, _clientAddr) ->
+      PN.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
             receive clientSock >>= \case
                   Just (BootstrapRequest benefactor) -> do
-                        putStrLn $ "Sending requests on behalf of " ++ show benefactor
+                        putStrLn ("Sending requests on behalf of " ++ show benefactor)
                         bootstrapRequestH clientSock benefactor
                         count' <- atomically $ do
                               c <- readTVar counter
-                              modifyTVar counter (+1)
+                              modifyTVar' counter (+1)
                               return c
-                        putStrLn $ "Client " ++ show count' ++ " served"
+                        putStrLn ("Client " ++ show count' ++ " served")
+                        when (count' `rem` 3 == 0) restartTrigger
                   Just _other_signal -> do
                         putStrLn "Non-BootstrapRequest signal received"
                   _no_signal -> do
