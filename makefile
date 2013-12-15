@@ -34,8 +34,9 @@ fast :
 
 # Documentation
 .PHONY : doc
-doc : $(DOC)/information_flow.dot
+doc :
 	cat $(DOC)/information_flow.dot | cpp | dot -Tpng > $(DOC)/information_flow.png
+	cat $(DOC)/network.dot          | cpp | neato -Tpng > $(DOC)/network.png
 
 
 

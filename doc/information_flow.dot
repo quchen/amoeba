@@ -1,7 +1,9 @@
 // CPP because GraphViz doesn't support custom styles
-#define NETWORK   [color = olivedrab3]
-#define STM       [color = darkorchid3]
-#define PARAMETER [color = orangered1, style = dashed]
+#define NETWORK   [color = "#BF0000"]
+#define STM       [color = "#004280"]
+#define PARAMETER [color = "#E6A500", style = dashed]
+
+
 
 digraph G {
 
