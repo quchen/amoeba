@@ -34,8 +34,9 @@ fast :
 
 # Documentation
 .PHONY : doc
-doc : $(DOC)/information_flow.dot
+doc :
 	cat $(DOC)/information_flow.dot | cpp | dot -Tpng > $(DOC)/information_flow.png
+	cat $(DOC)/network.dot          | cpp | neato -Tpng > $(DOC)/network.png
 
 
 
@@ -46,3 +47,4 @@ clean :
 	rm -f $(MAIN_NODE)
 	rm -f $(MAIN_BS)
 	rm -f $(DOC)/information_flow.png
+	rm -f $(DOC)/network.png

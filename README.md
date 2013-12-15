@@ -53,6 +53,10 @@ Network description
 -------------------
 
 
+![(Picture missing, uh oh)](doc/network.png "Network structure of a small system")
+
+The picture shows the network structure of a small Amœba network. Blue arrows are ordinary connections, while red ones stand for local direct connections, used by special network services.
+
 
 ### Normal nodes
 
@@ -171,11 +175,11 @@ These may help reading the source comments:
 
 The picture below sketches the flow of information in a single Amœba client.
 
-- Network connections are shown in green. Nodes first connect to another node's server (dashed arrows), which then relays them to their own private worker in the target node (by spawning a new worker, orange/dashed), at which point the data flows directly from node to worker.
+- Network connections are shown in red. Nodes first connect to another node's server (dashed red), which then relays them to their own private worker in the target node (by spawning a new worker, yellow dashed), at which point the data flows directly from node to worker.
 
-- Workers take input from upstream nodes and formulate a response based on them. This response is then sent over the internal channels (purple) to the clients.
+- Workers take input from upstream nodes and formulate a response based on them. This response is then sent over the internal channels (blue) to the clients.
 
-- Clients have persistent connections to downstream neighbours open, and send the instructions received to them (without really processing them themselves; the workers do most of the logic).
+- Clients have persistent connections to downstream neighbours open (red network connections), and send the instructions received from the channels to them.
 
 - The client pool watches internal databases to determine whether there are enough workers and clients. If not, it instructs existing clients to send requests for further neighbours.
 
