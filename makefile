@@ -4,32 +4,44 @@ MAIN_BS = bootstrap
 SRC = src
 DOC = doc
 
-# Flags
+
+# GHC Flags
 OPTIMIZE = -O2 -threaded
 PROF = -prof -auto-all -caf-all -threaded
+WARN = -W
 OPTIONS = -hide-package monads-tf
+
+# Executables
+GHC = ghc -i$(SRC) $(OPTIONS)
+HLINT = hlint --colour
+PAGER = less -R
+
+
 
 
 
 # Release quality build
+RELEASE_FLAGS = $(OPTIMIZE) $(WARN)
 .PHONY : release
 release :
-	ghc $(OPTIONS) $(OPTIMIZE) -i$(SRC) -o $(MAIN_NODE) $(SRC)/Main.hs
-	ghc $(OPTIONS) $(OPTIMIZE) -i$(SRC) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
+	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_NODE) $(SRC)/Main.hs
+	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
 
 
 # Fully optimize with profiling support
+PROF_FLAGS = $(OPTIMIZE) $(PROF)
 .PHONY : prof
 prof :
-	ghc $(OPTIMIZE) $(PROF) $(OPTIONS) -i$(SRC) -o $(MAIN_NODE) $(SRC)/Main.hs
-	ghc $(OPTIMIZE) $(PROF) $(OPTIONS) -i$(SRC) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
+	$(GHC) $(PROF_FLAGS) -o $(MAIN_NODE) $(SRC)/Main.hs
+	$(GHC) $(PROF_FLAGS) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
 
 
 # Minimize compilation time
+FAST_FLAGS =
 .PHONY : fast
 fast :
-	ghc $(OPTIONS) -i$(SRC) -o $(MAIN_NODE) $(SRC)/Main.hs
-	ghc $(OPTIONS) -i$(SRC) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
+	$(GHC) $(FAST_FLAGS) -o $(MAIN_NODE) $(SRC)/Main.hs
+	$(GHC) $(FAST_FLAGS) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
 
 
 # Documentation
@@ -38,6 +50,11 @@ doc :
 	cat $(DOC)/information_flow.dot | cpp | dot -Tpng > $(DOC)/information_flow.png
 	cat $(DOC)/network.dot          | cpp | neato -Tpng > $(DOC)/network.png
 
+
+# HLint
+.PHONY : hlint
+hlint :
+	$(HLINT) $(SRC)/*.hs | $(PAGER)
 
 
 .PHONY : clean
