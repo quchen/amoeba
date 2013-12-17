@@ -92,8 +92,9 @@ balanceEdges env = forever $ do
             -- and a maximum of 10, upstream connections (and similarly for
             -- downstream).
             toIO env Debug $ printf -- DEBUG colours
-                  "[\ESC[3%dm%d\ESC[0m] Network connections: upstream %d/(%d..%d),\
-                                    \ downstream %d/(%d..%d)\n"
+                  "[\ESC[3%dm%d\ESC[0m] Network connections:\
+                        \ upstream %d/(%d..%d),\
+                        \ downstream %d/(%d..%d)\n"
                   (_serverPort (_config env) `mod` 6 + 1)
                   (_serverPort (_config env))
                   usnCount minN maxN
