@@ -68,7 +68,7 @@ defaultNodeConfig = T.Config {
 -- | Default bootstrap server config
 defaultBSConfig :: T.BSConfig
 defaultBSConfig = T.BSConfig {
-        T._poolSize     = 5
+        T._poolSize     = 8
       , T._restartEvery = 5
       , T._restartMinimumPeriod = 10^6
       , T._nodeConfig   = defaultNodeConfig
