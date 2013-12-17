@@ -3,7 +3,13 @@
 --       - short < medium < long tickrate, timeout > long
 --       - Port should be between 0 and 2^16-1
 --       - poolsize > minneighbours: the BS server can't satisfy itself otherwise
---       - restartEvery should be larger than 1, otherwise every restart triggers another one
+--       - restartEvery should be larger than 0.
+--           - 1: Every new neighbour triggers a restart (if coolown is over).
+--           - 2: Same as 1, since the restart makes one node reconnect to the
+--                pool
+--           - 3: Every other new node triggers restart
+--               TODO: subtract this offset of 1 everywhereto make configuration
+--                     easier?
 
 
 module CmdArgParser (
