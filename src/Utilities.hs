@@ -37,7 +37,6 @@ module Utilities (
 
       -- * Pipe-based communication channels
       , spawn
-      , getBroadcastOutput
       , outputThread
 ) where
 
@@ -49,7 +48,6 @@ import           Control.Applicative
 import           Control.Exception
 import           Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteString as BS
-import qualified Data.Foldable as F
 import qualified Data.Map as Map
 import           System.Timeout
 
@@ -262,15 +260,6 @@ asyncMany [] = return ()
 asyncMany (io:ios) = withAsync io $ \a -> do
       void $ waitAnyCancel <$> mapM async ios
       wait a
-
-
-
--- | Retrieves all STSC (server-to-single-client) "P.Output"s and concatenates
---   them to a single broadcast channel.
-getBroadcastOutput :: Environment
-                   -> STM (P.Output NormalSignal)
-getBroadcastOutput env =
-      F.foldMap (_pOutput . _stsc) <$> readTVar (_downstream env)
 
 
 

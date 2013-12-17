@@ -20,6 +20,7 @@ import           System.Random
 import           Text.Printf
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.Foldable as F
 
 import           Pipes
 import qualified Pipes.Prelude as P
@@ -250,8 +251,11 @@ floodSignalH env tFSignal@(timestamp, fSignal) = do
                   modifyTVar (_handledFloods env) (Set.insert tFSignal)
 
                   -- Broadcast message to all downstream neighbours
-                  broadcast <- getBroadcastOutput env
-                  void $ P.send broadcast (Flood timestamp fSignal)
+                  broadcast <- broadcastOutput env
+                  void (P.send broadcast
+                               (Flood timestamp fSignal))
+
+                  -- TODO: Remove old flood signals
 
             return knownSTM
 
@@ -259,6 +263,15 @@ floodSignalH env tFSignal@(timestamp, fSignal) = do
             (True, _)                  -> return OK
             (_, NeighbourList painter) -> neighbourListH env painter
             (_, TextMessage message)   -> textMessageH   env message
+
+
+
+-- | Retrieve all STSC (server-to-single-client) "P.Output"s and concatenate
+--   them to a single broadcast channel.
+broadcastOutput :: Environment
+                -> STM (P.Output NormalSignal)
+broadcastOutput env =
+      F.foldMap (_pOutput . _stsc) <$> readTVar (_downstream env)
 
 
 
