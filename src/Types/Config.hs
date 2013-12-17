@@ -20,41 +20,36 @@ data Environment = Environment {
 
       -- Mutable environment
 
+        -- | Neighbours the current node knows, and when they have last been
+        --   sent a signal
         _downstream :: TVar (Map To Client)
-                                       -- ^ Neighbours the current node knows,
-                                       --   and when they have last been sent
-                                       --   a signal
 
+        -- | Nodes the current node knows it's a downstream neighbour of, or
+        --   equivalently the set of upstream neighbours of the current node.
+        --   Also carries a timestamp to keep track of when the last signal was
+        --   received.
       , _upstream   :: TVar (Map From Timestamp)
-                                       -- ^ Nodes the current node knows it's
-                                       --   a downstream neighbour of, or
-                                       --   equivalently the set of upstream
-                                       --   neighbours of the current node.
-                                       --   Also carries a timestamp to keep
-                                       --   track of when the last signal was
-                                       --   received.
 
-      , _st1c       :: PChan NormalSignal -- ^ Channel read by all clients.
-                                          --   Sending a signal here will
-                                          --   semi-randomly reach one of them.
+        -- | Channel read by all clients. Sending a signal here will
+        --   semi-randomly reach one of them.
+      , _st1c       :: PChan NormalSignal
 
-      , _io         :: IOQueue         -- ^ Send action to the output thread
-                                       --   (so that concurrent prints don't
-                                       --   get interleaved)
+        -- | Send action to the output thread (so that concurrent prints don't
+        --   get interleaved)
+      , _io         :: IOQueue
 
+        -- | Timestamped signals that have already been handled by the current
+        --   node, and can thus be ignored if they come in again.
       , _handledFloods :: TVar (Set (Timestamp, FloodSignal))
-                                       -- ^ Timestamped signals that have
-                                       --   already been handled by the current
-                                       --   node, and can thus be ignored if
-                                       --   they come in again.
 
-      , _self       :: To              -- ^ Own hostname/port
+        -- | Own hostname/port
+      , _self       :: To
 
+        -- | Local direct connection (LDC) to a node. Used by NodePool.
       , _ldc        :: Maybe (PChan NormalSignal)
-                                       -- ^ Local direct connection (LDC) to a
-                                       --   node. Used by NodePool.
 
-      , _config     :: Config          -- ^ Program start configuration
+        -- | Program start configuration
+      , _config     :: Config
 
       }
 
