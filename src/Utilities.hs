@@ -50,14 +50,12 @@ import           Control.Exception
 import           Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteString as BS
 import qualified Data.Foldable as F
-import           Data.Map (Map)
 import qualified Data.Map as Map
 import           System.Timeout
 
 import           Pipes
 import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
-import qualified Pipes.Network.TCP as PN
 import qualified Network.Simple.TCP as N
 import qualified Network.Socket.ByteString as NSB
 import qualified Pipes.Binary as P

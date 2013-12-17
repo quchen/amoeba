@@ -138,6 +138,9 @@ signalH env socket to = go
                         Just Ignore    -> ignore       env    >> terminate
                         Just Denied    -> denied       env    >> terminate
                         Just Illegal   -> illegal      env    >> terminate
+                        Just DecodeError -> decodeError env   >> terminate
+                        Just Timeout   -> timeoutError env    >> terminate
+                        Just ConnectionClosed -> cClosed env  >> terminate
                         Nothing        -> noResponse   env    >> terminate
 
 
@@ -214,3 +217,27 @@ noResponse :: (MonadIO io)
            => Environment
            -> io ()
 noResponse env = errorPrint env "Server did not respond"
+
+
+
+-- | Decoding the response unsuccessul
+decodeError :: (MonadIO io)
+           => Environment
+           -> io ()
+decodeError env = errorPrint env "Signal decoding error"
+
+
+
+-- | Timeout
+timeoutError :: (MonadIO io)
+           => Environment
+           -> io ()
+timeoutError env = errorPrint env "Timeout before response"
+
+
+
+-- | Connection closed by downstream
+cClosed :: (MonadIO io)
+           => Environment
+           -> io ()
+cClosed env = errorPrint env "The remote host has closed the connection"

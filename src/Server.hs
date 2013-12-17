@@ -11,13 +11,11 @@
 module Server (server) where
 
 import           Control.Concurrent.Async
-import           Control.Concurrent (ThreadId, killThread, forkIO)
+import           Control.Concurrent (forkIO)
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
 import           Control.Applicative
-import           Data.IORef
-import           System.Timeout
 import           System.Random
 import           Text.Printf
 import qualified Data.Map as Map
@@ -35,9 +33,6 @@ import Utilities
 import Client
 import Housekeeping
 import ClientPool (isRoomIn)
-
-import qualified Unsafe as Unsafe
-
 
 
 
@@ -286,7 +281,7 @@ neighbourListH :: (MonadIO io)
 neighbourListH env painter = liftIO $ do
       connectToNode painter $ \(socket, _) -> do
             putStrLn $ "Connected to painter. TODO: Send something useful."
-            return undefined -- TODO.
+            return (undefined env socket) -- TODO.
 
 
 

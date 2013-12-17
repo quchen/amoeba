@@ -18,17 +18,12 @@ module ClientPool (
         , isRoomIn
 ) where
 
-import           Control.Exception
 import           Control.Applicative
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
 import qualified Data.Map as Map
 import           Control.Monad
-import qualified Data.Foldable as F
-import qualified Data.Traversable as T
-import           Data.Maybe (isJust)
 import           Text.Printf
-import qualified Data.Set as Set
 
 import Pipes
 import qualified Pipes.Prelude as P
@@ -38,7 +33,6 @@ import qualified Pipes.Concurrent as P
 import Types
 import Housekeeping
 import Utilities
-import Unsafe
 
 
 -- | Sets up the client pool by forking the housekeeping thread, and then starts

@@ -2,8 +2,6 @@
 
 module Main (main) where
 
-import Control.Concurrent.Async
-import Control.Concurrent.STM
 import CmdArgParser
 import Node
 import Types

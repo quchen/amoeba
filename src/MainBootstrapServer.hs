@@ -9,13 +9,10 @@
 
 module Main where
 
-import Data.IORef
-import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Control.Concurrent hiding (yield)
 import Control.Monad
-import Data.Functor
 import Text.Printf
 
 import Pipes.Network.TCP (Socket)
@@ -26,7 +23,7 @@ import CmdArgParser
 import Utilities
 import Types
 
-import qualified Unsafe as Unsafe
+
 
 main :: IO ()
 main = bootstrapServerMain

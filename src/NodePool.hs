@@ -14,10 +14,8 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.Async
 import Control.Concurrent.MVar
 import Control.Concurrent.Chan
-import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
-import Data.Word
 
 import Pipes
 import qualified Pipes.Concurrent as P

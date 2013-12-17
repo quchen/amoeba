@@ -6,7 +6,6 @@ import Control.Monad.Trans
 import System.IO.Unsafe
 import Control.Concurrent.STM
 import Pipes
-import qualified Pipes.Prelude as P
 
 import Utilities
 

@@ -10,7 +10,6 @@ import Control.Concurrent.Async
 import qualified Data.Foldable as F
 import qualified Data.Traversable as T
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import Data.Maybe
 import Control.Applicative
 import Control.Monad
