@@ -88,7 +88,7 @@ balanceEdges env = forever $ do
             let coloredNumber :: Int -> Int -> String
                 coloredNumber m x = printf "\ESC[3%dm%d\ESC[0m" (x `rem` m + 1) x
 
-                m = 8
+                m = 8 -- modulus for colouring
 
             -- Print status message: "Network connections: upstream 7/(5..10),
             -- downstream 5/(5..10)"to indicate there are 7 of a minimum of 5,
@@ -96,11 +96,12 @@ balanceEdges env = forever $ do
             -- downstream).
             toIO env Debug $ printf -- DEBUG colours
                   "[%s] Network connections:\
-                        \ upstream %d/(%d..%d),\
-                        \ downstream %d/(%d..%d) %s\n"
-                  (coloredNumber m (_serverPort (_config env)))
-                  usnCount minN maxN
-                  dsnCount minN maxN
+                        \ upstream %*d/(%d..%d),\
+                        \ downstream %*d/(%d..%d)\
+                        \ %s\n"
+                  (coloredNumber m serverPort)
+                  maxNDigits usnCount minN maxN
+                  maxNDigits dsnCount minN maxN
                   ((++ "]") . ("[" ++) . intercalate ", " $ map (coloredNumber m) dsn)
                   -- ^ Some hardcore colored debugging stuff
 
@@ -108,12 +109,14 @@ balanceEdges env = forever $ do
                    , minN - dsnCount
                    )
 
-      each $ mergeLists (replicate dsnDeficit Outgoing)
-                        (replicate usnDeficit Incoming)
+      each (mergeLists (replicate dsnDeficit Outgoing)
+                       (replicate usnDeficit Incoming))
 
 
-      where minN = _minNeighbours (_config env)
-            maxN = _maxNeighbours (_config env)
+      where minN       = _minNeighbours (_config env)
+            maxN       = _maxNeighbours (_config env)
+            maxNDigits = round (logBase 10 (fromIntegral maxN)) + 1 :: Int
+            serverPort = _serverPort (_config env)
 
 
 

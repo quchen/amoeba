@@ -133,15 +133,15 @@ signalH env socket to = go
             go = do
                   signal <- await
                   request socket (Normal signal) >>= \case
-                        Just OK        -> ok           env to >> go
-                        Just (Error e) -> genericError env e  >> terminate
-                        Just Ignore    -> ignore       env    >> terminate
-                        Just Denied    -> denied       env    >> terminate
-                        Just Illegal   -> illegal      env    >> terminate
-                        Just DecodeError -> decodeError env   >> terminate
-                        Just Timeout   -> timeoutError env    >> terminate
-                        Just ConnectionClosed -> cClosed env  >> terminate
-                        Nothing        -> noResponse   env    >> terminate
+                        Just OK              -> ok           env to >> go
+                        Just (Error e)       -> genericError env e  >> terminate
+                        Just Ignore          -> ignore       env    >> terminate
+                        Just Denied          -> denied       env    >> terminate
+                        Just Illegal         -> illegal      env    >> terminate
+                        Just DecodeError     -> decodeError  env    >> terminate
+                        Just Timeout         -> timeoutError env    >> terminate
+                        Just ConnectionClosed -> cClosed     env    >> terminate
+                        Nothing              -> noResponse   env    >> terminate
 
 
 
