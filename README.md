@@ -3,7 +3,7 @@ Amœba
 
 Amœba is a program for setting up a decentralized network. The name comes from the hope that eventually, the network will be so robust that you can poke any of its parts without endangering its overall integrity.
 
-The current development stage is Alpha. The basic functionality is there, but it's far from being feature complete. It's fairly easy to start a network when you know how, however *no exceptions are caught*, so if there's an error the entire program crashes.
+The current development stage is Alpha.
 
 
 
@@ -14,10 +14,7 @@ Planned features
 
 - Every node only knows about its immediate neighbours. Unless explicitly added, the origin of a signal sent over the network is untraceable (from within the program; timing attacks still apply).
 
-- Highly concurrent actors (spawning a thread for pretty even relatively small sub-tasks)
-
-- Robustness: make it hard to harm the network no matter what crap you throw at it
-
+- The network should be as robust as possible against malicious participants.
 
 
 
@@ -29,9 +26,9 @@ Research goals
 
   - How connected does the network have to be to allow certain portions of it to go down without clustering?
 
-  - How long does a new (flood) message need to reach the entire network?
+  - How effective do messages propagate?
 
-  - What are the timescales for bootstrapping the network, (adding|removing) (a node | many nodes)?
+  - What are the timescales for bootstrapping the network, adding or removing one node or many nodes?
 
 - Network integrity
 
@@ -43,7 +40,7 @@ Research goals
 
   - What size of a network can a single computer handle? (In particular my Raspi) :-)
 
-  - Heal nodes as quickly as possible in case something happens to all their neighbourssssssssss
+  - Heal nodes as quickly as possible in case something happens to all their neighbours
 
 
 
@@ -113,6 +110,8 @@ This is a list of known and feasible attacks on the current design:
 
   - Node crawling: Although nodes only retain the addresses of downstream neighbours (remember the upstream connection is one-way, clients will not send or handle signals issued the wrong way), EdgeRequest signals carry valid server addresses and traverse a large part of the network before they are accepted. Specialized nodes could simply store all valid addresses they encounter. This is completely undetectable by other nodes and, while not dangerous on its own, can lead to a large knowledge about the network. The node database could be shared with malicious nodes that could harness that information for attacks on the network.
 
+  - There is no message size limit at the moment. A node will read incoming data until the connection for a single signal times out.
+
 - Malicious sub-networks
 
   - Nodes accepting all EdgeRequest signals they encounter can build up a connection to a large portion of the network
@@ -127,7 +126,7 @@ This is a list of known and feasible attacks on the current design:
 
 - Malicious swarms - right now it's trivial to spawn thousands of new nodes simultaneously, even from within a single program. No matter how many honest nodes there are, it is very easy to drown them in a network controlled by a few actors behaving like they are many.
 
-- Killing all bootstrap servers makes it impossible to discover the network
+- Killing all bootstrap servers makes it impossible to discover the network.
 
 
 
