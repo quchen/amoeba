@@ -2,6 +2,8 @@
 --   functions terminate properly.
 module Unsafe where
 
+This is a syntax error to ensure this package is currently unused.
+
 import Control.Monad.Trans
 import System.IO.Unsafe
 import Control.Concurrent.STM
