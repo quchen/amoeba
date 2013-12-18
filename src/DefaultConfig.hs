@@ -22,6 +22,7 @@ nodeConfig = Config {
       , _poolTimeout       = 5
       , _verbosity         = Debug -- TODO: Change back to Default for production
       , _bootstrapServers  = []
+      , _floodMessageCache = 1024
       }
 
 

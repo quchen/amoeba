@@ -248,14 +248,13 @@ floodSignalH env tFSignal@(timestamp, fSignal) = do
       knownIO <- liftIO . atomically $ do
             knownSTM <- Set.member tFSignal <$> readTVar (_handledFloods env)
             when (not knownSTM) $ do
-                  modifyTVar (_handledFloods env) (Set.insert tFSignal)
+                  modifyTVar (_handledFloods env)
+                             (prune . Set.insert tFSignal)
 
                   -- Broadcast message to all downstream neighbours
                   broadcast <- broadcastOutput env
                   void (P.send broadcast
                                (Flood timestamp fSignal))
-
-                  -- TODO: Remove old flood signals
 
             return knownSTM
 
@@ -263,6 +262,15 @@ floodSignalH env tFSignal@(timestamp, fSignal) = do
             (True, _)                  -> return OK
             (_, NeighbourList painter) -> neighbourListH env painter
             (_, TextMessage message)   -> textMessageH   env message
+
+
+
+      where -- Delete the oldest entry if the DB is full
+            prune :: Set.Set a -> Set.Set a
+            prune db | Set.size db > dbMaxSize = Set.deleteMin db
+                     | otherwise               = db
+
+            dbMaxSize = _floodMessageCache (_config env)
 
 
 

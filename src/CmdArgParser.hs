@@ -74,6 +74,7 @@ nodeConfig = T.Config
      <*> poolTimeout
      <*> verbosity
      <*> pure [] -- TODO: specify bootstrap servers via command line
+     <*> floodMessageCache
 
 
 
@@ -165,6 +166,18 @@ maxChanSize = (nullOption . mconcat)
       , long    "chansize"
       , metavar "(Int > 0)"
       , help    "Maximum communication channel size"
+      ]
+
+
+
+floodMessageCache :: Parser Int
+floodMessageCache = (nullOption . mconcat)
+      [ reader nonnegative
+      , showDefault
+      , value   (T._floodMessageCache Default.nodeConfig)
+      , long    "floodcache"
+      , metavar "(Int >= 0)"
+      , help    "Number of past flood messages to cache"
       ]
 
 

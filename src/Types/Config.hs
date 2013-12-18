@@ -41,6 +41,9 @@ data Environment = Environment {
         -- | Timestamped signals that have already been handled by the current
         --   node, and can thus be ignored if they come in again.
       , _handledFloods :: TVar (Set (Timestamp, FloodSignal))
+                        -- Order of the tuple matters so that Timestamp is the
+                        -- most significant in the Set's Ord type, and
+                        -- Set.deleteMin works properly!
 
         -- | Own hostname/port
       , _self       :: To
@@ -99,6 +102,9 @@ data Config = Config {
 
       , _bootstrapServers :: [To]     -- ^ Addresses of bootstrap servers
                                       --   statically known
+
+      , _floodMessageCache :: Int     -- ^ Number of past flood messages to
+                                      --   store so duplicates can be discarded
 
       }
 
