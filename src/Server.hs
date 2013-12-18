@@ -545,7 +545,9 @@ incomingHandshakeH env from socket = liftIO $ do
                              (Map.insert from timestamp))
             return isRoom
 
-      result <- if isRoom'
+      -- TODO: If there's an asynchronous exception right now, the USN stays
+      --       in the DB
+      result <- (`onException` revert) $ if isRoom'
             then send socket OK >> receive socket >>= \case
                   Just OK -> return OK
                   x -> (return . Error) ("Incoming handshake denied:\
@@ -554,8 +556,7 @@ incomingHandshakeH env from socket = liftIO $ do
 
       case result of
             OK -> return OK
-            x -> atomically $ do
-                  -- Remove temporary slot again on failure
-                  modifyTVar (_upstream env)
-                             (Map.delete from)
-                  return x
+            x -> revert >> return x
+
+      where revert = atomically (modifyTVar (_upstream env)
+                                            (Map.delete from))
