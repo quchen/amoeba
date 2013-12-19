@@ -23,7 +23,7 @@ multiNodeMain = do
       bsConfig <- parseBSArgs -- TODO: Multi-node config parser
       (output, _) <- outputThread (_maxChanSize (_nodeConfig bsConfig))
 
-      printf "Starting drawing server with %d nodes"
+      printf "Starting pool with %d nodes\n"
              (_poolSize bsConfig)
 
       -- Node pool

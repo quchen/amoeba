@@ -42,7 +42,7 @@ drawingServerMain = do
                terminate
 
       -- Bootstrap service
-      printf "Starting drawing server with %d nodes"
+      printf "Starting drawing server with %d nodes\n"
              (_poolSize bsConfig)
       drawingServer bsConfig output ldc
 
