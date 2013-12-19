@@ -124,7 +124,7 @@ data Graph a = Graph (Map a (Set a))
 -- | Dirty string-based hacks to convert a Graph to .dot
 graphToDot :: Graph To -> String
 graphToDot (Graph g) =
-      dotBoilerplate . intercalate "\n\n" . map vertexToDot $ Map.assocs g
+      dotBoilerplate . intercalate "\n" . map vertexToDot $ Map.assocs g
 
 
 
@@ -139,11 +139,8 @@ edgeToDot from to =
              (show' from)
              (show' to)
       where show' :: To -> String
-            show' (To (Node host port)) = printf "%s:%d"
-                                                 "" -- host -- TODO: print host as
-                                                            -- well (cut out for
-                                                            -- brevity/local testing)
-                                                 port
+            show' (To (Node _host port)) = printf "%d" port
+            -- TODO: print host as well (cut out for brevity/local testing)
 
 
 
