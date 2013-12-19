@@ -1,7 +1,7 @@
 # Filenames
 MAIN_NODE = amoeba
 MAIN_BS = bootstrap
-MAIN_DRAW = bootstrap
+MAIN_DRAW = drawing
 SRC = src
 DOC = doc
 

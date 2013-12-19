@@ -76,6 +76,7 @@ incomingLoop ioq stg serverSock = forever $ do
       N.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
             receive clientSock >>= \case
                   Just (NeighbourList node neighbours) -> do
+                        yell 42 "NODE DATA"
                         toIO' ioq (putStrLn ("Received node data from" ++ show node))
                         atomically (void (P.send (_pOutput stg) (node, neighbours)))
                   Just _other_signal -> toIO' ioq (putStrLn "Invalid signal received")
@@ -97,7 +98,7 @@ graphWorker stg = do
 
 -- | Read the graph and compiles it to .dot format
 graphDrawer :: (Show a, Ord a) => TVar (Graph a) -> IO ()
-graphDrawer t'graph = do
+graphDrawer t'graph = forever $ do
       threadDelay (10^6) -- TODO: Configurable
       graph <- atomically (readTVar t'graph)
       writeFile "network_graph.dot" (graphToDot graph) -- TODO: Make filename configurable

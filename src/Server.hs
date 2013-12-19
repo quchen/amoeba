@@ -295,8 +295,11 @@ neighbourListH :: (MonadIO io)
                -> io ServerResponse
 neighbourListH env painter = liftIO $ do
       connectToNode painter $ \(socket, _) -> do
-            putStrLn $ "Connected to painter. TODO: Send something useful."
-            return (undefined env socket) -- TODO.
+            yell 41 $ "Processing painter request"
+            let self = _self env
+            dsns <- Map.keysSet <$> atomically (readTVar (_downstream env))
+            send socket (NeighbourList self dsns)
+      return OK
 
 
 
