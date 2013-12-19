@@ -49,11 +49,11 @@ bootstrapServerMain = do
                terminate
 
       -- Bootstrap service
-      printf "Starting bootstrap server with %d nodes"
-             (_poolSize bsConfig)
+      toIO' output (printf "Starting bootstrap server with %d nodes"
+                           (_poolSize bsConfig))
       (_rthread, restart) <- restarter (_restartMinimumPeriod bsConfig)
                                        terminate
-      bootstrapServer bsConfig ldc restart
+      bootstrapServer bsConfig output ldc restart
 
 
 
@@ -96,28 +96,31 @@ restarter minPeriod trigger = do
 
 
 bootstrapServer :: BSConfig
+                -> IOQueue
                 -> Chan NormalSignal
                 -> IO () -- ^ Restarting action, see "restarter"
                 -> IO ()
-bootstrapServer config ldc restart =
+bootstrapServer config ioq ldc restart =
       PN.listen (PN.Host "127.0.0.1")
                 (show (_serverPort (_nodeConfig config)))
                 (\(sock, addr) -> do
-                      putStrLn ("Bootstrap server listening on " ++ show addr)
+                      toIO' ioq (printf "Bootstrap server listening on %s"
+                                        (show addr))
                       counter <- newTVarIO 1
-                      bootstrapServerLoop config counter sock ldc restart)
+                      bootstrapServerLoop config ioq counter sock ldc restart)
 
 
 
 bootstrapServerLoop
       :: BSConfig          -- ^ Configuration to determine how many requests to
                            --   send out per new node
+      -> IOQueue
       -> TVar Int          -- ^ Number of total clients served
       -> Socket            -- ^ Socket to listen on for bootstrap requests
       -> Chan NormalSignal -- ^ LDC to the node pool
       -> IO ()             -- ^ Restarting action, see "restarter"
       -> IO r
-bootstrapServerLoop config counter serverSock ldc restartTrigger = forever $ do
+bootstrapServerLoop config ioq counter serverSock ldc restartTrigger = forever $ do
 
 
       count <- atomically (readTVar counter)
@@ -145,15 +148,17 @@ bootstrapServerLoop config counter serverSock ldc restartTrigger = forever $ do
       PN.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
             receive clientSock >>= \case
                   Just (BootstrapRequest benefactor) -> do
-                        putStrLn ("Sending requests on behalf of " ++ show benefactor)
+                        toIO' ioq
+                              (printf "Sending requests on behalf of %s"
+                                      (show benefactor))
                         bootstrapRequestH clientSock benefactor
                         restartMaybe count
-                        putStrLn ("Client " ++ show count ++ " served")
+                        toIO' ioq (printf "Client %d served" count)
                         atomically (modifyTVar' counter (+1))
                   Just _other_signal -> do
-                        putStrLn "Non-BootstrapRequest signal received"
+                        toIO' ioq (putStrLn "Non-BootstrapRequest signal received")
                   _no_signal -> do
-                        putStrLn "Non-BootstrapRequest signal received"
+                        toIO' ioq (putStrLn "No signal received")
 
 
 

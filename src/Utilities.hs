@@ -17,6 +17,7 @@ module Utilities (
       -- * Concurrency
       , asyncMany
       , toIO
+      , toIO'
       , delay
 
       -- * Networking
@@ -228,6 +229,14 @@ toIO :: Environment
      -> STM ()
 toIO env verbosity io = when p (writeTBQueue (_getIOQueue (_io env)) io)
       where p = verbosity >= _verbosity (_config env)
+
+
+
+-- | Send an IO to a "IOQueue" directly
+toIO' :: IOQueue
+      -> IO ()
+      -> IO ()
+toIO' ioq io = atomically (writeTBQueue (_getIOQueue ioq) io)
 
 
 
