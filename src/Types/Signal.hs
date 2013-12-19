@@ -8,6 +8,7 @@ module Types.Signal where
 import GHC.Generics (Generic)
 import Control.Concurrent.Async (Async)
 import Text.Printf
+import Data.Set (Set)
 
 import Data.Binary
 import Pipes.Concurrent as P
@@ -73,7 +74,7 @@ data FloodSignal =
 
       -- | Used to send a drawing server a full list of all neighbours. The
       --   address is of the painting server.
-      | NeighbourList To
+      | SendNeighbourList To
 
       deriving (Eq, Ord, Show, Generic)
 

@@ -253,9 +253,9 @@ floodSignalH env tFSignal@(timestamp, fSignal) = do
             return knownSTM
 
       case (knownIO, fSignal) of
-            (True, _)                  -> return OK
-            (_, NeighbourList painter) -> neighbourListH env painter
-            (_, TextMessage message)   -> textMessageH   env message
+            (True, _)                      -> return OK
+            (_, SendNeighbourList painter) -> neighbourListH env painter
+            (_, TextMessage message)       -> textMessageH   env message
 
 
 
