@@ -62,6 +62,8 @@ drawingServer config ioq ldc = do
 
       let port = _serverPort (_nodeConfig config)
       N.listen (N.Host "127.0.0.1") (show port) $ \(socket, addr) -> do
+            let selfTo = To (Node "127.0.0.1" port)
+            forkIO (networkAsker (_poolSize config) selfTo ldc)
             incomingLoop ioq stg socket
 
 
@@ -81,22 +83,34 @@ incomingLoop ioq stg serverSock = forever $ do
 
 
 
-
+graphWorker :: (Show a, Ord a) => PChan (a, Set a) -> IO ()
 graphWorker stg = do
-      graph <- newTVarIO (Graph Map.empty)
-      forkIO (graphDrawer graph)
+      t'graph <- newTVarIO (Graph Map.empty)
+      forkIO (graphDrawer t'graph)
       forever . atomically $ do
             Just (node, neighbours) <- P.recv (_pInput stg) -- TODO: Error handling on Nothing
-            modifyTVar graph
+            modifyTVar t'graph
                        (\(Graph g) -> Graph (Map.insert node neighbours g))
             -- Listen for new neighbour lists, add them to graph
             -- Plot graph
 
 
+-- | Read the graph and compiles it to .dot format
+graphDrawer :: (Show a, Ord a) => TVar (Graph a) -> IO ()
 graphDrawer t'graph = do
-      threadDelay (10^6)
+      threadDelay (10^6) -- TODO: Configurable
       graph <- atomically (readTVar t'graph)
-      writeFile "network_graph.dot" (graphToDot graph)
+      writeFile "network_graph.dot" (graphToDot graph) -- TODO: Make filename configurable
+
+
+
+-- | Periodically send out flood messages to get the network data
+networkAsker :: Int -> To -> Chan NormalSignal -> IO ()
+networkAsker poolSize toSelf ldc = forever $ do
+      threadDelay (10^6) -- TODO: Configurable
+      t <- makeTimestamp
+      let signal = Flood t (SendNeighbourList toSelf)
+      forM_ [1..poolSize] $ \_ -> writeChan ldc signal
 
 
 
