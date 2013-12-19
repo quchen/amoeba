@@ -29,7 +29,7 @@ RELEASE_FLAGS = $(OPTIMIZE) $(WARN)
 .PHONY : release
 release :
 	@echo -e "\e[32mSingle client\e[0m"
-	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_NODE) $(SRC)/Main.hs
+	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_NODE) $(SRC)/MainNode.hs
 	@echo -e "\e[32mBootstrap server\e[0m"
 	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
 	@echo -e "\e[32mDrawing server\e[0m"
@@ -41,7 +41,7 @@ PROF_FLAGS = $(OPTIMIZE) $(PROF)
 .PHONY : prof
 prof :
 	@echo -e "\e[32mSingle client\e[0m"
-	$(GHC) $(PROF_FLAGS) -o $(MAIN_NODE) $(SRC)/Main.hs
+	$(GHC) $(PROF_FLAGS) -o $(MAIN_NODE) $(SRC)/MainNode.hs
 	@echo -e "\e[32mBootstrap server\e[0m"
 	$(GHC) $(PROF_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
 	@echo -e "\e[32mDrawing server\e[0m"
@@ -53,7 +53,7 @@ FAST_FLAGS =
 .PHONY : fast
 fast :
 	@echo -e "\e[32mSingle client\e[0m"
-	$(GHC) $(FAST_FLAGS) -o $(MAIN_NODE) $(SRC)/Main.hs
+	$(GHC) $(FAST_FLAGS) -o $(MAIN_NODE) $(SRC)/MainNode.hs
 	@echo -e "\e[32mBootstrap server\e[0m"
 	$(GHC) $(FAST_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
 	@echo -e "\e[32mDrawing server\e[0m"
