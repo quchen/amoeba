@@ -84,7 +84,7 @@ incomingLoop ioq stg serverSock = forever $ do
 
 
 
-graphWorker :: (Show a, Ord a) => PChan (a, Set a) -> IO ()
+graphWorker :: PChan (To, Set To) -> IO ()
 graphWorker stg = do
       t'graph <- newTVarIO (Graph Map.empty)
       forkIO (graphDrawer t'graph)
@@ -97,7 +97,7 @@ graphWorker stg = do
 
 
 -- | Read the graph and compiles it to .dot format
-graphDrawer :: (Show a, Ord a) => TVar (Graph a) -> IO ()
+graphDrawer :: TVar (Graph To) -> IO ()
 graphDrawer t'graph = forever $ do
       threadDelay (10^6) -- TODO: Configurable
       graph <- atomically (readTVar t'graph)
@@ -122,21 +122,28 @@ data Graph a = Graph (Map a (Set a))
 
 
 -- | Dirty string-based hacks to convert a Graph to .dot
-graphToDot :: Show a => Graph a -> String
+graphToDot :: Graph To -> String
 graphToDot (Graph g) =
       dotBoilerplate . intercalate "\n\n" . map vertexToDot $ Map.assocs g
 
 
 
-vertexToDot :: Show a => (a, Set a) -> String
+vertexToDot :: (To, Set To) -> String
 vertexToDot (start, ends) = F.foldMap (edgeToDot start) ends
 
 
 
-edgeToDot :: Show a => a -> a -> String
-edgeToDot from to = printf "\t\"%s\" -> \"%s\"\n"
-                           (show from)
-                           (show to)
+edgeToDot :: To -> To -> String
+edgeToDot from to =
+      printf "\t\"%s\" -> \"%s\"\n"
+             (show' from)
+             (show' to)
+      where show' :: To -> String
+            show' (To (Node host port)) = printf "%s:%d"
+                                                 "" -- host -- TODO: print host as
+                                                            -- well (cut out for
+                                                            -- brevity/local testing)
+                                                 port
 
 
 
@@ -145,6 +152,6 @@ dotBoilerplate :: String -> String
 dotBoilerplate str =
       "digraph G {\n\
       \\tnode [shape = box, color = gray, fontname = \"Courier\"];\n\
-      \\tedge [fontname = \"Courier\"];\n\
+      \\tedge [fontname = \"Courier\", len = 6];\n\
       \" ++ str ++ "\n\
       \}\n"
