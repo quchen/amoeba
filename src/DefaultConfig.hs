@@ -19,7 +19,7 @@ nodeConfig = Config {
       , _shortTickRate     = 1 * 10^5 `div` 5
       , _mediumTickRate    = 3 * 10^5 `div` 5
       , _longTickRate      = 10^6     `div` 5
-      , _poolTimeout       = 5
+      , _poolTimeout       = 5            / 5
       , _verbosity         = Debug -- TODO: Change back to Default for production
       , _bootstrapServers  = []
       , _floodMessageCache = 1024
@@ -32,6 +32,6 @@ bsConfig :: BSConfig
 bsConfig = BSConfig {
         _poolSize             = 8
       , _restartEvery         = 5
-      , _restartMinimumPeriod = 10^6
+      , _restartMinimumPeriod = 10^6 `div` 5
       , _nodeConfig           = nodeConfig
       }

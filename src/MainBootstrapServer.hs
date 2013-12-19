@@ -112,7 +112,7 @@ bootstrapServer config ldc restart =
 bootstrapServerLoop
       :: BSConfig          -- ^ Configuration to determine how many requests to
                            --   send out per new node
-      -> TVar Integer      -- ^ Number of total clients served
+      -> TVar Int          -- ^ Number of total clients served
       -> Socket            -- ^ Socket to listen on for bootstrap requests
       -> Chan NormalSignal -- ^ LDC to the node pool
       -> IO ()             -- ^ Restarting action, see "restarter"
@@ -120,29 +120,36 @@ bootstrapServerLoop
 bootstrapServerLoop config counter serverSock ldc restartTrigger = forever $ do
 
 
-      -- The first couple of new nodes should not bounce, as there are not
-      -- enough nodes to relay the requests (hence the queues fill up and the
-      -- nodes block indefinitely.
       count <- atomically (readTVar counter)
-      let nodeConfig | count <= minn = (_nodeConfig config) { _bounces = 0 }
-                     | otherwise     = _nodeConfig config
-          minn = fromIntegral (_minNeighbours (_nodeConfig config))
+      let
+          -- The first couple of new nodes should not bounce, as there are not
+          -- enough nodes to relay the requests (hence the queues fill up and the
+          -- nodes block indefinitely.
+          nodeConfig | count <= poolSize = (_nodeConfig config) { _bounces = 0 }
+                     | otherwise         = _nodeConfig config
 
-      let bootstrapRequestH socket node = do
+          -- If nodes are restarted when the server goes up there are
+          -- multi-connections to non-existing nodes, and the network dies off
+          -- after a couple of cycles for some reason. Disable restarting for
+          -- the first couple of nodes.
+          restartMaybe _ | count <= poolSize = return ()
+          restartMaybe c = when (c `rem` (_restartEvery config) == 0)
+                                restartTrigger
+          poolSize = _poolSize config
+
+          bootstrapRequestH socket node = do
                 dispatchSignal nodeConfig node ldc
                 send socket OK
+
 
       PN.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
             receive clientSock >>= \case
                   Just (BootstrapRequest benefactor) -> do
                         putStrLn ("Sending requests on behalf of " ++ show benefactor)
                         bootstrapRequestH clientSock benefactor
-                        count' <- atomically $ do
-                              c <- readTVar counter
-                              modifyTVar' counter (+1)
-                              return c
-                        putStrLn ("Client " ++ show count' ++ " served")
-                        when (count' `rem` 3 == 0) restartTrigger
+                        restartMaybe count
+                        putStrLn ("Client " ++ show count ++ " served")
+                        atomically (modifyTVar' counter (+1))
                   Just _other_signal -> do
                         putStrLn "Non-BootstrapRequest signal received"
                   _no_signal -> do

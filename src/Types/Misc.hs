@@ -33,7 +33,7 @@ instance Show From where
 data NodeRelationship = IsSelf
                       | IsDownstreamNeighbour
                       | IsUnrelated
-                   -- | IsUpstreamNeighbour -- Currently unused
+                      deriving (Eq, Ord, Show)
 
 
 

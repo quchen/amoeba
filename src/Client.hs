@@ -51,10 +51,13 @@ startHandshakeH :: MonadIO io
                 => Environment
                 -> To -- ^ Node to add
                 -> io ()
-startHandshakeH env to = liftIO . void . forkIO $ connectToNode to $ \(socket, _addr) -> do
-      request socket (Special Handshake) >>= \case
-            Just OK -> newClient env to socket
-            x -> errorPrint env ("Handshake signal response: " ++ show x)
+startHandshakeH env to = liftIO . void . forkIO $
+      connectToNode to $ \(socket, _addr) -> do
+            allowed <- atomically ((== IsUnrelated) <$> nodeRelationship env to)
+            when allowed
+                 (request socket (Special Handshake) >>= \case
+                       Just OK -> newClient env to socket
+                       x -> errorPrint env ("Handshake signal response: " ++ show x))
 
 
 
@@ -70,9 +73,13 @@ newClient env to socket = whenM allowed . (`finally` cleanup) $ do
       thread <- async (clientLoop env socket to stsc)
       -- (Client waits until its entry is in the DB before it starts working.)
       let self = Client time thread stsc
-      atomically (modifyTVar (_downstream env)
-                             (Map.insert to self))
-      wait thread
+      proceed <- atomically $ do
+            isNew <- Map.notMember to <$> readTVar (_downstream env)
+            when isNew (modifyTVar (_downstream env)
+                                   (Map.insert to self))
+            return isNew
+      if proceed then wait   thread
+                 else cancel thread
 
       where
 
@@ -90,11 +97,8 @@ newClient env to socket = whenM allowed . (`finally` cleanup) $ do
                                       return False
                               else return True
 
-            cleanup = do
-                  atomically (modifyTVar (_downstream env)
-                                         (Map.delete to))
-                  timeout (_mediumTickRate (_config env))
-                          (send socket (Normal ShuttingDown))
+            cleanup = timeout (_mediumTickRate (_config env))
+                              (send socket (Normal ShuttingDown))
 
 
 
@@ -133,15 +137,15 @@ signalH env socket to = go
             go = do
                   signal <- await
                   request socket (Normal signal) >>= \case
-                        Just OK        -> ok           env to >> go
-                        Just (Error e) -> genericError env e  >> terminate
-                        Just Ignore    -> ignore       env    >> terminate
-                        Just Denied    -> denied       env    >> terminate
-                        Just Illegal   -> illegal      env    >> terminate
-                        Just DecodeError -> decodeError env   >> terminate
-                        Just Timeout   -> timeoutError env    >> terminate
-                        Just ConnectionClosed -> cClosed env  >> terminate
-                        Nothing        -> noResponse   env    >> terminate
+                        Just OK              -> ok           env to >> go
+                        Just (Error e)       -> genericError env e  >> terminate
+                        Just Ignore          -> ignore       env    >> terminate
+                        Just Denied          -> denied       env    >> terminate
+                        Just Illegal         -> illegal      env    >> terminate
+                        Just DecodeError     -> decodeError  env    >> terminate
+                        Just Timeout         -> timeoutError env    >> terminate
+                        Just ConnectionClosed -> cClosed     env    >> terminate
+                        Nothing              -> noResponse   env    >> terminate
 
 
 
