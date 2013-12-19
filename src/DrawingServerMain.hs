@@ -18,6 +18,63 @@ import qualified Utilities as U
 import Types
 
 
+
+main :: IO ()
+main = drawingServerMain
+
+drawingServerMain :: IO ()
+drawingServerMain = do
+
+      -- Preliminaries
+      bsConfig <- parseBSArgs -- TODO: Drawing server config parser
+      (output, _) <- outputThread (_maxChanSize (_nodeConfig bsConfig))
+
+      -- Node pool
+      ldc <- newChan
+      terminate <- newEmptyMVar -- TODO: Never actually used. Refactor node pool?
+      nodePool (_poolSize bsConfig)
+               (_nodeConfig bsConfig)
+               ldc
+               output
+               terminate
+
+      -- Bootstrap service
+      printf "Starting drawing server with %d nodes"
+             (_poolSize bsConfig)
+      drawingServer bsConfig ldc
+
+
+drawingServer = do
+      -- Server to graph worker
+      stg <- spawn (P.bounded (_maxChanSize config))
+      forkIO (graphWorker stg)
+      drawingServerLoop stg
+
+
+
+drawingServerLoop :: PChan (To, Set To)
+                  -> ???
+                  -> IO ()
+drawingServerLoop stg = forever $ do
+      PN.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
+            receive clientSock >>= \case
+                  Just (NeighbourList node neighbours) -> do
+                        putStrLn ("Received node data from" ++ show node)
+                        updateGraph node neighbours
+                  Just _other_signal -> putStrLn "Invalid signal received"
+                  _no_signal -> putStrLn "No signal received"
+
+
+
+
+graphWorker = do
+      graph <- newTVarIO Map.empty
+      forever $ do
+            -- Listen for new neighbour lists, add them to graph
+            -- Plot graph
+
+
+
 -- | Time in ms until a connection times out
 timeoutDelay = 10^7
 

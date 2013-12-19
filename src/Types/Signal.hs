@@ -137,6 +137,10 @@ data SpecialSignal =
       --   downstream neighbour.
       | Handshake
 
+      -- | Own address and list of DSNs sent to the drawing server. Represents
+      --   one node in the network graph.
+      | NeighbourList To (Set To)
+
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary SpecialSignal
