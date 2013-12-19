@@ -49,7 +49,7 @@ bootstrapServerMain = do
                terminate
 
       -- Bootstrap service
-      toIO' output (printf "Starting bootstrap server with %d nodes"
+      toIO' output (printf "Starting bootstrap server with %d nodes\n"
                            (_poolSize bsConfig))
       (_rthread, restart) <- restarter (_restartMinimumPeriod bsConfig)
                                        terminate

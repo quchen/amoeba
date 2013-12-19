@@ -232,7 +232,7 @@ toIO env verbosity io = when p (writeTBQueue (_getIOQueue (_io env)) io)
 
 
 
--- | Send an IO to a "IOQueue" directly
+-- | Send an "IO" action to an "IOQueue" directly
 toIO' :: IOQueue
       -> IO ()
       -> IO ()

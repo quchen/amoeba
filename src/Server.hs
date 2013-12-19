@@ -190,6 +190,7 @@ specialH :: (MonadIO io)
          -> io ServerResponse
 specialH env from socket signal = case signal of
       BootstrapRequest {} -> illegalBootstrapSignalH env
+      NeighbourList {}    -> illegalNeighbourListSignalH env
       Handshake           -> incomingHandshakeH      env from socket
       HandshakeRequest to -> Client.startHandshakeH  env to >> return OK
                                                                -- ^ Sender doesn't handle
@@ -214,6 +215,14 @@ illegalBootstrapSignalH :: (MonadIO io)
                         -> io ServerResponse
 illegalBootstrapSignalH env =
       illegal env "BootstrapRequest signal received on a normal server"
+
+
+
+illegalNeighbourListSignalH :: (MonadIO io)
+                            => Environment
+                            -> io ServerResponse
+illegalNeighbourListSignalH env =
+      illegal env "NeighbourList signal received on a normal server"
 
 
 
@@ -253,9 +262,9 @@ floodSignalH env tFSignal@(timestamp, fSignal) = do
             return knownSTM
 
       case (knownIO, fSignal) of
-            (True, _)                  -> return OK
-            (_, NeighbourList painter) -> neighbourListH env painter
-            (_, TextMessage message)   -> textMessageH   env message
+            (True, _)                      -> return OK
+            (_, SendNeighbourList painter) -> neighbourListH env painter
+            (_, TextMessage message)       -> textMessageH   env message
 
 
 
@@ -295,8 +304,11 @@ neighbourListH :: (MonadIO io)
                -> io ServerResponse
 neighbourListH env painter = liftIO $ do
       connectToNode painter $ \(socket, _) -> do
-            putStrLn $ "Connected to painter. TODO: Send something useful."
-            return (undefined env socket) -- TODO.
+            yell 41 $ "Processing painter request"
+            let self = _self env
+            dsns <- Map.keysSet <$> atomically (readTVar (_downstream env))
+            send socket (NeighbourList self dsns)
+      return OK
 
 
 

@@ -8,6 +8,7 @@ module Types.Signal where
 import GHC.Generics (Generic)
 import Control.Concurrent.Async (Async)
 import Text.Printf
+import Data.Set (Set)
 
 import Data.Binary
 import Pipes.Concurrent as P
@@ -73,7 +74,7 @@ data FloodSignal =
 
       -- | Used to send a drawing server a full list of all neighbours. The
       --   address is of the painting server.
-      | NeighbourList To
+      | SendNeighbourList To
 
       deriving (Eq, Ord, Show, Generic)
 
@@ -136,6 +137,10 @@ data SpecialSignal =
       -- | Initiates a handshake, with the goal of adding the recipient as a
       --   downstream neighbour.
       | Handshake
+
+      -- | Own address and list of DSNs sent to the drawing server. Represents
+      --   one node in the network graph.
+      | NeighbourList To (Set To)
 
       deriving (Eq, Ord, Show, Generic)
 

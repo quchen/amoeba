@@ -3,7 +3,11 @@ Amœba
 
 Amœba is a program for setting up a decentralized network. The name comes from the hope that eventually, the network will be so robust that you can poke any of its parts without endangering its overall integrity.
 
+![(Picture missing, uh oh)](doc/network_example.png "81 nodes, 3-6 upstream/downstream neighbours each. Node colour according to betweenness centrality.")
+
 The current development stage is Alpha.
+
+
 
 
 
@@ -50,7 +54,7 @@ Network description
 -------------------
 
 
-![(Picture missing, uh oh)](doc/network.png "Network structure of a small system")
+![(Picture missing, uh oh)](doc/network_schema.png "Network structure of a small system")
 
 The picture shows the network structure of a small Amœba network. Blue arrows are ordinary connections, while red ones stand for local direct connections, used by special network services.
 
