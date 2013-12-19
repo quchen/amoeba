@@ -20,6 +20,8 @@ Planned features
 
 - The network should be as robust as possible against malicious participants.
 
+- Neat live graph drawing to have a global view of the entire network (or at least the nodes choosing to be published).
+
 
 
 
@@ -141,6 +143,22 @@ Documentation
 
 
 
+### Client structure
+
+The picture below sketches the flow of information in a single Amœba client.
+
+- Network connections are shown in red. Nodes first connect to another node's server (dashed red), which then relays them to their own private worker in the target node (by spawning a new worker, yellow dashed), at which point the data flows directly from node to worker.
+
+- Workers take input from upstream nodes and formulate a response based on them. This response is then sent over the internal channels (blue) to the clients.
+
+- Clients have persistent connections to downstream neighbours open (red network connections), and send the instructions received from the channels to them.
+
+- The client pool watches internal databases to determine whether there are enough workers and clients. If not, it instructs existing clients to send requests for further neighbours.
+
+![(Picture missing, uh oh)](doc/information_flow.png "Flow of information in an Amœba client")
+
+
+
 ### The protocol
 
 The protocol type used by Amœba can be found in `src/Types/Signal.hs`. All signals are sent downstream, with one exception where relevant data actually flows upstream. Unless otherwise noted, the server answers signals with a `ServerSignal`, which can basically be `OK` or one of multiple possible errors. A usual request consists of a node sending a signal downstream and waiting for the response, terminating the worker if it is not positive.
@@ -171,19 +189,3 @@ These may help reading the source comments:
 - STC:  Server to client channel
 - STSC: Server to specific client channel
 - USN:  Upstream node, i.e. a neighbouring node the current gets commands sent by.
-
-
-
-### Client structure
-
-The picture below sketches the flow of information in a single Amœba client.
-
-- Network connections are shown in red. Nodes first connect to another node's server (dashed red), which then relays them to their own private worker in the target node (by spawning a new worker, yellow dashed), at which point the data flows directly from node to worker.
-
-- Workers take input from upstream nodes and formulate a response based on them. This response is then sent over the internal channels (blue) to the clients.
-
-- Clients have persistent connections to downstream neighbours open (red network connections), and send the instructions received from the channels to them.
-
-- The client pool watches internal databases to determine whether there are enough workers and clients. If not, it instructs existing clients to send requests for further neighbours.
-
-![(Picture missing, uh oh)](doc/information_flow.png "Flow of information in an Amœba client")
