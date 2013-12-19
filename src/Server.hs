@@ -304,7 +304,7 @@ neighbourListH :: (MonadIO io)
                -> io ServerResponse
 neighbourListH env painter = liftIO $ do
       connectToNode painter $ \(socket, _) -> do
-            toIO env Debug (putStrLn "Processing painter request")
+            atomically (toIO env Debug (putStrLn "Processing painter request"))
             let self = _self env
             dsns <- Map.keysSet <$> atomically (readTVar (_downstream env))
             send socket (NeighbourList self dsns)
