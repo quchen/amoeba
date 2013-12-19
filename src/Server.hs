@@ -190,6 +190,7 @@ specialH :: (MonadIO io)
          -> io ServerResponse
 specialH env from socket signal = case signal of
       BootstrapRequest {} -> illegalBootstrapSignalH env
+      NeighbourList {}    -> illegalNeighbourListSignalH env
       Handshake           -> incomingHandshakeH      env from socket
       HandshakeRequest to -> Client.startHandshakeH  env to >> return OK
                                                                -- ^ Sender doesn't handle
@@ -214,6 +215,14 @@ illegalBootstrapSignalH :: (MonadIO io)
                         -> io ServerResponse
 illegalBootstrapSignalH env =
       illegal env "BootstrapRequest signal received on a normal server"
+
+
+
+illegalNeighbourListSignalH :: (MonadIO io)
+                            => Environment
+                            -> io ServerResponse
+illegalNeighbourListSignalH env =
+      illegal env "NeighbourList signal received on a normal server"
 
 
 

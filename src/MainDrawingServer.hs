@@ -3,16 +3,12 @@
 module Main (main) where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async
 import           Control.Concurrent.STM
-import           Control.Exception
 import           Control.Monad
 import           Data.List (intercalate)
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Data.Set (Set)
-import qualified Data.Set as Set
-import           System.IO
 import           Text.Printf
 import qualified Data.Foldable as F
 
@@ -61,7 +57,7 @@ drawingServer config ioq ldc = do
       forkIO (graphWorker stg)
 
       let port = _serverPort (_nodeConfig config)
-      N.listen (N.Host "127.0.0.1") (show port) $ \(socket, addr) -> do
+      N.listen (N.Host "127.0.0.1") (show port) $ \(socket, _addr) -> do
             let selfTo = To (Node "127.0.0.1" port)
             forkIO (networkAsker (_poolSize config) selfTo ldc)
             incomingLoop ioq stg socket

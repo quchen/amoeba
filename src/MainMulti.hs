@@ -4,21 +4,7 @@
 module Main (main) where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async
-import           Control.Concurrent.STM
-import           Control.Exception
-import           Control.Monad
-import           Data.List (intercalate)
-import           Data.Map (Map)
-import qualified Data.Map as Map
-import           Data.Set (Set)
-import qualified Data.Set as Set
-import           System.IO
 import           Text.Printf
-import qualified Data.Foldable as F
-
-import qualified Pipes.Concurrent as P
-import qualified Network.Simple.TCP as N
 
 import Utilities
 import CmdArgParser (parseBSArgs)
