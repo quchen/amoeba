@@ -9,13 +9,10 @@
 
 module Main where
 
-import Data.IORef
-import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Control.Concurrent hiding (yield)
 import Control.Monad
-import Data.Functor
 import Text.Printf
 
 import Pipes.Network.TCP (Socket)
@@ -26,7 +23,7 @@ import CmdArgParser
 import Utilities
 import Types
 
-import qualified Unsafe as Unsafe
+
 
 main :: IO ()
 main = bootstrapServerMain
@@ -37,21 +34,26 @@ bootstrapServerMain :: IO ()
 bootstrapServerMain = do
 
       -- Preliminaries
-      (nodeConfig, bsConfig) <- parseBSArgs
-      (output, _) <- outputThread (_maxChanSize nodeConfig)
+      bsConfig <- parseBSArgs
+      (output, _) <- outputThread (_maxChanSize (_nodeConfig bsConfig))
 
       -- TODO: Add self to the list of bootstrap servers in the config
 
       -- Node pool
       ldc <- newChan
       terminate <- newEmptyMVar
-      nodePool (_poolSize bsConfig) nodeConfig ldc output terminate
+      nodePool (_poolSize bsConfig)
+               (_nodeConfig bsConfig)
+               ldc
+               output
+               terminate
 
       -- Bootstrap service
       printf "Starting bootstrap server with %d nodes"
              (_poolSize bsConfig)
-      forkIO $ restartLoop terminate
-      bootstrapServer nodeConfig ldc
+      (_rthread, restart) <- restarter (_restartMinimumPeriod bsConfig)
+                                       terminate
+      bootstrapServer bsConfig ldc restart
 
 
 
@@ -61,8 +63,7 @@ bootstrapServerMain = do
 restartLoop :: MVar () -> IO ()
 restartLoop trigger = forever $ do
       delay (3*10^6)
-      yell 34 "restart sent"
-      --yell 34 "RESTART LOOP DISABLED FOR DEBUGGING"
+      yell 44 "restart sent"
       tryPutMVar trigger ()
 
 
@@ -73,64 +74,82 @@ restartLoop trigger = forever $ do
 --
 --   Waits a certain amount of time, and then kills a random pool node when a
 --   new node is bootstrapped.
-restarter :: MVar ()               -- ^ Will kill a pool node when filled
-          -> IO (Async(), MVar ()) -- ^ Thread async, and 'MVar' filled when a
-                                   --   new client is bootstrapped
-restarter trigger = do
+--
+--   Does not block.
+restarter :: Int                  -- ^ Minimum amount of time between
+                                  --   consecutive restarts
+          -> MVar ()              -- ^ Will kill a pool node when filled
+          -> IO (Async (), IO ()) -- ^ Thread async, and action that when
+                                  --   executed restarts a node.
+restarter minPeriod trigger = do
       newClient <- newEmptyMVar
       thread <- async (go newClient)
-      return (thread, newClient)
+      let restart = void (tryPutMVar newClient ())
+      return (thread, restart)
 
       where go c = forever $ do
-                  delay (2*10^6) -- TODO: Read from config
+                  delay minPeriod -- Cooldown TODO: Read from config
                   void (takeMVar c)
-                  putMVar trigger ()
+                  yell 44 "Restart triggered!"
+                  tryPutMVar trigger ()
 
 
 
-bootstrapServer :: Config
+bootstrapServer :: BSConfig
                 -> Chan NormalSignal
+                -> IO () -- ^ Restarting action, see "restarter"
                 -> IO ()
-bootstrapServer config ldc =
+bootstrapServer config ldc restart =
       PN.listen (PN.Host "127.0.0.1")
-                (show $ _serverPort config)
+                (show (_serverPort (_nodeConfig config)))
                 (\(sock, addr) -> do
-                      putStrLn $ "Bootstrap server listening on " ++ show addr
+                      putStrLn ("Bootstrap server listening on " ++ show addr)
                       counter <- newTVarIO 1
-                      bootstrapServerLoop config counter sock ldc)
+                      bootstrapServerLoop config counter sock ldc restart)
 
 
 
-bootstrapServerLoop :: Config  -- ^ Configuration to determine how many requests
-                               --   to send out per new node
-                    -> TVar Integer -- ^ Number of total clients served
-                    -> Socket  -- ^ Socket to listen on for bootstrap requests
-                    -> Chan NormalSignal -- ^  LDC to the node pool
-                    -> IO r
-bootstrapServerLoop config counter serverSock ldc = forever $ do
+bootstrapServerLoop
+      :: BSConfig          -- ^ Configuration to determine how many requests to
+                           --   send out per new node
+      -> TVar Int          -- ^ Number of total clients served
+      -> Socket            -- ^ Socket to listen on for bootstrap requests
+      -> Chan NormalSignal -- ^ LDC to the node pool
+      -> IO ()             -- ^ Restarting action, see "restarter"
+      -> IO r
+bootstrapServerLoop config counter serverSock ldc restartTrigger = forever $ do
 
 
-      -- The first couple of new nodes should not bounce, as there are not
-      -- enough nodes to relay the requests (hence the queues fill up and the
-      -- nodes block indefinitely.
-      count <- atomically $ readTVar counter
-      let config' = if count <= fromIntegral (_minNeighbours config)
-                then config { _bounces = 0 }
-                else config
+      count <- atomically (readTVar counter)
+      let
+          -- The first couple of new nodes should not bounce, as there are not
+          -- enough nodes to relay the requests (hence the queues fill up and the
+          -- nodes block indefinitely.
+          nodeConfig | count <= poolSize = (_nodeConfig config) { _bounces = 0 }
+                     | otherwise         = _nodeConfig config
+
+          -- If nodes are restarted when the server goes up there are
+          -- multi-connections to non-existing nodes, and the network dies off
+          -- after a couple of cycles for some reason. Disable restarting for
+          -- the first couple of nodes.
+          restartMaybe _ | count <= poolSize = return ()
+          restartMaybe c = when (c `rem` (_restartEvery config) == 0)
+                                restartTrigger
+          poolSize = _poolSize config
+
           bootstrapRequestH socket node = do
-                dispatchSignal config' node ldc
+                dispatchSignal nodeConfig node ldc
                 send socket OK
 
-      PN.acceptFork serverSock $ \(clientSock, _clientAddr) ->
+
+      PN.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
             receive clientSock >>= \case
                   Just (BootstrapRequest benefactor) -> do
-                        putStrLn $ "Sending requests on behalf of " ++ show benefactor
+                        putStrLn ("Sending requests on behalf of " ++ show benefactor)
                         bootstrapRequestH clientSock benefactor
-                        count' <- atomically $ do
-                              c <- readTVar counter
-                              modifyTVar counter (+1)
-                              return c
-                        putStrLn $ "Client " ++ show count' ++ " served"
+                        restartMaybe count
+                        putStrLn ("Client " ++ show count ++ " served")
+                        atomically (modifyTVar' counter (+1))
                   Just _other_signal -> do
                         putStrLn "Non-BootstrapRequest signal received"
                   _no_signal -> do
@@ -161,6 +180,3 @@ edgeRequest :: Config
 edgeRequest config to dir = EdgeRequest to edgeData
       where edgeData      = EdgeData dir bounceParam
             bounceParam   = HardBounce (_bounces config)
-
-
-

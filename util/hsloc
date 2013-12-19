@@ -8,4 +8,4 @@ echo -n "Haskell SLOC: "
 #   Then: possibly a comment
 #     Comment: "--" followed by either nothing or by whitespace and arbitrary text
 #   EOL
-find .. -name '*.hs' | xargs cat | sed '/^\s*\(--\(\s\+.*\)\?\)\?$/d'
+find .. -name '*.hs' | xargs cat | sed '/^\s*\(--\(\s\+.*\)\?\)\?$/d' | wc -l

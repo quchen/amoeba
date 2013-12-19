@@ -1,3 +1,17 @@
+-- TODO: Warn/error on bad parameters instead of blindly taking them
+--
+--       - short < medium < long tickrate, timeout > long
+--       - Port should be between 0 and 2^16-1
+--       - poolsize > minneighbours: the BS server can't satisfy itself otherwise
+--       - restartEvery should be larger than 0.
+--           - 1: Every new neighbour triggers a restart (if coolown is over).
+--           - 2: Same as 1, since the restart makes one node reconnect to the
+--                pool
+--           - 3: Every other new node triggers restart
+--               TODO: subtract this offset of 1 everywhereto make configuration
+--                     easier?
+
+
 module CmdArgParser (
         parseNodeArgs
       , parseBSArgs
@@ -10,6 +24,7 @@ import Text.Printf
 import Data.Char (toLower)
 import Text.Read (readEither)
 
+import qualified DefaultConfig as Default
 import qualified Types as T
 
 
@@ -25,10 +40,9 @@ parseNodeArgs = execParser parser
 
 
 
-parseBSArgs :: IO (T.Config, T.BSConfig)
+parseBSArgs :: IO T.BSConfig
 parseBSArgs = execParser parser
-      where parser = info (helper <*> p) infoMod
-            p = (,) <$> nodeConfig <*> bsConfig
+      where parser = info (helper <*> bsConfig) infoMod
             infoMod = mconcat
                   [ fullDesc
                   , progDesc "Amoeba bootstrap server"
@@ -38,31 +52,10 @@ parseBSArgs = execParser parser
 
 
 
--- | Default node configuration, used to set the values of optional parameters.
-defaultNodeConfig :: T.Config
-defaultNodeConfig = T.Config {
-        T._serverPort        = 21000
-      , T._maxNeighbours     = 6
-      , T._minNeighbours     = 3
-      , T._maxChanSize       = 100
-      , T._bounces           = 1
-      , T._acceptP           = 0.5
-      , T._maxSoftBounces    = 10
-      , T._shortTickRate     = 1 * 10^5 `div` 5
-      , T._mediumTickRate    = 3 * 10^5 `div` 5
-      , T._longTickRate      = 10^6     `div` 5
-      , T._poolTimeout       = 5
-      , T._verbosity         = T.Debug -- TODO: Change back to Default for production
-      , T._bootstrapServers  = []
-      }
 
-
-
--- | Default bootstrap server config
-defaultBSConfig :: T.BSConfig
-defaultBSConfig = T.BSConfig {
-        T._poolSize = 5
-      }
+-- #############################################################################
+-- ###  Parsers  ###############################################################
+-- #############################################################################
 
 
 
@@ -81,14 +74,19 @@ nodeConfig = T.Config
      <*> poolTimeout
      <*> verbosity
      <*> pure [] -- TODO: specify bootstrap servers via command line
+     <*> floodMessageCache
+
 
 
 bsConfig :: Parser T.BSConfig
 bsConfig = T.BSConfig
       <$> poolSize
+      <*> restartEvery
+      <*> restartMinimumPeriod
+      <*> nodeConfig
 
 
--- TODO: ensure epositive
+
 port :: Parser Int
 port = (option . mconcat)
       [ long    "port"
@@ -99,51 +97,87 @@ port = (option . mconcat)
 
 
 
+restartEvery :: Parser Int
+restartEvery = (nullOption . mconcat)
+      [ reader positive
+      , long    "restart-every"
+      , showDefault
+      , value   (T._restartEvery Default.bsConfig)
+      , metavar "(Int > 0)"
+      , help    "Restart a random pool node every n new nodes. (Note that a restart is one new node by itself already.)"
+      ]
+
+
+
+restartMinimumPeriod :: Parser Int
+restartMinimumPeriod = (nullOption . mconcat)
+      [ reader positive
+      , long    "restart-minperiod"
+      , showDefault
+      , value   (T._restartMinimumPeriod Default.bsConfig)
+      , metavar "[ms]"
+      , help    "Restart a random pool node every n new nodes. (Note that a restart is one new node by itself already.)"
+      ]
+
+
+
 poolSize :: Parser Int
-poolSize = (option . mconcat)
-      [ long    "poolsize"
+poolSize = (nullOption . mconcat)
+      [ reader positive
+      , long    "poolsize"
       , short   'n'
-      , metavar "<INT > 0>"
+      , showDefault
+      , value   (T._poolSize Default.bsConfig)
+      , metavar "(Int > 0)"
       , help    "Number of nodes in the pool"
       ]
 
 
 
--- TODO: ensure epositive
 minNeighbours :: Parser Int
 minNeighbours = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._maxNeighbours defaultNodeConfig)
+      , value   (T._maxNeighbours Default.nodeConfig)
       , long    "maxn"
-      , metavar "<INT > 0>"
+      , metavar "(Int > 0)"
       , help    "Minimum amount of neighbours (up-/downstream separate)"
       ]
 
 
 
--- TODO: ensure epositive
 maxNeighbours :: Parser Int
 maxNeighbours = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._minNeighbours defaultNodeConfig)
+      , value   (T._minNeighbours Default.nodeConfig)
       , long    "minn"
-      , metavar "<INT > 0>"
+      , metavar "(Int > 0)"
       , help    "Maximum amount of neighbours (up-/downstream separate)"
       ]
 
 
 
--- TODO: ensure epositive
 maxChanSize :: Parser Int
 maxChanSize = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._maxChanSize defaultNodeConfig)
+      , value   (T._maxChanSize Default.nodeConfig)
       , long    "chansize"
-      , metavar "<INT > 0>"
+      , metavar "(Int > 0)"
       , help    "Maximum communication channel size"
+      ]
+
+
+
+floodMessageCache :: Parser Int
+floodMessageCache = (nullOption . mconcat)
+      [ reader nonnegative
+      , showDefault
+      , value   (T._floodMessageCache Default.nodeConfig)
+      , long    "floodcache"
+      , metavar "(Int >= 0)"
+      , help    "Number of past flood messages to cache"
       ]
 
 
@@ -152,9 +186,9 @@ bounces :: Parser Word
 bounces = (nullOption . mconcat)
       [ reader nonnegative
       , showDefault
-      , value   (T._bounces defaultNodeConfig)
+      , value   (T._bounces Default.nodeConfig)
       , long    "bounces"
-      , metavar "<INT >= 0>"
+      , metavar "(Int >= 0)"
       , help    "Minimum edge search hard bounces"
       ]
 
@@ -164,9 +198,9 @@ maxSoftBounces :: Parser Word
 maxSoftBounces = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._maxSoftBounces defaultNodeConfig)
+      , value   (T._maxSoftBounces Default.nodeConfig)
       , long    "hbounce"
-      , metavar "<INT > 0>"
+      , metavar "(Int > 0)"
       , help    "Maximum edge search soft bounces"
       ]
 
@@ -176,14 +210,14 @@ acceptP :: Parser Double
 acceptP = (nullOption . mconcat)
       [ reader probability
       , showDefault
-      , value   (T._acceptP defaultNodeConfig)
+      , value   (T._acceptP Default.nodeConfig)
       , long    "acceptp"
-      , metavar "<0 < p <= 1>"
+      , metavar "(0 < p <= 1)"
       , help    "Edge request soft bounce acceptance probability"
       ]
 
 
--- | Function to get s/m/l tickrate parser. Example use:
+-- | Generate s/m/l tickrate parser. Example use:
 --
 --   > tickRate 's' "short"  T._shortTickRate
 tickRate :: Char              -- ^ short parameter name
@@ -193,9 +227,9 @@ tickRate :: Char              -- ^ short parameter name
 tickRate shortName name getter = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (getter defaultNodeConfig)
+      , value   (getter Default.nodeConfig)
       , long    (shortName : "tick")
-      , metavar "MILLISECONDS"
+      , metavar "[ms]"
       , help    ("Tick rate of " ++ name ++ " loops")
       ]
 
@@ -205,9 +239,9 @@ poolTimeout :: Parser Double
 poolTimeout = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._poolTimeout defaultNodeConfig)
+      , value   (T._poolTimeout Default.nodeConfig)
       , long    "timeout"
-      , metavar "SECONDS"
+      , metavar "[s]"
       , help    "Timeout threshold"
       ]
 
@@ -216,15 +250,23 @@ poolTimeout = (nullOption . mconcat)
 verbosity :: Parser T.Verbosity
 verbosity = (nullOption . mconcat)
       [ reader readVerbosity
-      , value   (T._verbosity defaultNodeConfig)
+      , value   (T._verbosity Default.nodeConfig)
       , long    "verbosity"
-      , metavar "<mute|quiet|default|debug|chatty>"
+      , metavar "(mute|quiet|default|debug|chatty)"
       , help    "Verbosity level, increasing from left to right"
       ]
 
 
 
--- | 0 <= p <= 1
+
+
+-- #############################################################################
+-- ###  Readers  ###############################################################
+-- #############################################################################
+
+
+
+-- | Numerical value between 0 and 1 (inclusive)
 probability :: (Num a, Ord a, Read a) => String -> ReadM a
 probability x = case readEither x of
       Right y | y >= 0 && y <= 1 -> pure y
@@ -233,6 +275,7 @@ probability x = case readEither x of
 
 
 
+-- | Strictly positive numerical value
 positive :: (Num a, Ord a, Read a) => String -> ReadM a
 positive x = case readEither x of
       Right y | y > 0 -> pure y
@@ -241,6 +284,7 @@ positive x = case readEither x of
 
 
 
+-- | Non-negative numerical value
 nonnegative :: (Num a, Ord a, Read a) => String -> ReadM a
 nonnegative x = case readEither x of
       Right y | y >= 0 -> pure y

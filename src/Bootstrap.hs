@@ -11,7 +11,6 @@ module Bootstrap (bootstrap) where
 import Control.Exception
 import GHC.IO.Exception (ioe_description)
 import Data.Typeable
-import Control.Monad
 import Text.Printf
 
 import Types

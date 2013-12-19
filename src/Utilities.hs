@@ -37,7 +37,6 @@ module Utilities (
 
       -- * Pipe-based communication channels
       , spawn
-      , getBroadcastOutput
       , outputThread
 ) where
 
@@ -49,15 +48,12 @@ import           Control.Applicative
 import           Control.Exception
 import           Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteString as BS
-import qualified Data.Foldable as F
-import           Data.Map (Map)
 import qualified Data.Map as Map
 import           System.Timeout
 
 import           Pipes
 import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
-import qualified Pipes.Network.TCP as PN
 import qualified Network.Simple.TCP as N
 import qualified Network.Socket.ByteString as NSB
 import qualified Pipes.Binary as P
@@ -139,8 +135,8 @@ sender s = encodeMany >-> toSocketTimeout (3*10^6) s -- TODO: Don't hardcode tim
 
 
 
--- | Same as 'PN.toSocketTimeout', but returns '()' instead of throwing an
---   'IOError' on timeout.
+-- | Same as "PN.toSocketTimeout", but returns "Timeout" instead of throwing an
+--   "IOError".
 toSocketTimeout :: (MonadIO io)
                 => Int
                 -> N.Socket
@@ -154,7 +150,7 @@ toSocketTimeout t socket = loop where
 
 
 
--- | Continuously receive and decode data from a 'N.Socket'.
+-- | Continuously receive and decode data from a "N.Socket".
 --
 --   Returns if the connection is closed, times out, or decoding fails.
 receiver :: (MonadIO io, Binary b)
@@ -171,8 +167,8 @@ receiver s = decoded >-> dataOnly
 
 
 
--- | Same as 'PN.fromSocketTimeout', but issues 'ServerResponse' instead of
---   throwing an 'IOError'.
+-- | Same as "PN.fromSocketTimeout", but issues "ServerResponse" instead of
+--   throwing an "IOError".
 fromSocketTimeout :: (MonadIO io)
                   => Int
                   -> N.Socket
@@ -190,7 +186,7 @@ fromSocketTimeout t socket nBytes = loop where
 
 
 
--- | Receives a single piece of 'Binary' data from a 'N.Socket'.
+-- | Receives a single piece of "Binary" data from a "N.Socket".
 receive :: (MonadIO io, Binary b)
         => N.Socket
         -> io (Maybe b)
@@ -198,7 +194,7 @@ receive s = runEffect $ (P.head . void . receiver) s
 
 
 
--- | Sends a single piece of data to a 'N.Socket'.
+-- | Sends a single piece of data to a "N.Socket".
 send :: (MonadIO io, Binary b)
      => N.Socket
      -> b
@@ -207,7 +203,7 @@ send s x = runEffect $ yield x >-> void (sender s)
 
 
 
--- | Sends a single piece of data to a 'N.Socket', and waits for a response.
+-- | Sends a single piece of data to a "N.Socket", and waits for a response.
 request :: (MonadIO io, Binary a, Binary b)
         => N.Socket
         -> a
@@ -216,8 +212,8 @@ request s x = send s x >> receive s
 
 
 
--- | Continuously encodes the given 'Bin.Binary' instance and sends each result
---   downstream in 'BS.ByteString' chunks.
+-- | Continuously encodes the given "Bin.Binary" instance and sends each result
+--   downstream in "BS.ByteString" chunks.
 --
 --   (Sent a pull request to Pipes-Binary for adding this.)
 encodeMany :: (Monad m, Binary x) => Pipe x BS.ByteString m r
@@ -249,16 +245,16 @@ yell n text = liftIO . putStrLn $
 
 
 
--- | Identical to 'P.spawn\'', but uses the typesfe 'PChan' type instead of
---   '(,,)'.
+-- | Identical to "P.spawn'", but uses the typesfe "PChan" type instead of
+--   "(,,)".
 spawn :: P.Buffer a -> IO (PChan a)
 spawn buffer = toPChan <$> P.spawn' buffer
       where toPChan (output, input, seal) = PChan output input seal
 
 
 
--- | Concurrently run multiple IO actions, and wait for the first 'Async' to
---   complete. If one of them returns or throws, all others are 'cancel'ed.
+-- | Concurrently run multiple IO actions, and wait for the first "Async" to
+--   complete. If one of them returns or throws, all others are "cancel"ed.
 asyncMany :: [IO ()] -> IO ()
 asyncMany [] = return ()
 asyncMany (io:ios) = withAsync io $ \a -> do
@@ -267,17 +263,8 @@ asyncMany (io:ios) = withAsync io $ \a -> do
 
 
 
--- | Retrieves all STSC (server-to-single-client) 'P.Output's and concatenates
---   them to a single broadcast channel.
-getBroadcastOutput :: Environment
-                   -> STM (P.Output NormalSignal)
-getBroadcastOutput env =
-      F.foldMap (_pOutput . _stsc) <$> readTVar (_downstream env)
-
-
-
--- | Set up the decicated IO thread. Forks said thread, and returns a 'TBQueue'
---   to it, along with the 'Async' of the thread (which may be useful for
+-- | Set up the decicated IO thread. Forks said thread, and returns a "TBQueue"
+--   to it, along with the "Async" of the thread (which may be useful for
 --   cancelling it).
 outputThread :: Int           -- ^ Thread size
              -> IO ( IOQueue  -- Channel
@@ -290,7 +277,7 @@ outputThread size = do
 
 
 
--- | Catches all exceptions, 'yell's their contents, and rethrows them.
+-- | Catches all exceptions, "yell"s their contents, and rethrows them.
 yellAndRethrow :: (MonadIO io)
                => Int
                -> (String -> String) -- ^ Modify error message, e.g. (++ "foo")
@@ -302,7 +289,7 @@ yellAndRethrow n f = liftIO . handle handler
 
 
 
--- | 'MonadIO' version of 'threadDelay'.
+-- | "MonadIO" version of "threadDelay".
 delay :: MonadIO io => Int -> io ()
 delay = liftIO . threadDelay
 
@@ -310,7 +297,7 @@ delay = liftIO . threadDelay
 
 -- | Determine the current size of a database
 dbSize :: Environment
-       -> (Environment -> TVar (Map.Map k a)) -- '_upstream' or '_downstream'
+       -> (Environment -> TVar (Map.Map k a)) -- _upstream or _downstream
        -> STM Int
 dbSize env db = Map.size <$> readTVar (db env)
 
@@ -336,7 +323,7 @@ mergeLists (x:xs) ys = x : mergeLists ys xs
 -- | Check whether a connection to a certain node is allowed. A node must not
 --   connect to itself or to known neighbours multiple times.
 --
---   Due to the fact that an 'EdgeRequest' does not contain the upstream address
+--   Due to the fact that an "EdgeRequest" does not contain the upstream address
 --   of the connection to be established, it cannot be checked whether the node
 --   is already an upstream neighbour directly; timeouts will have to take care
 --   of that.

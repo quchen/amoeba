@@ -10,12 +10,10 @@ import Control.Concurrent.Async
 import qualified Data.Foldable as F
 import qualified Data.Traversable as T
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import Data.Maybe
 import Control.Applicative
 import Control.Monad
 import Data.Monoid
-import Text.Printf
 
 import qualified Pipes.Concurrent as P
 
@@ -33,26 +31,6 @@ dsnHousekeeping env = forever $ do
       cleanupDsn    env t
       sendKeepAlive env t
       delay (_mediumTickRate (_config env))
-
-
-
--- | Remove timed out upstream nodes (USNs). Timestamps are updated by the
---   server every time a signal is received and accepted.
-cleanupUsn :: Environment -> Timestamp -> IO ()
-cleanupUsn env (Timestamp now) = atomically $ do
-      let timedOut (Timestamp t) = now - t > (_poolTimeout . _config) env
-      (dead, alive) <- Map.partition timedOut <$> readTVar (_upstream env)
-
-      -- Keep only alive USNs
-      writeTVar (_upstream env) alive
-
-      -- Log message about dead USNs
-      let numDead = Map.size dead
-      when (_verbosity (_config env) >= Debug && numDead > 0) $ do
-            toIO env Debug $
-                  printf "%d timed out upstream neighbour%s removed\n"
-                         numDead
-                         (pluralS numDead)
 
 
 
@@ -123,27 +101,29 @@ sendKeepAlive env (Timestamp now) = do
 --   If it is in the DB, periodically check whether this hasn't changed.
 workerWatcher :: Environment -> From -> ThreadId -> IO ()
 workerWatcher env from tid =
-      race waitForEntry gracePeriod >>= \case
-            Left  _ -> watch
-            Right _ -> kill
+      race (delay tickrate) waitForEntry >>= \case
+            Left  _ -> kill
+            Right _ -> watch
 
 
       where waitForEntry = atomically $ do
-                  known <- fmap (Map.member from) (readTVar (_upstream env))
+                  known <- fmap (Map.member from) (readTVar usnDB)
                   when (not known) retry
 
-            gracePeriod = delay t
+            tickrate = _longTickRate (_config env)
 
-            kill = do
-                  atomically $ modifyTVar (_upstream env) (Map.delete from)
-                  killThread tid
+            timeout = _poolTimeout (_config env)
 
-            watch = do
-                  delay t
-                  makeTimestamp >>= cleanupUsn env
-                  known <- atomically $ fmap (Map.member from)
-                                             (readTVar (_upstream env))
-                  if known then watch
-                           else kill
+            usnDB = _upstream env
 
-            t = (_longTickRate . _config) env
+            isTimedOut (Timestamp now) =
+                  let check (Just (Timestamp past)) = now - past > timeout
+                      check _ = True
+                  in  atomically (check . Map.lookup from <$> readTVar usnDB)
+
+            watch = delay tickrate >> makeTimestamp >>= isTimedOut >>= \case
+                          True  -> kill
+                          False -> watch
+
+            kill = do atomically (modifyTVar usnDB (Map.delete from))
+                      killThread tid

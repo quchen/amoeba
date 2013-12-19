@@ -11,17 +11,16 @@
 module Server (server) where
 
 import           Control.Concurrent.Async
-import           Control.Concurrent (ThreadId, killThread, forkIO)
+import           Control.Concurrent (forkIO)
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
 import           Control.Applicative
-import           Data.IORef
-import           System.Timeout
 import           System.Random
 import           Text.Printf
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.Foldable as F
 
 import           Pipes
 import qualified Pipes.Prelude as P
@@ -35,9 +34,6 @@ import Utilities
 import Client
 import Housekeeping
 import ClientPool (isRoomIn)
-
-import qualified Unsafe as Unsafe
-
 
 
 
@@ -94,10 +90,7 @@ worker env from socket =
             -- one was an error. In other words it's similar P.takeWhile, but
             -- passes on the first failing element before returning it.
             terminator :: (MonadIO io)
-                       => Pipe ServerResponse
-                               ServerResponse
-                               io
-                               ServerResponse
+                       => Pipe ServerResponse ServerResponse io ServerResponse
             terminator = do
                   signal <- await
                   yield signal
@@ -105,17 +98,18 @@ worker env from socket =
                         OK  -> terminator
                         err -> return err
 
-            release = atomically $ modifyTVar (_upstream env) (Map.delete from)
+            release = atomically (modifyTVar (_upstream env)
+                                             (Map.delete from))
 
 
--- | Handles 'Signal's coming in from the LDC (local direct connection).
---   Used by node pools.
+-- | Handles "Signal"s coming in from the LDC (local direct connection).
+--   Used by node pools; only accepts a handful of signals.
 workerLdc :: (MonadIO io)
           => Environment
           -> io ()
 workerLdc env@(_ldc -> Just pChan) =
 
-      runEffect $ input >-> dispatch >-> discard
+      runEffect (input >-> dispatch >-> discard)
 
       where input :: (MonadIO io) => Producer NormalSignal io ()
             input = P.fromInput (_pInput pChan)
@@ -133,18 +127,12 @@ workerLdc env@(_ldc -> Just pChan) =
             -- This is a bit of a hack of course. The dispatch pipe above is
             -- built from Producers, so their re-emitted server responses have
             -- to be destroyed.
-            discard :: (Monad m) => Consumer a m () -- TODO: why () and not r?
+            discard :: (Monad m) => Consumer a m r
             discard = forever await
 
 workerLdc _ = return ()
 
 
-
--- | Handler for normally issued normal signals, as sent by an upstream
---   neighbour. This handler will check whether the sender is a valid upstream
---   neighbour, update timestamps etc. (An example for an abnormally issued
---   normal signal is one encapsulated in a bootstrap request, which will be
---   processed differently.)
 
 -- | Handle normal signals, as sent by an upstream neighbour. ("non-normal"
 --   signals include bootstrap requests and the like.)
@@ -153,10 +141,11 @@ normalH :: (MonadIO io)
         -> From
         -> NormalSignal
         -> io ServerResponse
-normalH env from signal = liftIO $ do
-      usn <- atomically $ isUsn env from
-      if usn
-            then do
+normalH env from signal = liftIO $
+      atomically (isUsn env from) >>= \case True  -> continue
+                                            False -> deny
+
+      where continue = do
                   result <- case signal of
                         EdgeRequest to edge  -> edgeBounceH   env to edge
                         Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
@@ -164,9 +153,11 @@ normalH env from signal = liftIO $ do
                         ShuttingDown         -> shuttingDownH env from
                   when (result == OK) (updateTimestamp env from)
                   return result
-            else do atomically . toIO env Debug . putStrLn $
-                          "Illegally contacted by " ++ show from ++ "; ignoring"
-                    return Ignore
+
+            deny = do
+                  atomically . toIO env Debug . putStrLn $
+                        "Illegally contacted by " ++ show from ++ "; ignoring"
+                  return Ignore
 
 
 
@@ -185,12 +176,12 @@ updateTimestamp :: MonadIO io
                 -> io ()
 updateTimestamp env from = liftIO $ do
       t <- makeTimestamp
-      atomically $ modifyTVar (_upstream env)
-                              (Map.adjust (const t) from)
+      atomically (modifyTVar (_upstream env)
+                             (Map.adjust (const t) from))
 
 
 
--- | Handler for special signals, such as 'BootstrapRequest's and 'Handshake's.
+-- | Handler for special signals, such as "BootstrapRequest"s and "Handshake"s.
 specialH :: (MonadIO io)
          => Environment
          -> From
@@ -207,7 +198,7 @@ specialH env from socket signal = case signal of
 
 
 
--- | Print a log message and generate an 'Illegal' 'ServerResponse'.
+-- | Print a log message and generate an "Illegal" "ServerResponse".
 illegal :: (MonadIO io)
         => Environment
         -> String
@@ -228,7 +219,7 @@ illegalBootstrapSignalH env =
 
 -- | Acknowledges an incoming KeepAlive signal, which is effectively a no-op,
 --   apart from that it (like any other signal) refreshes the "last heard of
---   timestamp" via the check in 'normalH'.
+--   timestamp" via the check in "normalH".
 keepAliveH :: (MonadIO io)
            => Environment
            -> From
@@ -241,7 +232,7 @@ keepAliveH env from = liftIO $ do
 
 
 
--- | Check whether a 'FloodSignal' has already been received; execute and
+-- | Check whether a "FloodSignal" has already been received; execute and
 --   redistribute it if not.
 floodSignalH :: (MonadIO io)
              => Environment
@@ -252,11 +243,13 @@ floodSignalH env tFSignal@(timestamp, fSignal) = do
       knownIO <- liftIO . atomically $ do
             knownSTM <- Set.member tFSignal <$> readTVar (_handledFloods env)
             when (not knownSTM) $ do
-                  modifyTVar (_handledFloods env) (Set.insert tFSignal)
+                  modifyTVar (_handledFloods env)
+                             (prune . Set.insert tFSignal)
 
                   -- Broadcast message to all downstream neighbours
-                  broadcast <- getBroadcastOutput env
-                  void $ P.send broadcast (Flood timestamp fSignal)
+                  broadcast <- broadcastOutput env
+                  void (P.send broadcast
+                               (Flood timestamp fSignal))
 
             return knownSTM
 
@@ -264,6 +257,24 @@ floodSignalH env tFSignal@(timestamp, fSignal) = do
             (True, _)                  -> return OK
             (_, NeighbourList painter) -> neighbourListH env painter
             (_, TextMessage message)   -> textMessageH   env message
+
+
+
+      where -- Delete the oldest entry if the DB is full
+            prune :: Set.Set a -> Set.Set a
+            prune db | Set.size db > dbMaxSize = Set.deleteMin db
+                     | otherwise               = db
+
+            dbMaxSize = _floodMessageCache (_config env)
+
+
+
+-- | Retrieve all STSC (server-to-single-client) "P.Output"s and concatenate
+--   them to a single broadcast channel.
+broadcastOutput :: Environment
+                -> STM (P.Output NormalSignal)
+broadcastOutput env =
+      F.foldMap (_pOutput . _stsc) <$> readTVar (_downstream env)
 
 
 
@@ -286,7 +297,7 @@ neighbourListH :: (MonadIO io)
 neighbourListH env painter = liftIO $ do
       connectToNode painter $ \(socket, _) -> do
             putStrLn $ "Connected to painter. TODO: Send something useful."
-            return undefined -- TODO.
+            return (undefined env socket) -- TODO.
 
 
 
@@ -296,10 +307,10 @@ shuttingDownH :: (MonadIO io)
               -> From
               -> io ServerResponse
 shuttingDownH env from = liftIO . atomically $ do
-      modifyTVar (_upstream env) (Map.delete from)
       toIO env Debug . putStrLn $
             "Shutdown notice from " ++ show from
       return ConnectionClosed
+      -- Cleanup of the USN DB happens when the worker shuts down
 
 
 
@@ -350,7 +361,7 @@ edgeBounceH env origin (EdgeData dir (HardBounce 0)) =
 edgeBounceH env origin (EdgeData dir (HardBounce n)) = liftIO $ do
 
       let buildSignal = EdgeRequest origin . EdgeData dir
-          nMax = _bounces $ _config env
+          nMax = _bounces (_config env)
 
       atomically $ do
 
@@ -521,25 +532,29 @@ incomingHandshakeH :: (MonadIO io)
 incomingHandshakeH env from socket = liftIO $ do
       timestamp <- makeTimestamp
 
-      isRoom' <- atomically $ do
-            isRoom <- isRoomIn env _upstream
-            -- Reserve slot temporarily
-            when isRoom
-                 (modifyTVar (_upstream env)
-                             (Map.insert from timestamp))
-            return isRoom
+      proceed <- atomically $ do
 
-      result <- if isRoom'
+            isRoom <- isRoomIn env _upstream
+
+            -- Check for previous membership, just in case this method is called
+            -- twice concurrently for some odd reason TODO: can this happen?
+            -- This is an STM block after all
+            alreadyKnown <- Map.member from <$> readTVar (_upstream env)
+
+            let p = isRoom && not alreadyKnown
+
+            -- Reserve slot. Cleanup happens when the worker shuts down because
+            -- of a non-OK signal.
+            when p (modifyTVar (_upstream env)
+                               (Map.insert from timestamp))
+            return p
+
+      if proceed
             then send socket OK >> receive socket >>= \case
                   Just OK -> return OK
-                  x -> (return . Error) ("Incoming handshake denied:\
-                                         \ server response <" ++ show x ++ ">")
-            else (return . Error) "No room for another USN"
+                  x -> (return . Error) (errMsg x)
+            else (return . Error) errNoRoom
 
-      case result of
-            OK -> return OK
-            x -> atomically $ do
-                  -- Remove temporary slot again on failure
-                  modifyTVar (_upstream env)
-                             (Map.delete from)
-                  return x
+      where errMsg x = "Incoming handshake denied:\
+                       \ server response <" ++ show x ++ ">"
+            errNoRoom = "No room for another USN"
