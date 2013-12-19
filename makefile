@@ -1,6 +1,7 @@
 # Filenames
 MAIN_NODE = amoeba
 MAIN_BS = bootstrap
+MAIN_DRAW = drawing
 SRC = src
 DOC = doc
 
@@ -17,6 +18,9 @@ HLINT = hlint --colour
 PAGER = less -R
 
 
+SHELL = bash
+
+
 
 
 
@@ -24,24 +28,36 @@ PAGER = less -R
 RELEASE_FLAGS = $(OPTIMIZE) $(WARN)
 .PHONY : release
 release :
+	@echo -e "\e[32mSingle client\e[0m"
 	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_NODE) $(SRC)/Main.hs
-	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
+	@echo -e "\e[32mBootstrap server\e[0m"
+	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
+	@echo -e "\e[32mDrawing server\e[0m"
+	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_DRAW) $(SRC)/MainDrawingServer.hs
 
 
 # Fully optimize with profiling support
 PROF_FLAGS = $(OPTIMIZE) $(PROF)
 .PHONY : prof
 prof :
+	@echo -e "\e[32mSingle client\e[0m"
 	$(GHC) $(PROF_FLAGS) -o $(MAIN_NODE) $(SRC)/Main.hs
-	$(GHC) $(PROF_FLAGS) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
+	@echo -e "\e[32mBootstrap server\e[0m"
+	$(GHC) $(PROF_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
+	@echo -e "\e[32mDrawing server\e[0m"
+	$(GHC) $(PROF_FLAGS) -o $(MAIN_DRAW) $(SRC)/MainDrawingServer.hs
 
 
 # Minimize compilation time
 FAST_FLAGS =
 .PHONY : fast
 fast :
+	@echo -e "\e[32mSingle client\e[0m"
 	$(GHC) $(FAST_FLAGS) -o $(MAIN_NODE) $(SRC)/Main.hs
-	$(GHC) $(FAST_FLAGS) -o $(MAIN_BS) $(SRC)/MainBootstrapServer.hs
+	@echo -e "\e[32mBootstrap server\e[0m"
+	$(GHC) $(FAST_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
+	@echo -e "\e[32mDrawing server\e[0m"
+	$(GHC) $(FAST_FLAGS) -o $(MAIN_DRAW) $(SRC)/MainDrawingServer.hs
 
 
 # Documentation
@@ -63,5 +79,6 @@ clean :
 	find $(SRC) -name "*.o" -delete
 	rm -f $(MAIN_NODE)
 	rm -f $(MAIN_BS)
+	rm -f $(MAIN_DRAW)
 	rm -f $(DOC)/information_flow.png
 	rm -f $(DOC)/network.png
