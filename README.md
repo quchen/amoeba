@@ -1,9 +1,11 @@
-Amoeba
+Amœba
 ======
 
-Amoeba is a program for setting up a decentralized network. The name comes from the hope that eventually, the network will be so robust that you can poke any of its parts without endangering its overall integrity.
+Amœba is a program for setting up a decentralized network. The name comes from the hope that eventually, the network will be so robust that you can poke any of its parts without endangering its overall integrity.
 
-The current development stage is Alpha. The basic functionality is there, but it's far from being feature complete. It's fairly easy to start a network when you know how, however *no exceptions are caught*, so if there's an error the entire program crashes.
+The current development stage is Alpha.
+
+
 
 
 
@@ -12,9 +14,8 @@ Planned features
 
 - Every node only knows about its immediate neighbours. Unless explicitly added, the origin of a signal sent over the network is untraceable (from within the program; timing attacks still apply).
 
-- Highly concurrent actors (spawning a thread for pretty even relatively small sub-tasks)
+- The network should be as robust as possible against malicious participants.
 
-- Robustness: make it hard to harm the network no matter what crap you throw at it
 
 
 
@@ -25,9 +26,9 @@ Research goals
 
   - How connected does the network have to be to allow certain portions of it to go down without clustering?
 
-  - How long does a new (flood) message need to reach the entire network?
+  - How effective do messages propagate?
 
-  - What are the timescales for bootstrapping the network, (adding|removing) (a node | many nodes)?
+  - What are the timescales for bootstrapping the network, adding or removing one node or many nodes?
 
 - Network integrity
 
@@ -39,7 +40,7 @@ Research goals
 
   - What size of a network can a single computer handle? (In particular my Raspi) :-)
 
-  - Heal nodes as quickly as possible in case something happens to all their neighbourssssssssss
+  - Heal nodes as quickly as possible in case something happens to all their neighbours
 
 
 
@@ -47,6 +48,12 @@ Research goals
 
 Network description
 -------------------
+
+
+![(Picture missing, uh oh)](doc/network.png "Network structure of a small system")
+
+The picture shows the network structure of a small Amœba network. Blue arrows are ordinary connections, while red ones stand for local direct connections, used by special network services.
+
 
 ### Normal nodes
 
@@ -84,6 +91,8 @@ The drawing server's purpose is creating a map of the network to study its struc
 
 
 
+
+
 Known vulnerabilities and immunities
 ------------------------------------
 
@@ -101,6 +110,8 @@ This is a list of known and feasible attacks on the current design:
 
   - Node crawling: Although nodes only retain the addresses of downstream neighbours (remember the upstream connection is one-way, clients will not send or handle signals issued the wrong way), EdgeRequest signals carry valid server addresses and traverse a large part of the network before they are accepted. Specialized nodes could simply store all valid addresses they encounter. This is completely undetectable by other nodes and, while not dangerous on its own, can lead to a large knowledge about the network. The node database could be shared with malicious nodes that could harness that information for attacks on the network.
 
+  - There is no message size limit at the moment. A node will read incoming data until the connection for a single signal times out.
+
 - Malicious sub-networks
 
   - Nodes accepting all EdgeRequest signals they encounter can build up a connection to a large portion of the network
@@ -115,17 +126,60 @@ This is a list of known and feasible attacks on the current design:
 
 - Malicious swarms - right now it's trivial to spawn thousands of new nodes simultaneously, even from within a single program. No matter how many honest nodes there are, it is very easy to drown them in a network controlled by a few actors behaving like they are many.
 
-- Killing all bootstrap servers makes it impossible to discover the network
+- Killing all bootstrap servers makes it impossible to discover the network.
 
 
 
-Terminology
------------
+
+
+Documentation
+-------------
+
+
+
+### The protocol
+
+The protocol type used by Amœba can be found in `src/Types/Signal.hs`. All signals are sent downstream, with one exception where relevant data actually flows upstream. Unless otherwise noted, the server answers signals with a `ServerSignal`, which can basically be `OK` or one of multiple possible errors. A usual request consists of a node sending a signal downstream and waiting for the response, terminating the worker if it is not positive.
+
+Signals are divided in two main groups, normal and special. Normal signals are what usual nodes routinely use:
+
+- `EdgeRequest` contains information for establishing a new edge in the network
+- `KeepAlive` is sent in case there haven't been any useful signals, but the connection should not time out
+- `ShuttingDown` is sent as a courtesy to other nodes, so they can remove a terminating node before the timeout kicks in
+- `Flood` signals are distributed to every node in the network. Current instances are text messages and one to draw the network.
+
+Normal signals are filtered: only when they're coming from known upstream nodes they are processed. Special signals circumvent this, as some processes inherently require unknown nodes to establish connections.
+
+- `BootstrapRequest` is sent to the bootstrap server, and instructs it to send out `EdgeRequest`s on behalf of the contacting node.
+- `Handshake` is what actually establishes a new connection. Sent to a new downstream neighbour, it adds the issuer to its list of known nodes and answers with `OK`; the issuer then does its own bookkeeping, and answers back `OK` as well, finalizing the deal with mutual agreement.
+- `HandshakeRequest`s prompt another node to send back a `Handshake`. This allows `Handshake` to be used to establish incoming connections, not just outgoing ones by sending it directly.
+
+
+
+### Terminology, abbreviations
+
+These may help reading the source comments:
 
 - _foo: Accessor functions that don't do any computation otherwise
 - DSN:  Downstream node, i.e. a neighbouring node the current sends commands do.
-- LDC:  Local direct connection. Used by the node pool to send signals directly to its nodes.
+- LDC:  Local direct connection. Used by the node pool to send signals directly to its nodes instead of taking a detour over the network.
 - ST1C: Server to one (unspecified/arbitrary) client channel
 - STC:  Server to client channel
 - STSC: Server to specific client channel
 - USN:  Upstream node, i.e. a neighbouring node the current gets commands sent by.
+
+
+
+### Client structure
+
+The picture below sketches the flow of information in a single Amœba client.
+
+- Network connections are shown in red. Nodes first connect to another node's server (dashed red), which then relays them to their own private worker in the target node (by spawning a new worker, yellow dashed), at which point the data flows directly from node to worker.
+
+- Workers take input from upstream nodes and formulate a response based on them. This response is then sent over the internal channels (blue) to the clients.
+
+- Clients have persistent connections to downstream neighbours open (red network connections), and send the instructions received from the channels to them.
+
+- The client pool watches internal databases to determine whether there are enough workers and clients. If not, it instructs existing clients to send requests for further neighbours.
+
+![(Picture missing, uh oh)](doc/information_flow.png "Flow of information in an Amœba client")

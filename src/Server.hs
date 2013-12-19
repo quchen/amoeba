@@ -2,322 +2,318 @@
 --   distributes the responses to the clients.
 --
 --   The suffix 'H' stands for 'Handler', which is a function that reacts
---   directly to an incoming signal's instructions. (Contrary to that, helper
---   functions invoked inside handlers don't have a special name.)
-
--- TODO: Refactor the edge accepting functions, a lot of that code is duplicated
+--   directly to an incoming signal's instructions.
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Server (
-      startServer
-) where
+module Server (server) where
 
 import           Control.Concurrent.Async
+import           Control.Concurrent (forkIO)
 import           Control.Concurrent.STM
-import           Control.Exception (finally, bracket)
+import           Control.Exception
 import           Control.Monad
-import           Data.Functor
-import           Network
-import           System.IO
+import           Control.Applicative
 import           System.Random
 import           Text.Printf
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.Foldable as F
 
+import           Pipes
+import qualified Pipes.Prelude as P
+import qualified Pipes.Concurrent as P
+import           Pipes.Network.TCP (Socket)
+import qualified Pipes.Network.TCP as PN
+import           Control.Monad.Catch (MonadCatch)
 
 import Types
 import Utilities
 import Client
+import Housekeeping
 import ClientPool (isRoomIn)
 
 
 
+server :: (MonadIO io)
+       => Environment
+       -> Socket -- ^ Socket to listen on
+       -> io ()
+server env serverSocket = liftIO $ do
+
+      -- The counter will assign each node a unique name.
+      counter <- newTVarIO 0
+
+      withAsync (workerLdc env) $ \_ldcThread -> forever $ do
+
+            from <- atomically $ do
+                  c <- readTVar counter
+                  modifyTVar counter (+1)
+                  return (From c)
+
+            pid <- PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
+                  atomically . toIO env Debug $
+                        printf "New worker %s from %s\n"
+                               (show from)
+                               (show addr)
+                  terminationReason <- worker env from clientSocket
+                  atomically $ toIO env Debug $
+                        printf "Worker %s from %s terminated (%s)\n"
+                               (show from)
+                               (show addr)
+                               (show terminationReason)
+
+            forkIO (workerWatcher env from pid)
 
 
 
-startServer :: Socket -> Environment -> IO ()
-startServer s env = do void . async $ workerLdc env
-                       serverLoop s env
+-- | Handles 'Signal's coming in from the network. and sends back the server's
+--   response.
+worker :: (MonadIO io)
+       => Environment
+       -> From        -- ^ Unique worker ID
+       -> Socket      -- ^ Incoming connection
+       -> io ServerResponse
+worker env from socket =
+
+      liftIO . (`finally` release) . runEffect $
+            receiver socket >-> dispatch >-> terminator >-> sender socket
+
+      where dispatch :: (MonadIO io) => Pipe Signal ServerResponse io r
+            dispatch = P.mapM $ \case
+                  Normal  normal  -> normalH  env from        normal
+                  Special special -> specialH env from socket special
+
+            -- Pipes incoming signals on, but terminates afterwards if the last
+            -- one was an error. In other words it's similar P.takeWhile, but
+            -- passes on the first failing element before returning it.
+            terminator :: (MonadIO io)
+                       => Pipe ServerResponse ServerResponse io ServerResponse
+            terminator = do
+                  signal <- await
+                  yield signal
+                  case signal of
+                        OK  -> terminator
+                        err -> return err
+
+            release = atomically (modifyTVar (_upstream env)
+                                             (Map.delete from))
 
 
--- | Forks off a worker for each incoming connection.
-serverLoop :: Socket
-           -> Environment
-           -> IO ()
-serverLoop socket env = forever $ do
+-- | Handles "Signal"s coming in from the LDC (local direct connection).
+--   Used by node pools; only accepts a handful of signals.
+workerLdc :: (MonadIO io)
+          => Environment
+          -> io ()
+workerLdc env@(_ldc -> Just pChan) =
 
-      -- NB: h is closed by the worker, bracketing here would close it
-      --     immediately after forking
-      (h, host, port) <- accept socket
-      let fromNode = From $ Node host port
-      atomically . toIO env Debug . putStrLn $
-            "New connection from " ++ show fromNode
-      void . async $ worker env h fromNode
-      -- TODO: orchestrate
+      runEffect (input >-> dispatch >-> discard)
 
+      where input :: (MonadIO io) => Producer NormalSignal io ()
+            input = P.fromInput (_pInput pChan)
 
+            dispatch :: (MonadIO io) => Pipe NormalSignal ServerResponse io r
+            dispatch = P.mapM $ \case
+                  EdgeRequest to edge  -> edgeBounceH env to edge
+                  Flood tStamp fSignal -> floodSignalH env (tStamp, fSignal)
+                  _else                -> return (Error "Bad LDC signal")
 
+            -- Eat up all incoming signals; this is the equivalent to the
+            -- 'respond' consumer in the ordinary worker, but in the LDC case
+            -- the communication is one-way.
+            --
+            -- This is a bit of a hack of course. The dispatch pipe above is
+            -- built from Producers, so their re-emitted server responses have
+            -- to be destroyed.
+            discard :: (Monad m) => Consumer a m r
+            discard = forever await
 
-
--- | Handles an incoming connection: Pass incoming work orders on to clients,
---   print chat messages etc.
---   (The first parameter is the same as in the result of Network.accept.)
-worker :: Environment
-       -> Handle      -- ^ Incoming connection handle
-       -> From        -- ^ Incoming connection address
-       -> IO ()
-worker env h from = (`finally` hClose h) . whileM isContinue $ do
-
-      -- TODO: Ignore signals sent by nodes not registered as upstream.
-      --       Open issues:
-      --         - Do this here or in the server loop?
-      --         - How do the ignored nodes find out they're being ignored?
-      --             --> Solution: timeouts
-
-      -- TODO: Housekeeping to delete already handled messages
-
-      -- TODO: Error handling: What to do if rubbish data comes in?
-      --       -> Respond error, kill worker
-      (proceed, response) <- receive h >>= \case
-            Normal  normal  -> normalH  env from normal
-            Special special -> specialH env h from special
-
-      send' h response
-      return proceed
-
-
-
--- | Listens on the direct connection or terminates immediately if there is
---   none.
-workerLdc :: Environment -> IO ()
-workerLdc env@(_ldc -> Just tbq) = forever $
-      atomically (readTBQueue tbq) >>= ldcH env
 workerLdc _ = return ()
 
 
 
--- | Local direct connection handler. Only accepts a couple of commands.
-ldcH :: Environment -> NormalSignal -> IO ()
-ldcH env (EdgeRequest to edge) = void $ edgeBounceH env to edge
-ldcH env (Flood tStamp fSignal) = void $ floodSignalH  env (tStamp, fSignal)
-ldcH env _ = atomically . toIO env Debug . putStrLn $
-                    "Bad local signal received"
-                    -- TODO DEBUG This should be red bold and underlined.
+-- | Handle normal signals, as sent by an upstream neighbour. ("non-normal"
+--   signals include bootstrap requests and the like.)
+normalH :: (MonadIO io)
+        => Environment
+        -> From
+        -> NormalSignal
+        -> io ServerResponse
+normalH env from signal = liftIO $
+      atomically (isUsn env from) >>= \case True  -> continue
+                                            False -> deny
+
+      where continue = do
+                  result <- case signal of
+                        EdgeRequest to edge  -> edgeBounceH   env to edge
+                        Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
+                        KeepAlive            -> keepAliveH    env from
+                        ShuttingDown         -> shuttingDownH env from
+                  when (result == OK) (updateTimestamp env from)
+                  return result
+
+            deny = do
+                  atomically . toIO env Debug . putStrLn $
+                        "Illegally contacted by " ++ show from ++ "; ignoring"
+                  return Ignore
 
 
 
--- | Handler for normally issued normal signals, as sent by an upstream
---   neighbour. This handler will check whether the sender is a valid upstream
---   neighbour, update timestamps etc. (An example for an abnormally issued
---   normal signal is one encapsulated in a bootstrap request, which will be
---   processed differently.)
-normalH :: Environment
-        -> From         -- ^ Signal origin
-        -> NormalSignal -- ^ Signal type
-        -> IO (Proceed, ServerResponse)
-
-normalH env from signal = isRequestAllowed env from >>= \p -> if p
-      then (, OK) <$> normalH' env from signal
-      else do atomically . toIO env Debug . putStrLn $
-                    "Illegally contacted by " ++ show from ++ "; ignoring"
-              return (Terminate, Ignore)
+-- | Check whether the contacting node is a registered upstream node (USN)
+isUsn :: Environment
+      -> From
+      -> STM Bool
+isUsn env from = Map.member from <$> readTVar (_upstream env)
 
 
 
--- | Check whether the request is allowed and therefore be processed, by
---   checking whether the contacting node is registered as upstream. Also
---   updates the "last heard of" timestamp.
---
--- contacting node is valid upstream
--- allowed <- atomically $ Map.member from <$> readTVar (_upstream env)
--- TODO: Distinguish between certain signals here. For example, an
---       IAddedYou should of course not require an already existing
---       connection.
-isRequestAllowed :: Environment
-                 -> From
-                 -> IO Bool
-isRequestAllowed env from = do
-      timestamp <- makeTimestamp
-      atomically $ do
-            allowed <- Map.member from <$> readTVar (_upstream env)
-            when allowed $ updateKnownBy env from timestamp
-            return allowed
+-- | Update the "last heard of" timestmap in the database
+updateTimestamp :: MonadIO io
+                => Environment
+                -> From
+                -> io ()
+updateTimestamp env from = liftIO $ do
+      t <- makeTimestamp
+      atomically (modifyTVar (_upstream env)
+                             (Map.adjust (const t) from))
 
 
 
--- | Handler for any normal signal. Does not check whether the sender is legal,
---   and should therefore only be invoked from within other handlers making sure
---   of that, see normalH and specialH.
-normalH' :: Environment
-         -> From         -- ^ Signal origin
-         -> NormalSignal -- ^ Signal type
-         -> IO Proceed
-
-normalH' env _    (Flood tStamp fSignal) = floodSignalH  env (tStamp, fSignal)
-normalH' env _    (EdgeRequest to edge)  = edgeBounceH   env to edge
-normalH' env from  ShuttingDown          = shuttingDownH env from
-normalH' env from  KeepAlive             = keepAliveH    env from
-
-
-
-
--- | Handler for special signals, i.e. those that may circumvent the usual
---   checks like whether the signal was sent from a registered upstream
---   neighbour.
-specialH :: Environment
-         -> Handle        -- ^ Connection handle
-         -> From          -- ^ Signal origin
-         -> SpecialSignal -- ^ Signal type
-         -> IO (Proceed, ServerResponse)
-
-specialH env _ _ (BootstrapRequest {}) =
-      (, Error) <$> illegalBootstrapSignalH env
-
-specialH env _ _ (YourHostIs {}) =
-      (, Error) <$> illegalYourHostIsH env
-
-specialH env _ _ (HandshakeRequest to) = do
-      (Terminate, ) <$> startHandshakeH env to
-
-specialH env h from Handshake = handshakeH env h from
+-- | Handler for special signals, such as "BootstrapRequest"s and "Handshake"s.
+specialH :: (MonadIO io)
+         => Environment
+         -> From
+         -> Socket
+         -> SpecialSignal
+         -> io ServerResponse
+specialH env from socket signal = case signal of
+      BootstrapRequest {} -> illegalBootstrapSignalH env
+      Handshake           -> incomingHandshakeH      env from socket
+      HandshakeRequest to -> Client.startHandshakeH  env to >> return OK
+                                                               -- ^ Sender doesn't handle
+                                                               -- this response anyway,
+                                                               -- see sendHandshakeRequest
 
 
 
+-- | Print a log message and generate an "Illegal" "ServerResponse".
+illegal :: (MonadIO io)
+        => Environment
+        -> String
+        -> io ServerResponse
+illegal env msg = liftIO $ do
+      atomically . toIO env Debug $ putStrLn msg
+      return Illegal
 
 
 
--- | A node should never receive a YourHostIs signal unless it issued a
---   bootstrap. In case it gets one anyway, this function is called.
-illegalYourHostIsH :: Environment -> IO Proceed
-illegalYourHostIsH env = do
-      atomically . toIO env Debug . putStrLn $
-            "BootstrapRequest signal received on a normal server, ignoring"
-      return Terminate
-
-
-
--- | A node should never receive a Bootstrap signal unless it issued a
---   bootstrap. In case it gets one anyway, this function is called.
-illegalBootstrapSignalH :: Environment -> IO Proceed
-illegalBootstrapSignalH env = do
-      atomically . toIO env Debug . putStrLn $
-            "Illegal bootstrap signal; ignoring"
-      return Terminate
-
+illegalBootstrapSignalH :: (MonadIO io)
+                        => Environment
+                        -> io ServerResponse
+illegalBootstrapSignalH env =
+      illegal env "BootstrapRequest signal received on a normal server"
 
 
 
 -- | Acknowledges an incoming KeepAlive signal, which is effectively a no-op,
 --   apart from that it (like any other signal) refreshes the "last heard of
---   timestamp".
-keepAliveH :: Environment -> From -> IO Proceed
-keepAliveH env origin = do
-      atomically . toIO env Chatty . putStrLn $
-            "KeepAlive signal received from " ++ show origin
-      return Continue
+--   timestamp" via the check in "normalH".
+keepAliveH :: (MonadIO io)
+           => Environment
+           -> From
+           -> io ServerResponse
+keepAliveH env from = liftIO $ do
+      atomically . toIO env Chatty $ printf
+            "KeepAlive signal received from %s\n" (show from)
+            -- This is *very* chatty, probably too much so.
+      return OK
 
 
 
-
-
--- | Checks whether a signal meant to be distributed over the entire network has
---   already been received; if yes it is ignored, otherwise the contents are
---   executed and the signal is passed on to all downstream neighbours.
---
---   (Time timestamp sent along is so that identical signal bodies can be
---   distinguished.)
-floodSignalH :: Environment
+-- | Check whether a "FloodSignal" has already been received; execute and
+--   redistribute it if not.
+floodSignalH :: (MonadIO io)
+             => Environment
              -> (Timestamp, FloodSignal)
-             -> IO Proceed
+             -> io ServerResponse
 floodSignalH env tFSignal@(timestamp, fSignal) = do
 
-      -- Check whether the signal has previously been handled
-      known <- atomically $
-            Set.member tFSignal <$> readTVar (_handledFloods env)
+      knownIO <- liftIO . atomically $ do
+            knownSTM <- Set.member tFSignal <$> readTVar (_handledFloods env)
+            when (not knownSTM) $ do
+                  modifyTVar (_handledFloods env)
+                             (prune . Set.insert tFSignal)
 
-      let floodOn = atomically $ do
-            modifyTVar (_handledFloods env) (Set.insert tFSignal)
-            writeTChan (_stc env) $ Flood timestamp fSignal
+                  -- Broadcast message to all downstream neighbours
+                  broadcast <- broadcastOutput env
+                  void (P.send broadcast
+                               (Flood timestamp fSignal))
+            return knownSTM
 
-      when (not known) $ floodOn >> case fSignal of
-            TextMessage message   -> textMessageH env message
-            NeighbourList painter -> neighbourListH env painter
+      case (knownIO, fSignal) of
+            (True, _)                  -> return OK
+            (_, NeighbourList painter) -> neighbourListH env painter
+            (_, TextMessage message)   -> textMessageH   env message
 
-      return Continue
 
 
--- | Prints a text message and floods it on to the network
-textMessageH :: Environment
+      where -- Delete the oldest entry if the DB is full
+            prune :: Set.Set a -> Set.Set a
+            prune db | Set.size db > dbMaxSize = Set.deleteMin db
+                     | otherwise               = db
+
+            dbMaxSize = _floodMessageCache (_config env)
+
+
+
+-- | Retrieve all STSC (server-to-single-client) "P.Output"s and concatenate
+--   them to a single broadcast channel.
+broadcastOutput :: Environment
+                -> STM (P.Output NormalSignal)
+broadcastOutput env =
+      F.foldMap (_pOutput . _stsc) <$> readTVar (_downstream env)
+
+
+
+-- | Print a text message
+textMessageH :: (MonadIO io)
+             => Environment
              -> String
-             -> IO ()
-textMessageH env message = atomically $ toIO env Quiet $ putStrLn message
+             -> io ServerResponse
+textMessageH env msg = do
+      liftIO . atomically $ toIO env Quiet $ putStrLn msg
+      return OK
 
 
--- | Sends the list of downstream neighbours to a specified address
-neighbourListH :: Environment
+
+-- | Senc a list of neighbours to the painting server.
+neighbourListH :: (MonadIO io)
+               => Environment
                -> To
-               -> IO ()
-neighbourListH env painter =
-      bracket (connectToNode painter) hClose $ \h -> do
-            vertex <- atomically $ do
-                  neighbours <- Map.keysSet <$> readTVar (_downstream env)
-                  return (_self env, neighbours)
-            send' h vertex
-            -- TODO: Handle response
-            -- TODO Refactor this mess
+               -> io ServerResponse
+neighbourListH env painter = liftIO $ do
+      connectToNode painter $ \(socket, _) -> do
+            putStrLn $ "Connected to painter. TODO: Send something useful."
+            return (undefined env socket) -- TODO.
 
 
 
 
-
--- | Inserts or updates the timestamp in the "last heard of" database. Does
---   nothing if the node isn't registered upstream.
-updateKnownBy :: Environment
+shuttingDownH :: (MonadIO io)
+              => Environment
               -> From
-              -> Timestamp
-              -> STM ()
-updateKnownBy env node timestamp =
-      modifyTVar (_upstream env) $ Map.adjust (const timestamp) node
+              -> io ServerResponse
+shuttingDownH env from = liftIO . atomically $ do
+      toIO env Debug . putStrLn $
+            "Shutdown notice from " ++ show from
+      return ConnectionClosed
+      -- Cleanup of the USN DB happens when the worker shuts down
 
 
 
-
-
--- | Remove the issuing node from the database
-shuttingDownH :: Environment
-              -> From -- ^ Shutdown node's incoming address as seen from
-                      --   this node (used to terminate downstream
-                      --   connections to it)
-              -> IO Proceed
-shuttingDownH env from = do
-
-      atomically . toIO env Debug . putStrLn $
-            "Shutdown notice from %s:%s" ++ show from
-
-      -- Remove from lists of known nodes and nodes known by
-      atomically $ modifyTVar (_upstream env) (Map.delete from)
-
-      return Terminate
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
--- | Bounces EdgeRequests through the network in order to make new connections.
+-- | Bounce 'EdgeRequest's through the network in order to make new connections.
 --   The idea behind this behaviour is that a new connection should be as long
 --   as possible, i.e. ideally establish a link to an entirely different part of
 --   the network, which prevents clustering.
@@ -346,127 +342,176 @@ shuttingDownH env from = do
 --        Because of the probabilistic travelling distance of these bounces,
 --        they are also referred to as "soft bounces".
 
-edgeBounceH :: Environment
+edgeBounceH :: (MonadIO io)
+            => Environment
             -> To
             -> EdgeData
-            -> IO Proceed
+            -> io ServerResponse
 
--- Phase 1 ends: Left counter reaches 0, start soft bounce phase
-edgeBounceH env origin (EdgeData dir (Left 0)) =
-      edgeBounceH env origin .
-      EdgeData dir .
-      Right $
-      (0, _acceptP $ _config env)
+-- Phase 1 ends: Hard bounce counter reaches 0, start soft bounce phase
+edgeBounceH env origin (EdgeData dir (HardBounce 0)) =
+      edgeBounceH env
+                  origin
+                  (EdgeData dir
+                            (SoftBounce 0
+                                        ((_acceptP . _config) env)))
 
--- Phase 1: Left value, bounce on.
-edgeBounceH env origin (EdgeData dir (Left n)) = do
+-- Phase 1: Hard bounce, bounce on.
+edgeBounceH env origin (EdgeData dir (HardBounce n)) = liftIO $ do
 
       let buildSignal = EdgeRequest origin . EdgeData dir
-          nMax = _bounces $ _config env
+          nMax = _bounces (_config env)
 
       atomically $ do
 
-            assertNotFull (_st1c env)
-
-            writeTBQueue (_st1c env) . buildSignal $ Left $ min (n - 1) nMax
-                                -- Cap the number of hard    ^
-                                -- bounces with the current  |
-                                -- node's configuration to   |
-                                -- prevent "maxBound bounces |
-                                -- left" attacks             |
-            toIO env Chatty $ printf "Bounced %s request from %s (%d left)\n"
+            -- FIXME: The TQueue is now a PQueue.
+            P.send (_pOutput (_st1c env))
+                   (buildSignal (HardBounce (min (n - 1) nMax)))
+                                          -- ^ Cap the number of hard
+                                          -- | bounces with the current
+                                          -- | node's configuration to
+                                          -- | prevent "maxBound bounces
+                                          -- | left" attacks
+            toIO env Chatty $ printf "Hardbounced %s request from %s (%d left)\n"
                                      (show dir)
                                      (show origin)
                                      n
 
-      return Continue
-
-
+            return OK
 
 -- Phase 2: either accept or bounce on with adjusted acceptance
 -- probability.
 --
 -- (Note that bouncing on always decreases the denial probability, even in case
 -- the reason was not enough room.)
-edgeBounceH env origin (EdgeData dir (Right (n, p))) = do
+edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = liftIO $ do
 
-      -- Build "bounce on" action to relay signal if necessary
-      let buildSignal = EdgeRequest origin . EdgeData dir
-          p' = max p $ (_acceptP._config) env
-          -- ^ The relayed acceptance probability is at least as high as the
-          -- one the relaying node uses. This prevents "small p" attacks
-          -- that bounce indefinitely.
-          bounceOn = if n >= (_maxSoftBounces $ _config env)
-                then let msg = "\ESC[31mToo many bounces, swallowing\ESC[0m"
-                     in  atomically . toIO env Debug $ putStrLn msg
-                else atomically $ do
-                      assertNotFull (_st1c env)
-                      writeTBQueue (_st1c env) . buildSignal $ Right (n+1, p')
+      (isRoom, relationship) <- atomically $ do
 
-      -- Build "bounce again from the beginning" signal. This is invoked if
-      -- an EdgeRequest reaches the issuing node again.
-      let n = _bounces $ _config env
-          bounceReset = atomically $ do
-                assertNotFull (_st1c env)
-                writeTBQueue (_st1c env) . buildSignal $ Left n
+            -- Make sure not to connect to itself or to already known nodes
+            rel <- nodeRelationship env origin
 
-      -- Make sure not to connect to itself or to already known nodes
-      relationship <- nodeRelationship env origin
+            -- Check whether there is room for another connection. Note that
+            -- an Incoming request will construct a downstream neighbour from
+            -- this node, so the database lookups are flipped.
+            room <- case dir of
+                  Incoming -> isRoomIn env _downstream
+                  Outgoing -> isRoomIn env _upstream
 
+            return (room, rel)
 
       -- Roll whether to accept the query first, then check whether there's
       -- room. In case of failure, bounce on.
       acceptEdge <- (< p) <$> randomRIO (0, 1 :: Double)
-      case (relationship, acceptEdge, dir) of
+
+      case (relationship, dir) of
 
             -- Don't connect to self
-            (IsSelf, _, _) -> do
-                  atomically . toIO env Chatty . putStrLn $
+            (IsSelf, _) -> atomically $ do
+                  toIO env Chatty . putStrLn $
                         "Edge to self requested, bouncing"
                   bounceReset
 
             -- Don't connect to the same node multiple times
-            (IsDownstreamNeighbour, _, Incoming) -> do
+            (IsDownstreamNeighbour, Incoming) -> atomically $ do
                   -- In case you're wondering about the seemingly different
                   -- directions in that pattern (Incoming+Downstream): The
                   -- direction is from the viewpoint of the requestee, while the
                   -- relationship to that node is seen from the current node.
-                  atomically . toIO env Chatty . putStrLn $
-                        "Edge downstream already exists, bouncing"
+                  toIO env Chatty $ printf
+                        "Edge to %s already exists, bouncing\n"
+                        (show origin)
+                  bounceOn -- TODO: bounceReset here to avoid clustering?
+
+            -- No room
+            _ | not isRoom -> atomically $ do
+                  let -- Direction of the edge (not) to be as seen from the
+                      -- current node. Accepting an Outgoing request would
+                      -- produce an incoming connection for example.
+                      relativeDir Outgoing = "incoming"
+                      relativeDir Incoming = "outgoing"
+                  toIO env Chatty $ printf
+                        "No room for another %s connection to handle the %s\
+                        \ request"
+                        (relativeDir dir)
+                        (show dir)
                   bounceOn
 
             -- Request randomly denied
-            (_, False, _) -> do
-                  atomically . toIO env Chatty . putStrLn $
+            _ | not acceptEdge -> atomically $ do
+                  toIO env Chatty . putStrLn $
                         "Random bounce (accept: p = " ++ show p ++ ")"
                   bounceOn
 
             -- Try accepting an Outgoing request
-            (_, _, Outgoing) -> void $ sendHandshakeRequest env origin
+            (_, Outgoing) -> do
+                  atomically . toIO env Chatty . putStrLn $
+                        "Outgoing edge request accepted, sending handshake\
+                        \ request" ++ show dir
+                  sendHandshakeRequest env origin
 
             -- Try accepting an Incoming request
-            (_, _, Incoming) -> void $ startHandshakeH env origin
+            (_, Incoming) -> do
+                  atomically . toIO env Chatty . putStrLn $
+                        "Incoming edge request accepted, starting handshake"
+                  void $ Client.startHandshakeH env origin
+                  -- TODO: Bounce on if failed, otherwise an almost saturated
+                  --       network won't allow new nodes
 
-      return Continue
+      return OK -- The upstream neighbour that relayed the EdgeRequest has
+                -- nothing to do with whether the handshake fails etc.
+
+      where
+
+            buildSignal = EdgeRequest origin . EdgeData dir
+
+
+            -- Build "bounce on" action to relay signal if necessary
+            bounceOn | n >= _maxSoftBounces (_config env) =
+                             toIO env Chatty . putStrLn $
+                                   "Too many bounces, swallowing"
+                     | otherwise =
+                           let p' = max p (_acceptP (_config env))
+                               -- ^ The relayed acceptance probability is at
+                               --   least as high as the one the relaying node
+                               --   uses. This prevents "small p" attacks that
+                               --   bounce indefinitely.
+                           in  void (P.send (_pOutput (_st1c env))
+                                            (buildSignal (SoftBounce (n+1) p')))
+
+            -- Build "bounce again from the beginning" signal. This is invoked
+            -- if an EdgeRequest reaches the issuing node again.
+            bounceReset = let n = _bounces (_config env)
+                          in  void (P.send (_pOutput (_st1c env))
+                                           (buildSignal (HardBounce n)))
+            -- TODO: Maybe swallowing the request in this case makes more sense.
+            --       The node is spamming the network with requests anyway after
+            --       all.
 
 
 
--- | Prompts another node to start a handshake in order to be added as its
+-- | Prompt another node to start a handshake in order to be added as its
 --   downstream neighbour.
-sendHandshakeRequest :: Environment
+sendHandshakeRequest :: (MonadIO io, MonadCatch io)
+                     => Environment
                      -> To
-                     -> IO ()
-sendHandshakeRequest env target = do
-      -- TODO: Timeout
-      bracket (connectToNode target) hClose $ \h -> do
-            let signal = Special . HandshakeRequest . To $ _self env
-            request h signal >>= \case
-                  OK -> return ()
-                  _  -> return ()
+                     -> io ()
+sendHandshakeRequest env to =
+      connectToNode to $ \(socket, _addr) -> do
+            request socket signal >>= \case
+                  Just OK -> return ()
+                  _else   -> return ()
+                  -- Nothing to do here, the handshake is a one-way command,
+                  -- waiting for response is just a courtesy
+
+      where signal = (Special . HandshakeRequest) (_self env)
 
 
--- | Handles an incoming handshake, i.e. a remote node wants to add this node
+
+-- | Handle an incoming handshake, i.e. a remote node wants to add this node
 --   as its downstream neighbour.
+--
+--   Counterpart of 'Client.startHandshakeH'.
 --
 --   The procedure is as follows:
 --
@@ -478,83 +523,37 @@ sendHandshakeRequest env target = do
 --      permanent, and the connection can stay open and both parties know that
 --      the other one has done their part.
 --   4. If something goes wrong, remove the temporary partner and terminate.
-handshakeH :: Environment
-           -> Handle      -- ^ Incoming connection
-           -> From        -- ^ Connection origin
-           -> IO (Proceed, ServerResponse)
-handshakeH env h from = do
+incomingHandshakeH :: (MonadIO io)
+                   => Environment
+                   -> From
+                   -> Socket
+                   -> io ServerResponse
+incomingHandshakeH env from socket = liftIO $ do
       timestamp <- makeTimestamp
+
       proceed <- atomically $ do
+
             isRoom <- isRoomIn env _upstream
-            if isRoom
-                  then do modifyTVar (_upstream env) (Map.insert from timestamp)
-                          return Continue
-                  else return Terminate
-      case proceed of
-            Terminate -> return (Terminate, Error)
-            Continue  -> do
-                  request' h OK >>= \case
-                        OK -> return (Continue, OK)
-                              -- This leaves the connection open, as it will be
-                              -- used further by the client on the other side.
-                        _  -> atomically $ do
-                                    modifyTVar (_upstream env) (Map.delete from)
-                                    return (Terminate, Error)
 
+            -- Check for previous membership, just in case this method is called
+            -- twice concurrently for some odd reason TODO: can this happen?
+            -- This is an STM block after all
+            alreadyKnown <- Map.member from <$> readTVar (_upstream env)
 
+            let p = isRoom && not alreadyKnown
 
-startHandshakeH :: Environment
-                -> To
-                -> IO ServerResponse
-startHandshakeH env to = do
-      h <- connectToNode to -- Client will close this handle
-      result <- request h (Special Handshake) >>= \case
-            OK -> do
-                  stsc      <- newTBQueueIO (_maxChanSize $ _config env)
-                  thread    <- async $ newClient env h to stsc
-                  timestamp <- makeTimestamp
-                  let client = Client timestamp thread stsc
-                  atomically $ do
-                        isRoom <- isRoomIn env _downstream
-                        if isRoom
-                              then do
-                                    modifyTVar (_downstream env) $
-                                          Map.insert to client
-                                    return OK
-                              else do
-                                    return Error
-            _  -> return Error
+            -- Reserve slot. Cleanup happens when the worker shuts down because
+            -- of a non-OK signal.
+            when p (modifyTVar (_upstream env)
+                               (Map.insert from timestamp))
+            return p
 
-      -- TODO: Make sure this is always evaluated so the handle is guaranteed
-      --       to be closed
-      case result of
-            OK    -> return OK
-            Error -> hClose h >> return Error
+      if proceed
+            then send socket OK >> receive socket >>= \case
+                  Just OK -> return OK
+                  x -> (return . Error) (errMsg x)
+            else (return . Error) errNoRoom
 
-
-
--- | Checks whether a connection to a certain node is allowed. A node must not
---   connect to itself or to known neighbours multiple times.
---
---   Due to the fact that an EdgeRequest does not contain the upstream address
---   of the connection to be established, it cannot be checked whether the node
---   is already an upstream neighbour directly; timeouts will have to take care
---   of that.
-nodeRelationship :: Environment -> To -> IO NodeRelationship
-nodeRelationship env node@(To to) = do
-      let self = to == _self env
-      isAlreadyDownstream <- atomically $
-            Map.member node <$> readTVar (_downstream env)
-
-      case (self, isAlreadyDownstream) of
-            (True, _) -> return IsSelf
-            (_, True) -> return IsDownstreamNeighbour
-            _         -> return IsUnrelated
--- TODO: Solve the upstream neighbour checking issue
-
-
-
-
-
-
-
+      where errMsg x = "Incoming handshake denied:\
+                       \ server response <" ++ show x ++ ">"
+            errNoRoom = "No room for another USN"

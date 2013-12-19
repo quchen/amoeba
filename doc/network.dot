@@ -1,0 +1,52 @@
+#define LDC       [color = "#BF0000"]
+#define NORMAL    [color = "#004280"]
+
+#define yel_light [color = "#E6A500"]
+#define yel_dark  [color = "#CC8000"]
+
+digraph G {
+
+      node [color = gray70, fontname = "Courier"]
+
+      node [shape = ellipse]
+      A [label = "Node A"]
+      B [label = "Node B"]
+      C [label = "Node C"]
+      D [label = "Node D"]
+      E [label = "Node E"]
+
+      node [shape = box]
+      Draw [label = "Drawing\nserver"]
+      BS [label = "Bootstrap\nserver"]
+
+
+
+
+      edge [len = 2]
+
+      A -> B NORMAL
+      A -> D NORMAL
+      A -> E NORMAL
+
+      B -> A NORMAL
+      B -> D NORMAL
+
+      C -> D NORMAL
+      C -> E NORMAL
+
+      D -> C NORMAL
+      D -> E NORMAL
+
+      E -> C NORMAL
+      E -> B NORMAL
+      E -> A NORMAL
+
+
+
+      edge [len = 1.5]
+
+      BS -> D LDC
+      BS -> C LDC
+
+      Draw -> A LDC
+}

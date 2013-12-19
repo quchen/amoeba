@@ -2,17 +2,14 @@
 
 module Main (main) where
 
-import Control.Concurrent.Async
 import CmdArgParser
 import Node
 import Types
+import Utilities
 
 -- | Starts a single node.
 main :: IO ()
-main = do config <- parseArgs
-          thread <- startNode Nothing . setBootstrap $ config
-          wait thread
-
--- | Hardcoded bootstrap servers
-setBootstrap x = x { _bootstrapServers = [To $ Node "localhost" 20000] }
--- TODO: proper discovery
+main = do
+      config <- parseNodeArgs
+      (output, _) <- outputThread (_maxChanSize config)
+      startNode Nothing output config
