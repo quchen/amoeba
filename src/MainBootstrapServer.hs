@@ -112,7 +112,7 @@ bootstrapServer config ldc restart =
 bootstrapServerLoop
       :: BSConfig          -- ^ Configuration to determine how many requests to
                            --   send out per new node
-      -> TVar Integer      -- ^ Number of total clients served
+      -> TVar Int          -- ^ Number of total clients served
       -> Socket            -- ^ Socket to listen on for bootstrap requests
       -> Chan NormalSignal -- ^ LDC to the node pool
       -> IO ()             -- ^ Restarting action, see "restarter"
@@ -132,17 +132,17 @@ bootstrapServerLoop config counter serverSock ldc restartTrigger = forever $ do
                 dispatchSignal nodeConfig node ldc
                 send socket OK
 
+      let restartMaybe c = when (c `rem` (_restartEvery config) == 0)
+                                restartTrigger
+
       PN.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
             receive clientSock >>= \case
                   Just (BootstrapRequest benefactor) -> do
                         putStrLn ("Sending requests on behalf of " ++ show benefactor)
                         bootstrapRequestH clientSock benefactor
-                        count' <- atomically $ do
-                              c <- readTVar counter
-                              modifyTVar' counter (+1)
-                              return c
-                        putStrLn ("Client " ++ show count' ++ " served")
-                        when (count' `rem` 3 == 0) restartTrigger
+                        restartMaybe count
+                        putStrLn ("Client " ++ show count ++ " served")
+                        atomically (modifyTVar' counter (+1))
                   Just _other_signal -> do
                         putStrLn "Non-BootstrapRequest signal received"
                   _no_signal -> do
