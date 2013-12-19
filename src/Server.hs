@@ -250,7 +250,6 @@ floodSignalH env tFSignal@(timestamp, fSignal) = do
                   broadcast <- broadcastOutput env
                   void (P.send broadcast
                                (Flood timestamp fSignal))
-
             return knownSTM
 
       case (knownIO, fSignal) of
