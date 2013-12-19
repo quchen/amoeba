@@ -1,7 +1,8 @@
 # Filenames
-MAIN_NODE = amoeba
-MAIN_BS = bootstrap
-MAIN_DRAW = drawing
+MAIN_NODE  = amoeba
+MAIN_MULTI = amoeba_pool
+MAIN_BS    = bootstrap
+MAIN_DRAW  = drawing
 SRC = src
 DOC = doc
 
@@ -30,6 +31,8 @@ RELEASE_FLAGS = $(OPTIMIZE) $(WARN)
 release :
 	@echo -e "\e[32mSingle client\e[0m"
 	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_NODE) $(SRC)/MainNode.hs
+	@echo -e "\e[32mMultiple clients\e[0m"
+	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_MULTI) $(SRC)/MainMulti.hs
 	@echo -e "\e[32mBootstrap server\e[0m"
 	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
 	@echo -e "\e[32mDrawing server\e[0m"
@@ -42,6 +45,8 @@ PROF_FLAGS = $(OPTIMIZE) $(PROF)
 prof :
 	@echo -e "\e[32mSingle client\e[0m"
 	$(GHC) $(PROF_FLAGS) -o $(MAIN_NODE) $(SRC)/MainNode.hs
+	@echo -e "\e[32mMultiple clients\e[0m"
+	$(GHC) $(PROF_FLAGS) -o $(MAIN_MULTI) $(SRC)/MainMulti.hs
 	@echo -e "\e[32mBootstrap server\e[0m"
 	$(GHC) $(PROF_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
 	@echo -e "\e[32mDrawing server\e[0m"
@@ -54,6 +59,8 @@ FAST_FLAGS =
 fast :
 	@echo -e "\e[32mSingle client\e[0m"
 	$(GHC) $(FAST_FLAGS) -o $(MAIN_NODE) $(SRC)/MainNode.hs
+	@echo -e "\e[32mMultiple clients\e[0m"
+	$(GHC) $(FAST_FLAGS) -o $(MAIN_MULTI) $(SRC)/MainMulti.hs
 	@echo -e "\e[32mBootstrap server\e[0m"
 	$(GHC) $(FAST_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
 	@echo -e "\e[32mDrawing server\e[0m"
