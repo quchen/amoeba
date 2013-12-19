@@ -3,6 +3,7 @@
 
 module Main (main) where
 
+import           Control.Monad
 import           Control.Concurrent
 import           Text.Printf
 
@@ -34,3 +35,5 @@ multiNodeMain = do
                ldc
                output
                terminate
+
+      forever (threadDelay (10^7))
