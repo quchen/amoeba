@@ -72,10 +72,10 @@ incomingLoop ioq stg serverSock = forever $ do
       N.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
             receive clientSock >>= \case
                   Just (NeighbourList node neighbours) -> do
-                        toIO' ioq (putStrLn ("Received node data from" ++ show node))
+                        -- toIO' ioq (putStrLn ("Received node data from" ++ show node))
                         atomically (void (P.send (_pOutput stg) (node, neighbours)))
-                  Just _other_signal -> toIO' ioq (putStrLn "Invalid signal received")
-                  _no_signal -> toIO' ioq (putStrLn "No signal received")
+                  Just _other_signal -> return () -- toIO' ioq (putStrLn "Invalid signal received")
+                  _no_signal -> return () -- toIO' ioq (putStrLn "No signal received")
 
 
 
@@ -97,6 +97,9 @@ graphDrawer t'graph = forever $ do
       threadDelay (10^6) -- TODO: Configurable
       cleanup t'graph
       graph <- atomically (readTVar t'graph)
+      let graphSize (Graph g) = Map.size g
+          s = graphSize graph
+      printf "Drawing graph. Current network size: %d nodes\n" s -- TODO: Use IOQueue
       writeFile "network_graph.dot" (graphToDot graph) -- TODO: Make filename configurable
 
 
@@ -105,7 +108,7 @@ cleanup :: TVar (Graph To) -> IO ()
 cleanup t'graph = do
       t <- makeTimestamp
       let timedOut (Timestamp now) (Timestamp lastInput, _) =
-                now - lastInput > 3 * 10^6 -- TODO: read from config
+                now - lastInput > 3 -- TODO: read from config
       atomically (modifyTVar t'graph
                              (\(Graph g) -> Graph (Map.filter (not . timedOut t) g)))
 
