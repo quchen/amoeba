@@ -85,5 +85,6 @@ clean :
 	find $(SRC) -name "*.hi" -delete
 	find $(SRC) -name "*.o" -delete
 	rm -f $(MAIN_NODE)
+	rm -f $(MAIN_MULTI)
 	rm -f $(MAIN_BS)
 	rm -f $(MAIN_DRAW)

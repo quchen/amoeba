@@ -57,17 +57,6 @@ bootstrapServerMain = do
 
 
 
--- | Restarts nodes in the pool periodically (round robin). The purpose of this
---   is getting rid of too high interconnectedness in the node pool when there
---   is a larger network present.
-restartLoop :: MVar () -> IO ()
-restartLoop trigger = forever $ do
-      delay (3*10^6)
-      yell 44 "restart sent"
-      tryPutMVar trigger ()
-
-
-
 -- | Restarts nodes in the own pool as more external nodes connect. This ensures
 --   that the bootstrap server pool won't predominantly connect to itself, but
 --   open up to the general network over time.
@@ -104,7 +93,7 @@ bootstrapServer config ioq ldc restart =
       PN.listen (PN.Host "127.0.0.1")
                 (show (_serverPort (_nodeConfig config)))
                 (\(sock, addr) -> do
-                      toIO' ioq (printf "Bootstrap server listening on %s"
+                      toIO' ioq (printf "Bootstrap server listening on %s\n"
                                         (show addr))
                       counter <- newTVarIO 1
                       bootstrapServerLoop config ioq counter sock ldc restart)
@@ -149,7 +138,7 @@ bootstrapServerLoop config ioq counter serverSock ldc restartTrigger = forever $
             receive clientSock >>= \case
                   Just (BootstrapRequest benefactor) -> do
                         toIO' ioq
-                              (printf "Sending requests on behalf of %s"
+                              (printf "Sending requests on behalf of %s\n"
                                       (show benefactor))
                         bootstrapRequestH clientSock benefactor
                         restartMaybe count

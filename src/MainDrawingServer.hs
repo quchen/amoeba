@@ -72,11 +72,10 @@ incomingLoop ioq stg serverSock = forever $ do
       N.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
             receive clientSock >>= \case
                   Just (NeighbourList node neighbours) -> do
-                        yell 42 "NODE DATA"
-                        toIO' ioq (putStrLn ("Received node data from" ++ show node))
+                        -- toIO' ioq (putStrLn ("Received node data from" ++ show node))
                         atomically (void (P.send (_pOutput stg) (node, neighbours)))
-                  Just _other_signal -> toIO' ioq (putStrLn "Invalid signal received")
-                  _no_signal -> toIO' ioq (putStrLn "No signal received")
+                  Just _other_signal -> return () -- toIO' ioq (putStrLn "Invalid signal received")
+                  _no_signal -> return () -- toIO' ioq (putStrLn "No signal received")
 
 
 
@@ -84,10 +83,10 @@ graphWorker :: PChan (To, Set To) -> IO ()
 graphWorker stg = do
       t'graph <- newTVarIO (Graph Map.empty)
       forkIO (graphDrawer t'graph)
-      forever . atomically $ do
+      forever $ makeTimestamp >>= \t -> atomically $ do
             Just (node, neighbours) <- P.recv (_pInput stg) -- TODO: Error handling on Nothing
             modifyTVar t'graph
-                       (\(Graph g) -> Graph (Map.insert node neighbours g))
+                       (\(Graph g) -> Graph (Map.insert node (t, neighbours) g))
             -- Listen for new neighbour lists, add them to graph
             -- Plot graph
 
@@ -96,8 +95,22 @@ graphWorker stg = do
 graphDrawer :: TVar (Graph To) -> IO ()
 graphDrawer t'graph = forever $ do
       threadDelay (10^6) -- TODO: Configurable
+      cleanup t'graph
       graph <- atomically (readTVar t'graph)
+      let graphSize (Graph g) = Map.size g
+          s = graphSize graph
+      printf "Drawing graph. Current network size: %d nodes\n" s -- TODO: Use IOQueue
       writeFile "network_graph.dot" (graphToDot graph) -- TODO: Make filename configurable
+
+
+
+cleanup :: TVar (Graph To) -> IO ()
+cleanup t'graph = do
+      t <- makeTimestamp
+      let timedOut (Timestamp now) (Timestamp lastInput, _) =
+                now - lastInput > 3 -- TODO: read from config
+      atomically (modifyTVar t'graph
+                             (\(Graph g) -> Graph (Map.filter (not . timedOut t) g)))
 
 
 
@@ -113,14 +126,15 @@ networkAsker poolSize toSelf ldc = forever $ do
 
 
 -- | Graph consisting of a set of nodes, each having a set of neighbours.
-data Graph a = Graph (Map a (Set a))
+data Graph a = Graph (Map a (Timestamp, Set a))
 
 
 
 -- | Dirty string-based hacks to convert a Graph to .dot
 graphToDot :: Graph To -> String
 graphToDot (Graph g) =
-      dotBoilerplate . intercalate "\n" . map vertexToDot $ Map.assocs g
+      dotBoilerplate . intercalate "\n" . map (vertexToDot . stripTimestamp) $ Map.assocs g
+      where stripTimestamp (a, (_t, b)) = (a,b)
 
 
 
