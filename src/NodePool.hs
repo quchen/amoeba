@@ -41,10 +41,11 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
                     --   node (due to fairness) is killed and restarted,
                     --   see 'janitor'.
          -> IO ()
-nodePool n config ldc output terminate = forM_ [1..n] $ \portOffset ->
+nodePool n config ldc output terminate = void . forkIO $ forM_ [1..n] $ \portOffset ->
       let port = _serverPort config + fromIntegral portOffset
           config' = config { _serverPort = port }
-      in  forkIO (janitor config' ldc output terminate)
+      in do forkIO (janitor config' ldc output terminate)
+            delay (_longTickRate config)
 
 
 
