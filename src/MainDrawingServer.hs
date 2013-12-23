@@ -1,3 +1,7 @@
+-- | The drawing server asks willing nodes to send it a list of all neighbours.
+--   The collective information can then be used to analyze the large-scale
+--   structure of the entire network.
+
 {-# LANGUAGE LambdaCase #-}
 
 module Main (main) where

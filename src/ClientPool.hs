@@ -1,15 +1,6 @@
 -- | The client pool keeps track of running clients, requests new connections
 --   when there's a deficit, and cleans up terminated ones.
 
--- TODO: Print status periodically like in the pre-pipes version (i.e. current
---       neighbours in both directions)
--- TODO: Refactor the housekeeping part, it's fugly
--- FIXME: If the db sizes don't change and the transaction in 'balanceEdges'
---        is retrying, the function will lock. This could be avoided by having
---        a periodically changed nonsense TVar in the transaction, but that
---        seems a bit hacky. Are there better solutions?
--- TODO: >-> is pull-based. Would push-based composition be more appropriate?
-
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RankNTypes #-}
 
@@ -58,15 +49,15 @@ fillPool env = yellAndRethrow 42 ("ClientPool: " ++) $
       where
             -- Send signal to the single worker channel
             dispatch :: Consumer NormalSignal IO ()
-            dispatch = P.toOutput ((_pOutput . _st1c) env)
+            dispatch = P.toOutput (_pOutput (_st1c env))
 
-            -- Create an 'EdgeRequest' from a 'Direction'
+            -- Create an EdgeRequest from a Direction
             edgeRequest :: Direction
                         -> NormalSignal
             edgeRequest dir =
                   EdgeRequest (_self env)
                               (EdgeData dir
-                                        (HardBounce ((_bounces._config) env)))
+                                        (HardBounce (_bounces (_config env))))
 
 
 
