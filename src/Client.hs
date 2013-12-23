@@ -127,6 +127,7 @@ clientLoop env socket to stsc = do
 
 
 
+-- | Send signals downstream, and handle the server's response.
 signalH :: (MonadIO io)
         => Environment
         -> Socket
@@ -138,6 +139,7 @@ signalH env socket to = go
                   signal <- await
                   request socket (Normal signal) >>= \case
                         Just OK              -> ok           env to >> go
+                        Just PruneOK         -> pruneOK      env    >> terminate
                         Just (Error e)       -> genericError env e  >> terminate
                         Just Ignore          -> ignore       env    >> terminate
                         Just Denied          -> denied       env    >> terminate
@@ -163,11 +165,19 @@ ok env node = liftIO $ do
 
 
 
+
 errorPrint :: (MonadIO io)
            => Environment
            -> String
            -> io ()
 errorPrint env = liftIO . atomically . toIO env Debug . putStrLn
+
+
+
+pruneOK :: (MonadIO io)
+        => Environment
+        -> io ()
+pruneOK env = errorPrint env "Pruning confirmed, terminating client"
 
 
 
@@ -204,7 +214,7 @@ genericError env e = errorPrint env $ "Generic error encountered, terminating\
 denied :: (MonadIO io)
        => Environment
        -> io ()
-denied env = errorPrint env "Server denied the request"
+denied env = errorPrint env "Server denied the request, terminating client"
 
 
 
@@ -212,7 +222,7 @@ denied env = errorPrint env "Server denied the request"
 illegal :: (MonadIO io)
         => Environment
         -> io ()
-illegal env = errorPrint env "Signal illegal"
+illegal env = errorPrint env "Signal illegal, terminating client"
 
 
 
@@ -220,7 +230,7 @@ illegal env = errorPrint env "Signal illegal"
 noResponse :: (MonadIO io)
            => Environment
            -> io ()
-noResponse env = errorPrint env "Server did not respond"
+noResponse env = errorPrint env "Server did not respond, terminating client"
 
 
 
@@ -228,7 +238,7 @@ noResponse env = errorPrint env "Server did not respond"
 decodeError :: (MonadIO io)
            => Environment
            -> io ()
-decodeError env = errorPrint env "Signal decoding error"
+decodeError env = errorPrint env "Signal decoding error, terminating client"
 
 
 
@@ -236,7 +246,7 @@ decodeError env = errorPrint env "Signal decoding error"
 timeoutError :: (MonadIO io)
            => Environment
            -> io ()
-timeoutError env = errorPrint env "Timeout before response"
+timeoutError env = errorPrint env "Timeout before response, terminating client"
 
 
 
@@ -244,4 +254,5 @@ timeoutError env = errorPrint env "Timeout before response"
 cClosed :: (MonadIO io)
            => Environment
            -> io ()
-cClosed env = errorPrint env "The remote host has closed the connection"
+cClosed env = errorPrint env "The remote host has closed the connection,\
+                             \ terminating client"

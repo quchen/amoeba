@@ -58,15 +58,15 @@ fillPool env = yellAndRethrow 42 ("ClientPool: " ++) $
       where
             -- Send signal to the single worker channel
             dispatch :: Consumer NormalSignal IO ()
-            dispatch = P.toOutput ((_pOutput . _st1c) env)
+            dispatch = P.toOutput (_pOutput (_st1c env))
 
-            -- Create an 'EdgeRequest' from a 'Direction'
+            -- Create an EdgeRequest from a Direction
             edgeRequest :: Direction
                         -> NormalSignal
             edgeRequest dir =
                   EdgeRequest (_self env)
                               (EdgeData dir
-                                        (HardBounce ((_bounces._config) env)))
+                                        (HardBounce (_bounces (_config env))))
 
 
 

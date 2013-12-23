@@ -29,6 +29,7 @@ dsnHousekeeping :: Environment -> IO ()
 dsnHousekeeping env = forever $ do
       t <- makeTimestamp
       cleanupDsn    env t
+      prune         env
       sendKeepAlive env t
       delay (_mediumTickRate (_config env))
 
@@ -69,6 +70,17 @@ cleanupDsn env (Timestamp now) = do
       let toKill = Map.keysSet killTimeout <> Map.keysSet deadNodes
       atomically $ modifyTVar (_downstream env) $ \knownDsn ->
             F.foldr Map.delete knownDsn toKill
+
+
+
+-- | If the DSN pool is full, ask a random DSN whether the connection can be
+--   dropped.
+prune :: Environment -> IO ()
+prune env = atomically $ do
+      dbSize <- Map.size <$> readTVar (_upstream env)
+      when (dbSize > _minNeighbours (_config env))
+           (void (P.send (_pOutput (_st1c env))
+                         Prune))
 
 
 

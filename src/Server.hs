@@ -151,6 +151,7 @@ normalH env from signal = liftIO $
                         Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
                         KeepAlive            -> keepAliveH    env from
                         ShuttingDown         -> shuttingDownH env from
+                        Prune                -> pruneH        env from
                   when (result == OK) (updateTimestamp env from)
                   return result
 
@@ -323,6 +324,21 @@ shuttingDownH env from = liftIO . atomically $ do
       return ConnectionClosed
       -- NB: Cleanup of the USN DB happens when the worker shuts down
 
+
+pruneH :: MonadIO io
+       => Environment
+       -> From
+       -> io ServerResponse
+pruneH env from = liftIO . atomically $ do
+      dbSize <- Map.size <$> readTVar (_upstream env)
+      if dbSize > _minNeighbours (_config env)
+            then
+                  -- Send back a special "OK" signal that terminates the
+                  -- connection
+                  return PruneOK
+            else
+                  -- "OK" means "do not terminate the worker" here!
+                  return OK
 
 
 -- | Bounce 'EdgeRequest's through the network in order to make new connections.

@@ -180,6 +180,7 @@ Signals are divided in two main groups, normal and special. Normal signals are w
 - `KeepAlive` is sent in case there haven't been any useful signals, but the connection should not time out
 - `ShuttingDown` is sent as a courtesy to other nodes, so they can remove a terminating node before the timeout kicks in
 - `Flood` signals are distributed to every node in the network. Current instances are text messages and a request to send a `NeighbourList` to a drawing server.
+- `Prune` is a request to downstream neighbours to drop the connection. This is an effort to keep the number of connections as low as possible, and the request will be accepted if dropping the connection does not cross the minimum threshold.
 
 Normal signals are filtered: only when they're coming from known upstream nodes they are processed. Special signals circumvent this, as some processes inherently require unknown nodes to establish connections.
 
