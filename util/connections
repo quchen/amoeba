@@ -3,8 +3,8 @@
 # Periodically print the number of TCP connections open by 'bootstrap'. Useful
 # to check for socket leaks.
 
-echo "Open TCP connections by 'bootstrap':"
+echo "Open TCP connections by '$1':"
 while true; do
       sleep 1;
-      lsof -iTCP -a -cbootstrap | wc -l;
+      lsof -iTCP -a -c$1 | wc -l;
 done
