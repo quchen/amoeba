@@ -63,7 +63,7 @@ cleanupDsn env (Timestamp now) = do
       when (not (Map.null deadNodes)) $
             atomically . toIO env Debug $
                  putStrLn "Client housekilled. This may be a bug\
-                          \ (client should cleanup itself).\n"
+                          \ (client should cleanup itself)."
                           -- TODO: Verify this claim
 
       -- Remove timed out or otherwise terminated nodes
