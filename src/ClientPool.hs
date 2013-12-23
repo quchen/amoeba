@@ -1,15 +1,6 @@
 -- | The client pool keeps track of running clients, requests new connections
 --   when there's a deficit, and cleans up terminated ones.
 
--- TODO: Print status periodically like in the pre-pipes version (i.e. current
---       neighbours in both directions)
--- TODO: Refactor the housekeeping part, it's fugly
--- FIXME: If the db sizes don't change and the transaction in 'balanceEdges'
---        is retrying, the function will lock. This could be avoided by having
---        a periodically changed nonsense TVar in the transaction, but that
---        seems a bit hacky. Are there better solutions?
--- TODO: >-> is pull-based. Would push-based composition be more appropriate?
-
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RankNTypes #-}
 
