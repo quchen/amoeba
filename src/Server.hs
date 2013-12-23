@@ -297,7 +297,7 @@ textMessageH env msg = do
 
 
 
--- | Senc a list of neighbours to the painting server.
+-- | Send a list of neighbours to the painting server.
 neighbourListH :: (MonadIO io)
                => Environment
                -> To
@@ -312,7 +312,7 @@ neighbourListH env painter = liftIO $ do
 
 
 
-
+-- | An upstream neighbour is shutting down; terminate the local worker.
 shuttingDownH :: (MonadIO io)
               => Environment
               -> From
@@ -321,7 +321,7 @@ shuttingDownH env from = liftIO . atomically $ do
       toIO env Debug . putStrLn $
             "Shutdown notice from " ++ show from
       return ConnectionClosed
-      -- Cleanup of the USN DB happens when the worker shuts down
+      -- NB: Cleanup of the USN DB happens when the worker shuts down
 
 
 
