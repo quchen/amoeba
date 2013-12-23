@@ -82,6 +82,8 @@ The picture shows the network structure of a small Amœba network. Blue arrows a
 
 - If a node has a deficit in connections, it will randomly tell one of its neighbours of it. This is called an *edge request*, and contains its own address, and parameters determining how far the request should travel through the network. The edge request is relayed by receiving nodes a number of times, passing it on to one of their own downstream neighbours, until eventually one of them accepts the request, and establishes the desired connection with the initially issuing node.
 
+- Nodes will attempt to minimize the number of connections above the minimum by *pruning*. They will do so by telling downstream neighbours of their wish to drop the connection, which will be accepted if this can be done without making the partner go below the minimum limit.
+
 - Initial connection is made using a special bootstrap service, see the section below.
 
 - To look at the large scale structure of the network, a special request can be made by a special graph plot server. This request makes every client send a list of all its neighbours to the plot server. (This is strictly a debugging tool, since it opens the door for a truckload of attacks.)
@@ -92,13 +94,13 @@ The picture shows the network structure of a small Amœba network. Blue arrows a
 
 A central point in node design is that they reject signals from unregistered origins, so that spamming a single node from outside does not affect the network at all.
 
-However, this is sometimes too restrictive: for some services, it makes a lot of sense to be able to issue signals, although they are not part of the network. To solve this problem, nodes can be spawned with a special (concurrent, locally running) communication channel that can be used to send messages to it directly.
+However, this is sometimes too restrictive: for some services, it makes sense to be able to issue signals, despite them not being part of the network. To solve this problem, nodes can be spawned with a special direct communication channel that can be used to send messages to it directly.
 
 
 
 #### Bootstrap server
 
-The bootstrap server is the first contact a node makes after startup, and issues edge requests on behalf of its client.
+A bootstrap server is the first contact a node makes after startup, and issues edge requests on behalf of its client.
 
 
 
