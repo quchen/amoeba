@@ -61,6 +61,7 @@ data NormalSignal =
 
 instance Show NormalSignal where
       show KeepAlive = "KeepAlive"
+      show Prune = "Prune"
       show ShuttingDown = "ShuttingDown"
       show (Flood t s) = printf "Flood %s %s" (show t) (show s)
       show (EdgeRequest to ed) = printf "EdgeRequest { %s, %s }" (show to) (show ed)
