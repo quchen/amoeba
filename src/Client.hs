@@ -113,6 +113,7 @@ clientLoop :: Environment
 clientLoop env socket to stsc = do
       waitForDBEntry
       runEffect (P.fromInput input >-> signalH env socket to)
+      removeFromDB
 
       where input = mconcat [ _pInput (_st1c env)
                             , _pInput stsc
@@ -124,6 +125,9 @@ clientLoop env socket to stsc = do
             waitForDBEntry = atomically $
                   whenM (Map.notMember to <$> readTVar (_downstream env))
                         retry
+
+            removeFromDB = atomically $
+                  modifyTVar (_downstream env) (Map.delete (_self env))
 
 
 
@@ -148,6 +152,7 @@ signalH env socket to = go
                         Just Timeout         -> timeoutError env    >> terminate
                         Just ConnectionClosed -> cClosed     env    >> terminate
                         Nothing              -> noResponse   env    >> terminate
+
 
 
 
