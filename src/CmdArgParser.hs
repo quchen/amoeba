@@ -21,6 +21,7 @@ import Options.Applicative
 import Data.Word
 import Data.Monoid
 import Text.Printf
+import qualified Data.Set as Set
 import Data.Char (toLower)
 import Text.Read (readEither)
 
@@ -73,7 +74,7 @@ nodeConfig = T.Config
      <*> tickRate 'l' "long"   T._longTickRate
      <*> poolTimeout
      <*> verbosity
-     <*> pure [] -- TODO: specify bootstrap servers via command line
+     <*> pure (Set.empty) -- TODO: specify bootstrap servers via command line
      <*> floodMessageCache
 
 

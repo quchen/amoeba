@@ -12,6 +12,7 @@ import Control.Exception
 import GHC.IO.Exception (ioe_description)
 import Data.Typeable
 import Text.Printf
+import qualified Data.Set as Set
 
 import Types
 import Utilities
@@ -73,5 +74,6 @@ bootstrap config self =
 -- | Find the address of a suitable bootstrap server.
 -- TODO: Make bootstrap server selection a little more complex :-)
 getBootstrapServer :: Config -> To
-getBootstrapServer = head . _bootstrapServers . setBootstrap
-setBootstrap x = x { _bootstrapServers = [To $ Node "127.0.0.1" 20000] }
+getBootstrapServer = head . Set.elems . _bootstrapServers . setBootstrap
+setBootstrap x = x { _bootstrapServers = Set.singleton self }
+      where self = To (Node "127.0.0.1" 20000) -- TODO: Get port from config

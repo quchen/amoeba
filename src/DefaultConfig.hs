@@ -2,6 +2,9 @@
 
 module DefaultConfig where
 
+
+import qualified Data.Set as Set
+
 import Types
 
 
@@ -21,7 +24,7 @@ nodeConfig = Config {
       , _longTickRate      = 10^6
       , _poolTimeout       = 5
       , _verbosity         = Debug -- TODO: Change back to Default for production
-      , _bootstrapServers  = []
+      , _bootstrapServers  = Set.empty
       , _floodMessageCache = 1024
       }
 

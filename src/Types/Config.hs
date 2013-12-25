@@ -100,7 +100,7 @@ data Config = Config {
       , _verbosity      :: Verbosity  -- ^ Determines quantity of messages
                                       --   printed
 
-      , _bootstrapServers :: [To]     -- ^ Addresses of bootstrap servers
+      , _bootstrapServers :: Set To   -- ^ Addresses of bootstrap servers
                                       --   statically known
 
       , _floodMessageCache :: Int     -- ^ Number of past flood messages to
