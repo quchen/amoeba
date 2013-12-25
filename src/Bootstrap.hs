@@ -75,5 +75,6 @@ bootstrap config self =
 -- TODO: Make bootstrap server selection a little more complex :-)
 getBootstrapServer :: Config -> To
 getBootstrapServer = head . Set.elems . _bootstrapServers . setBootstrap
-setBootstrap x = x { _bootstrapServers = Set.singleton self }
-      where self = To (Node "127.0.0.1" 20000) -- TODO: Get port from config
+setBootstrap config = config { _bootstrapServers = Set.singleton self }
+      where self = To (Node "127.0.0.1" selfPort)
+            selfPort = _serverPort config
