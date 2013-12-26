@@ -177,7 +177,7 @@ minNeighbours :: Parser Int
 minNeighbours = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._maxNeighbours Default.nodeConfig)
+      , value   (T._minNeighbours Default.nodeConfig)
       , long    "maxn"
       , metavar "(Int > 0)"
       , help    "Minimum amount of neighbours (up-/downstream separate)"
@@ -189,7 +189,7 @@ maxNeighbours :: Parser Int
 maxNeighbours = (nullOption . mconcat)
       [ reader positive
       , showDefault
-      , value   (T._minNeighbours Default.nodeConfig)
+      , value   (T._maxNeighbours Default.nodeConfig)
       , long    "minn"
       , metavar "(Int > 0)"
       , help    "Maximum amount of neighbours (up-/downstream separate)"
