@@ -52,14 +52,14 @@ data Environment = Environment {
       , _ldc        :: Maybe (PChan NormalSignal)
 
         -- | Program start configuration
-      , _config     :: Config
+      , _config     :: NodeConfig
 
       }
 
 
 
 -- | Configuration parameters accessible before anything goes online.
-data Config = Config {
+data NodeConfig = NodeConfig {
 
         _serverPort     :: Int        -- ^ Port to open the server socket on
 
@@ -128,7 +128,7 @@ data BootstrapConfig = BootstrapConfig {
       , _restartMinimumPeriod :: Int -- ^ Limit the maximal frequency at which
                                      --   restarts can happen
 
-      , _bootstrapNodeConfig :: Config -- ^ Configuration of the node pool's nodes
+      , _bootstrapNodeConfig :: NodeConfig -- ^ Configuration of the node pool's nodes
 
       , _bootstrapPoolConfig :: PoolConfig
 
@@ -139,7 +139,7 @@ data BootstrapConfig = BootstrapConfig {
 -- | Multi client config
 data MultiConfig = MultiConfig {
 
-        _multiNodeConfig :: Config
+        _multiNodeConfig :: NodeConfig
 
       , _multiPoolConfig :: PoolConfig
 
@@ -150,7 +150,7 @@ data MultiConfig = MultiConfig {
 -- | Drawing server config
 data DrawingConfig = DrawingConfig {
 
-        _drawingNodeConfig :: Config
+        _drawingNodeConfig :: NodeConfig
 
       , _drawingPoolConfig :: PoolConfig
 
@@ -159,7 +159,7 @@ data DrawingConfig = DrawingConfig {
 
 -- | Overloads the "_nodeConfig" accessor
 class HasNodeConfig a where
-      _nodeConfig :: a -> Config
+      _nodeConfig :: a -> NodeConfig
 
 -- There's intentionally no instance for Config itself, because all calls to it
 -- would be redundant and noise up the code.

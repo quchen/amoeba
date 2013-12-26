@@ -153,7 +153,7 @@ bootstrapServerLoop config ioq counter serverSock ldc restartTrigger = forever $
 
 
 -- | Send bootstrap requests on behalf of the new node to the node pool
-dispatchSignal :: Config
+dispatchSignal :: NodeConfig
                -> To -- ^ Benefactor, i.e. 'BootstrapRequest' issuer's server
                      --   address
                -> Chan NormalSignal
@@ -167,7 +167,7 @@ dispatchSignal config to ldc = mapM_ order edges
 
 
 -- | Construct a new edge request
-edgeRequest :: Config
+edgeRequest :: NodeConfig
             -> To
             -> Direction
             -> NormalSignal

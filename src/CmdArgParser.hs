@@ -32,7 +32,7 @@ import qualified Types as T
 
 
 
-parseNodeArgs :: IO T.Config
+parseNodeArgs :: IO T.NodeConfig
 parseNodeArgs = execParser parser
       where parser = info (helper <*> nodeConfig) infoMod
             infoMod = mconcat
@@ -84,8 +84,8 @@ parseDrawingArgs = execParser parser
 
 
 
-nodeConfig :: Parser T.Config
-nodeConfig = T.Config
+nodeConfig :: Parser T.NodeConfig
+nodeConfig = T.NodeConfig
      <$> port
      <*> minNeighbours
      <*> maxNeighbours
@@ -262,7 +262,7 @@ acceptP = (nullOption . mconcat)
 --   > tickRate 's' "short"  T._shortTickRate
 tickRate :: Char              -- ^ short parameter name
          -> String            -- ^ Long parameter name
-         -> (T.Config -> Int) -- ^ Accessor to get the default value
+         -> (T.NodeConfig -> Int) -- ^ Accessor to get the default value
          -> Parser Int
 tickRate shortName name getter = (nullOption . mconcat)
       [ reader positive

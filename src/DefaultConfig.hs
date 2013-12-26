@@ -10,8 +10,8 @@ import Types
 
 
 -- | Default node configuration
-nodeConfig :: Config
-nodeConfig = Config {
+nodeConfig :: NodeConfig
+nodeConfig = NodeConfig {
         _serverPort        = 21000
       , _maxNeighbours     = 10
       , _minNeighbours     = 5
