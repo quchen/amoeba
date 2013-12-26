@@ -142,6 +142,7 @@ restartEvery = (nullOption . mconcat)
       , value   (T._restartEvery Default.bootstrapConfig)
       , metavar "(Int > 0)"
       , help    "Restart a random pool node every n new nodes. (Note that a restart is one new node by itself already.)"
+      , hidden
       ]
 
 
@@ -154,6 +155,7 @@ restartMinimumPeriod = (nullOption . mconcat)
       , value   (T._restartMinimumPeriod Default.bootstrapConfig)
       , metavar "[ms]"
       , help    "Restart a random pool node every n new nodes. (Note that a restart is one new node by itself already.)"
+      , hidden
       ]
 
 
@@ -203,6 +205,7 @@ maxChanSize = (nullOption . mconcat)
       , long    "chansize"
       , metavar "(Int > 0)"
       , help    "Maximum communication channel size"
+      , hidden
       ]
 
 
@@ -215,6 +218,7 @@ floodMessageCache = (nullOption . mconcat)
       , long    "floodcache"
       , metavar "(Int >= 0)"
       , help    "Number of past flood messages to cache"
+      , hidden
       ]
 
 
@@ -227,6 +231,7 @@ bounces = (nullOption . mconcat)
       , long    "bounces"
       , metavar "(Int >= 0)"
       , help    "Minimum edge search hard bounces"
+      , hidden
       ]
 
 
@@ -239,6 +244,7 @@ maxSoftBounces = (nullOption . mconcat)
       , long    "hbounce"
       , metavar "(Int > 0)"
       , help    "Maximum edge search soft bounces"
+      , hidden
       ]
 
 
@@ -251,6 +257,7 @@ acceptP = (nullOption . mconcat)
       , long    "acceptp"
       , metavar "(0 < p <= 1)"
       , help    "Edge request soft bounce acceptance probability"
+      , hidden
       ]
 
 
@@ -268,6 +275,7 @@ tickRate shortName name getter = (nullOption . mconcat)
       , long    (shortName : "tick")
       , metavar "[ms]"
       , help    ("Tick rate of " ++ name ++ " loops")
+      , hidden
       ]
 
 
@@ -280,6 +288,7 @@ poolTimeout = (nullOption . mconcat)
       , long    "timeout"
       , metavar "[s]"
       , help    "Timeout threshold"
+      , hidden
       ]
 
 
