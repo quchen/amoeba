@@ -9,6 +9,7 @@ import Data.Map
 import Types.Signal
 import Types.Misc
 import Data.Word
+import Data.Monoid
 
 
 
@@ -75,6 +76,8 @@ data NodeConfig = NodeConfig {
                                       --   communication channels can hold
 
       , _bounces        :: Word       -- ^ Number of initial bounces
+
+            -- TODO: Rename nounces to hardBounces
 
       , _acceptP        :: Double     -- ^ Edge request acceptance probability
                                       --   for the second bounce phase.
@@ -187,3 +190,13 @@ instance HasPoolConfig MultiConfig where
 
 instance HasPoolConfig DrawingConfig where
       _poolConfig = _drawingPoolConfig
+
+
+
+newtype OptionModifier a = OptionModifier { applyConfigModifier :: a -> a }
+
+-- mappend applies the modifiers from left to right, i.e. the rightmost
+-- modifier has the final say.
+instance Monoid (OptionModifier a) where
+      mempty = OptionModifier id
+      mappend (OptionModifier x) (OptionModifier y) = OptionModifier (y . x)
