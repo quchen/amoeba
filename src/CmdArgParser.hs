@@ -31,50 +31,47 @@ import qualified DefaultConfig as Default
 import qualified Types as T
 
 
-
-parseNodeArgs :: IO T.NodeConfig
-parseNodeArgs = execParser parser
-      where parser = info (helper <*> nodeConfig) infoMod
+runArgParser :: Parser a -- ^ Parser
+          -> String   -- ^ Short help description
+          -> String   -- ^ Long help description
+          -> IO a
+runArgParser parser short long = execParser parser'
+      where parser' = info (helper <*> parser) infoMod
             infoMod = mconcat
                   [ fullDesc
-                  , progDesc "Amoeba client"
-                  , header "Launch a single node in an Amoeba network"
+                  , progDesc short
+                  , header long
                   ]
+
+
+
+parseNodeArgs :: IO T.NodeConfig
+parseNodeArgs = runArgParser nodeConfig short long
+      where short = "Amoeba client"
+            long  = "Launch a single node in an Amoeba network"
 
 
 
 parseMultiArgs :: IO T.MultiConfig
-parseMultiArgs = execParser parser
-      where parser = info (helper <*> multiConfig) infoMod
-            infoMod = mconcat
-                  [ fullDesc
-                  , progDesc "Amoeba multi-node client"
-                  , header "Launch multiple independent Amoeba nodes"
-                  ]
+parseMultiArgs = runArgParser multiConfig short long
+      where short = "Amoeba multi-node client"
+            long  = "Launch multiple independent Amoeba nodes"
 
 
 
 parseBootstrapArgs :: IO T.BootstrapConfig
-parseBootstrapArgs = execParser parser
-      where parser = info (helper <*> bootstrapConfig) infoMod
-            infoMod = mconcat
-                  [ fullDesc
-                  , progDesc "Amoeba bootstrap server"
-                  , header "Start a bootstrap server to allow new nodes to\
-                           \ connect to an existing network"
-                  ]
+parseBootstrapArgs = runArgParser bootstrapConfig short long
+      where short = "Amoeba bootstrap server"
+            long  = "Start a bootstrap server to allow new nodes to\
+                          \ connect to an existing network"
+
 
 
 parseDrawingArgs :: IO T.DrawingConfig
-parseDrawingArgs = execParser parser
-      where parser = info (helper <*> drawingConfig) infoMod
-            infoMod = mconcat
-                  [ fullDesc
-                  , progDesc "Amoeba bootstrap server"
-                  , header "Start a bootstrap server to allow new nodes to\
-                           \ connect to an existing network"
-                  ]
-
+parseDrawingArgs = runArgParser drawingConfig short long
+      where short = "Amoeba bootstrap server"
+            long  = "Start a bootstrap server to allow new nodes to\
+                          \ connect to an existing network"
 
 
 
