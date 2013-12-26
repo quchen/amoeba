@@ -145,7 +145,7 @@ normalH env from signal =
                         Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
                         KeepAlive            -> keepAliveH    env from
                         ShuttingDown         -> shuttingDownH env from
-                        Prune                -> pruneH        env from
+                        Prune                -> pruneH        env
                   when (result == OK) (updateTimestamp env from)
                   return result
 
@@ -310,9 +310,8 @@ shuttingDownH env from = atomically $ do
 
 
 pruneH :: Environment
-       -> From
        -> IO ServerResponse
-pruneH env from = atomically $ do
+pruneH env = atomically $ do
       dbSize <- Map.size <$> readTVar (_upstream env)
       if dbSize > _minNeighbours (_config env)
             then

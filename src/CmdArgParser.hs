@@ -98,7 +98,7 @@ nodeConfig = T.NodeConfig
      <*> tickRate 'l' "long"   T._longTickRate
      <*> poolTimeout
      <*> verbosity
-     <*> pure (Set.empty) -- TODO: specify bootstrap servers via command line
+     <*> pure Set.empty -- TODO: specify bootstrap servers via command line
      <*> floodMessageCache
 
 

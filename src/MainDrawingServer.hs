@@ -72,7 +72,7 @@ incomingLoop :: IOQueue
              -> PChan (To, Set To)
              -> N.Socket
              -> IO ()
-incomingLoop ioq stg serverSock = forever $ do
+incomingLoop _ioq stg serverSock = forever $ do
       N.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
             receive clientSock >>= \case
                   Just (NeighbourList node neighbours) -> do
