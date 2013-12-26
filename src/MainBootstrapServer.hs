@@ -19,7 +19,7 @@ import Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
 
 import NodePool
-import CmdArgParser
+import CmdArgParser (parseBootstrapArgs)
 import Utilities
 import Types
 
@@ -34,7 +34,7 @@ bootstrapServerMain :: IO ()
 bootstrapServerMain = do
 
       -- Preliminaries
-      bsConfig <- parseBSArgs
+      bsConfig <- parseBootstrapArgs
       (output, _) <- outputThread (_maxChanSize (_nodeConfig bsConfig))
 
       -- TODO: Add self to the list of bootstrap servers in the config
@@ -42,7 +42,7 @@ bootstrapServerMain = do
       -- Node pool
       ldc <- newChan
       terminate <- newEmptyMVar
-      nodePool (_poolSize bsConfig)
+      nodePool (_poolSize (_poolConfig bsConfig))
                (_nodeConfig bsConfig)
                ldc
                output
@@ -50,7 +50,7 @@ bootstrapServerMain = do
 
       -- Bootstrap service
       toIO' output (printf "Starting bootstrap server with %d nodes\n"
-                           (_poolSize bsConfig))
+                           (_poolSize (_poolConfig bsConfig)))
       (_rthread, restart) <- restarter (_restartMinimumPeriod bsConfig)
                                        terminate
       bootstrapServer bsConfig output ldc restart
@@ -84,7 +84,7 @@ restarter minPeriod trigger = do
 
 
 
-bootstrapServer :: BSConfig
+bootstrapServer :: BootstrapConfig
                 -> IOQueue
                 -> Chan NormalSignal
                 -> IO () -- ^ Restarting action, see "restarter"
@@ -101,7 +101,7 @@ bootstrapServer config ioq ldc restart =
 
 
 bootstrapServerLoop
-      :: BSConfig          -- ^ Configuration to determine how many requests to
+      :: BootstrapConfig   -- ^ Configuration to determine how many requests to
                            --   send out per new node
       -> IOQueue
       -> TVar Int          -- ^ Number of total clients served
@@ -127,7 +127,7 @@ bootstrapServerLoop config ioq counter serverSock ldc restartTrigger = forever $
           restartMaybe _ | count <= poolSize = return ()
           restartMaybe c = when (c `rem` (_restartEvery config) == 0)
                                 restartTrigger
-          poolSize = _poolSize config
+          poolSize = _poolSize (_poolConfig config)
 
           bootstrapRequestH socket node = do
                 dispatchSignal nodeConfig node ldc

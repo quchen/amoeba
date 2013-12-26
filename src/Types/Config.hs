@@ -110,17 +110,80 @@ data Config = Config {
 
 
 
--- ^ Configuration of the bootstrap server
-data BSConfig = BSConfig {
+-- ^ Node pool configuration
+data PoolConfig = PoolConfig {
 
         _poolSize :: Int     -- ^ Number of nodes in the server's pool
 
-      , _restartEvery :: Int -- ^ Every n connected nodes, one client is
+      }
+
+
+
+-- ^ Configuration of the bootstrap server
+data BootstrapConfig = BootstrapConfig {
+
+        _restartEvery :: Int -- ^ Every n connected nodes, one client is
                              --   restarted at random
 
       , _restartMinimumPeriod :: Int -- ^ Limit the maximal frequency at which
                                      --   restarts can happen
 
-      , _nodeConfig :: Config -- ^ Configuration of the node pool's nodes
+      , _bootstrapNodeConfig :: Config -- ^ Configuration of the node pool's nodes
+
+      , _bootstrapPoolConfig :: PoolConfig
 
       }
+
+
+
+-- | Multi client config
+data MultiConfig = MultiConfig {
+
+        _multiNodeConfig :: Config
+
+      , _multiPoolConfig :: PoolConfig
+
+      }
+
+
+
+-- | Drawing server config
+data DrawingConfig = DrawingConfig {
+
+        _drawingNodeConfig :: Config
+
+      , _drawingPoolConfig :: PoolConfig
+
+      }
+
+
+-- | Overloads the "_nodeConfig" accessor
+class HasNodeConfig a where
+      _nodeConfig :: a -> Config
+
+-- There's intentionally no instance for Config itself, because all calls to it
+-- would be redundant and noise up the code.
+
+instance HasNodeConfig BootstrapConfig where
+      _nodeConfig = _bootstrapNodeConfig
+
+instance HasNodeConfig MultiConfig where
+      _nodeConfig = _multiNodeConfig
+
+instance HasNodeConfig DrawingConfig where
+      _nodeConfig = _drawingNodeConfig
+
+
+
+-- | Overloads the "_poolConfig" accessor
+class HasPoolConfig a where
+      _poolConfig :: a -> PoolConfig
+
+instance HasPoolConfig BootstrapConfig where
+      _poolConfig = _bootstrapPoolConfig
+
+instance HasPoolConfig MultiConfig where
+      _poolConfig = _multiPoolConfig
+
+instance HasPoolConfig DrawingConfig where
+      _poolConfig = _drawingPoolConfig

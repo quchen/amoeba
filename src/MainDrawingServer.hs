@@ -20,7 +20,7 @@ import qualified Pipes.Concurrent as P
 import qualified Network.Simple.TCP as N
 
 import Utilities
-import CmdArgParser (parseBSArgs)
+import CmdArgParser (parseDrawingArgs)
 import Types
 import NodePool
 
@@ -33,25 +33,25 @@ drawingServerMain :: IO ()
 drawingServerMain = do
 
       -- Preliminaries
-      bsConfig <- parseBSArgs -- TODO: Drawing server config parser
-      (output, _) <- outputThread (_maxChanSize (_nodeConfig bsConfig))
+      drawingConfig <- parseDrawingArgs -- TODO: Drawing server config parser
+      (output, _) <- outputThread (_maxChanSize (_nodeConfig drawingConfig))
 
       -- Node pool
       ldc <- newChan
       terminate <- newEmptyMVar -- TODO: Never actually used. Refactor node pool?
-      nodePool (_poolSize bsConfig)
-               (_nodeConfig bsConfig)
+      nodePool (_poolSize (_poolConfig drawingConfig))
+               (_nodeConfig drawingConfig)
                ldc
                output
                terminate
 
       -- Bootstrap service
       printf "Starting drawing server with %d nodes\n"
-             (_poolSize bsConfig)
-      drawingServer bsConfig output ldc
+             (_poolSize (_poolConfig drawingConfig))
+      drawingServer drawingConfig output ldc
 
 
-drawingServer :: BSConfig
+drawingServer :: DrawingConfig
               -> IOQueue
               -> Chan NormalSignal
               -> IO ()
@@ -63,7 +63,7 @@ drawingServer config ioq ldc = do
       let port = _serverPort (_nodeConfig config)
       N.listen (N.Host "127.0.0.1") (show port) $ \(socket, _addr) -> do
             let selfTo = To (Node "127.0.0.1" port)
-            forkIO (networkAsker (_poolSize config) selfTo ldc)
+            forkIO (networkAsker (_poolSize (_poolConfig config)) selfTo ldc)
             incomingLoop ioq stg socket
 
 

@@ -30,11 +30,34 @@ nodeConfig = Config {
 
 
 
+poolConfig :: PoolConfig
+poolConfig = PoolConfig {
+
+        _poolSize = 8
+
+      }
+
+
+multiConfig :: MultiConfig
+multiConfig = MultiConfig {
+        _multiNodeConfig = nodeConfig
+      , _multiPoolConfig = poolConfig
+      }
+
+
+
+drawingConfig :: DrawingConfig
+drawingConfig = DrawingConfig {
+        _drawingNodeConfig = nodeConfig
+      , _drawingPoolConfig = poolConfig
+      }
+
+
 -- | Default bootstrap server configuration
-bsConfig :: BSConfig
-bsConfig = BSConfig {
-        _poolSize             = 8
-      , _restartEvery         = 5
+bootstrapConfig :: BootstrapConfig
+bootstrapConfig = BootstrapConfig {
+        _restartEvery         = 5
       , _restartMinimumPeriod = 10^6
-      , _nodeConfig           = nodeConfig
+      , _bootstrapNodeConfig  = nodeConfig
+      , _bootstrapPoolConfig  = poolConfig
       }

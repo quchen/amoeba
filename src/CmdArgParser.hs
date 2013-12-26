@@ -14,7 +14,9 @@
 
 module CmdArgParser (
         parseNodeArgs
-      , parseBSArgs
+      , parseMultiArgs
+      , parseBootstrapArgs
+      , parseDrawingArgs
 ) where
 
 import Options.Applicative
@@ -41,9 +43,31 @@ parseNodeArgs = execParser parser
 
 
 
-parseBSArgs :: IO T.BSConfig
-parseBSArgs = execParser parser
-      where parser = info (helper <*> bsConfig) infoMod
+parseMultiArgs :: IO T.MultiConfig
+parseMultiArgs = execParser parser
+      where parser = info (helper <*> multiConfig) infoMod
+            infoMod = mconcat
+                  [ fullDesc
+                  , progDesc "Amoeba multi-node client"
+                  , header "Launch multiple independent Amoeba nodes"
+                  ]
+
+
+
+parseBootstrapArgs :: IO T.BootstrapConfig
+parseBootstrapArgs = execParser parser
+      where parser = info (helper <*> bootstrapConfig) infoMod
+            infoMod = mconcat
+                  [ fullDesc
+                  , progDesc "Amoeba bootstrap server"
+                  , header "Start a bootstrap server to allow new nodes to\
+                           \ connect to an existing network"
+                  ]
+
+
+parseDrawingArgs :: IO T.DrawingConfig
+parseDrawingArgs = execParser parser
+      where parser = info (helper <*> drawingConfig) infoMod
             infoMod = mconcat
                   [ fullDesc
                   , progDesc "Amoeba bootstrap server"
@@ -79,12 +103,27 @@ nodeConfig = T.Config
 
 
 
-bsConfig :: Parser T.BSConfig
-bsConfig = T.BSConfig
-      <$> poolSize
-      <*> restartEvery
+poolConfig :: Parser T.PoolConfig
+poolConfig = T.PoolConfig <$> poolSize
+
+
+
+bootstrapConfig :: Parser T.BootstrapConfig
+bootstrapConfig = T.BootstrapConfig
+      <$> restartEvery
       <*> restartMinimumPeriod
       <*> nodeConfig
+      <*> poolConfig
+
+
+
+multiConfig :: Parser T.MultiConfig
+multiConfig = T.MultiConfig <$> nodeConfig <*> poolConfig
+
+
+
+drawingConfig :: Parser T.DrawingConfig
+drawingConfig = T.DrawingConfig <$> nodeConfig <*> poolConfig
 
 
 
@@ -103,7 +142,7 @@ restartEvery = (nullOption . mconcat)
       [ reader positive
       , long    "restart-every"
       , showDefault
-      , value   (T._restartEvery Default.bsConfig)
+      , value   (T._restartEvery Default.bootstrapConfig)
       , metavar "(Int > 0)"
       , help    "Restart a random pool node every n new nodes. (Note that a restart is one new node by itself already.)"
       ]
@@ -115,7 +154,7 @@ restartMinimumPeriod = (nullOption . mconcat)
       [ reader positive
       , long    "restart-minperiod"
       , showDefault
-      , value   (T._restartMinimumPeriod Default.bsConfig)
+      , value   (T._restartMinimumPeriod Default.bootstrapConfig)
       , metavar "[ms]"
       , help    "Restart a random pool node every n new nodes. (Note that a restart is one new node by itself already.)"
       ]
@@ -128,7 +167,7 @@ poolSize = (nullOption . mconcat)
       , long    "poolsize"
       , short   'n'
       , showDefault
-      , value   (T._poolSize Default.bsConfig)
+      , value   (T._poolSize Default.poolConfig)
       , metavar "(Int > 0)"
       , help    "Number of nodes in the pool"
       ]
