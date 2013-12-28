@@ -109,7 +109,7 @@ data NodeConfig = NodeConfig {
       , _floodMessageCache :: Int     -- ^ Number of past flood messages to
                                       --   store so duplicates can be discarded
 
-      }
+      } deriving (Show)
 
 
 
@@ -118,7 +118,7 @@ data PoolConfig = PoolConfig {
 
         _poolSize :: Int     -- ^ Number of nodes in the server's pool
 
-      }
+      } deriving (Show)
 
 
 
@@ -135,7 +135,7 @@ data BootstrapConfig = BootstrapConfig {
 
       , _bootstrapPoolConfig :: PoolConfig
 
-      }
+      } deriving (Show)
 
 
 
@@ -146,7 +146,7 @@ data MultiConfig = MultiConfig {
 
       , _multiPoolConfig :: PoolConfig
 
-      }
+      } deriving (Show)
 
 
 
@@ -157,7 +157,7 @@ data DrawingConfig = DrawingConfig {
 
       , _drawingPoolConfig :: PoolConfig
 
-      }
+      } deriving (Show)
 
 
 -- | Overloads the "_nodeConfig" accessor
@@ -193,7 +193,7 @@ instance HasPoolConfig DrawingConfig where
 
 
 
-newtype OptionModifier a = OptionModifier { applyConfigModifier :: a -> a }
+newtype OptionModifier a = OptionModifier { applyOptionModifier :: a -> a }
 
 -- mappend applies the modifiers from left to right, i.e. the rightmost
 -- modifier has the final say.

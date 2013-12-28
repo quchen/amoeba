@@ -2,7 +2,8 @@
 
 module Main (main) where
 
-import CmdArgParser
+import qualified CmdArgParser as CmdArgParser
+import qualified DefaultConfig as Default
 import Node
 import Types
 import Utilities
@@ -10,6 +11,9 @@ import Utilities
 -- | Starts a single node.
 main :: IO ()
 main = do
-      config <- parseNodeArgs
+
+      cmdArgs <- CmdArgParser.nodeArgs
+      let config = applyOptionModifier cmdArgs Default.nodeConfig
+
       (output, _) <- outputThread (_maxChanSize config)
       startNode Nothing output config

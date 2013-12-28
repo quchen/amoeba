@@ -1,4 +1,6 @@
--- | Default configurations, used by the command line arguments parser.
+-- | Default configurations, used by the command line arguments parser. This
+--   module is intended to be used qualified, e.g. as \"Default\" to make nice
+--   names such as \"Default.nodeConfig\".
 
 module DefaultConfig where
 

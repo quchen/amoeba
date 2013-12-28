@@ -19,9 +19,10 @@ import Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
 
 import NodePool
-import CmdArgParser (parseBootstrapArgs)
 import Utilities
 import Types
+import qualified CmdArgParser as CmdArgParser
+import qualified DefaultConfig as Default
 
 
 
@@ -33,27 +34,24 @@ main = bootstrapServerMain
 bootstrapServerMain :: IO ()
 bootstrapServerMain = do
 
-      -- Preliminaries
-      bsConfig <- parseBootstrapArgs
-      (output, _) <- outputThread (_maxChanSize (_nodeConfig bsConfig))
+      cmdArgs <- CmdArgParser.bootstrapArgs
+      let config = applyOptionModifier cmdArgs Default.bootstrapConfig
 
-      -- TODO: Add self to the list of bootstrap servers in the config
+      (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
 
-      -- Node pool
       ldc <- newChan
       terminate <- newEmptyMVar
-      nodePool (_poolSize (_poolConfig bsConfig))
-               (_nodeConfig bsConfig)
+      nodePool (_poolSize (_poolConfig config))
+               (_nodeConfig config)
                ldc
                output
                terminate
 
-      -- Bootstrap service
       toIO' output (printf "Starting bootstrap server with %d nodes\n"
-                           (_poolSize (_poolConfig bsConfig)))
-      (_rthread, restart) <- restarter (_restartMinimumPeriod bsConfig)
+                           (_poolSize (_poolConfig config)))
+      (_rthread, restart) <- restarter (_restartMinimumPeriod config)
                                        terminate
-      bootstrapServer bsConfig output ldc restart
+      bootstrapServer config output ldc restart
 
 
 

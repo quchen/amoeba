@@ -20,9 +20,10 @@ import qualified Pipes.Concurrent as P
 import qualified Network.Simple.TCP as N
 
 import Utilities
-import CmdArgParser (parseDrawingArgs)
 import Types
 import NodePool
+import qualified CmdArgParser as CmdArgParser
+import qualified DefaultConfig as Default
 
 
 
@@ -32,23 +33,22 @@ main = drawingServerMain
 drawingServerMain :: IO ()
 drawingServerMain = do
 
-      -- Preliminaries
-      drawingConfig <- parseDrawingArgs -- TODO: Drawing server config parser
-      (output, _) <- outputThread (_maxChanSize (_nodeConfig drawingConfig))
+      cmdArgs <- CmdArgParser.drawingArgs
+      let config = applyOptionModifier cmdArgs Default.drawingConfig
 
-      -- Node pool
+      (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
+
       ldc <- newChan
       terminate <- newEmptyMVar -- TODO: Never actually used. Refactor node pool?
-      nodePool (_poolSize (_poolConfig drawingConfig))
-               (_nodeConfig drawingConfig)
+      nodePool (_poolSize (_poolConfig config))
+               (_nodeConfig config)
                ldc
                output
                terminate
 
-      -- Bootstrap service
       printf "Starting drawing server with %d nodes\n"
-             (_poolSize (_poolConfig drawingConfig))
-      drawingServer drawingConfig output ldc
+             (_poolSize (_poolConfig config))
+      drawingServer config output ldc
 
 
 drawingServer :: DrawingConfig

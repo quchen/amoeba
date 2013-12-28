@@ -74,7 +74,4 @@ bootstrap config self =
 -- | Find the address of a suitable bootstrap server.
 -- TODO: Make bootstrap server selection a little more complex :-)
 getBootstrapServer :: NodeConfig -> To
-getBootstrapServer = head . Set.elems . _bootstrapServers . setBootstrap
-setBootstrap config = config { _bootstrapServers = Set.singleton self }
-      where self = To (Node "127.0.0.1" selfPort)
-            selfPort = _serverPort config
+getBootstrapServer = const (To (Node "127.0.0.1" 20000))
