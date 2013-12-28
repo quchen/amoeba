@@ -22,8 +22,9 @@ import qualified Network.Simple.TCP as N
 import Utilities
 import Types
 import NodePool
-import qualified CmdArgParser as CmdArgParser
-import qualified DefaultConfig as Default
+import qualified Config.CmdArgParser as CmdArgParser
+import qualified Config.DefaultConfig as Default
+import Config.OptionModifier
 
 
 

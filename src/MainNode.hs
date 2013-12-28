@@ -2,8 +2,9 @@
 
 module Main (main) where
 
-import qualified CmdArgParser as CmdArgParser
-import qualified DefaultConfig as Default
+import qualified Config.CmdArgParser as CmdArgParser
+import qualified Config.DefaultConfig as Default
+import Config.OptionModifier
 import Node
 import Types
 import Utilities

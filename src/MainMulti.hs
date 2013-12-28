@@ -8,8 +8,9 @@ import           Control.Concurrent
 import           Text.Printf
 
 import Utilities
-import qualified CmdArgParser as CmdArgParser
-import qualified DefaultConfig as Default
+import qualified Config.CmdArgParser as CmdArgParser
+import qualified Config.DefaultConfig as Default
+import Config.OptionModifier
 import Types
 import NodePool
 

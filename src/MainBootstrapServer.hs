@@ -21,8 +21,9 @@ import qualified Pipes.Network.TCP as PN
 import NodePool
 import Utilities
 import Types
-import qualified CmdArgParser as CmdArgParser
-import qualified DefaultConfig as Default
+import qualified Config.CmdArgParser as CmdArgParser
+import qualified Config.DefaultConfig as Default
+import Config.OptionModifier
 
 
 
