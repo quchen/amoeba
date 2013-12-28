@@ -7,6 +7,12 @@ Amœba is a program for setting up a decentralized network. The name comes from 
 
 The current development stage is Alpha.
 
+Branch  | Status
+:-----: | :-----:
+stable  | ![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=stable)
+master  | ![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=master)
+develop | ![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=develop)
+
 
 
 
