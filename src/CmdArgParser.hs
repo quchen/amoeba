@@ -17,7 +17,7 @@
 --   options.
 --
 --   This module is intended to be used qualified, e.g. as \"CmdArgParser\" to
---   make nice names such as \"CmdArgParser.nodeConfig\".
+--   make nice names such as \"CmdArgParser.nodeArgs\".
 
 module CmdArgParser (
         nodeArgs
@@ -54,7 +54,7 @@ runArgParser parser short long = execParser parser'
 
 
 nodeArgs :: IO (Ty.OptionModifier Ty.NodeConfig)
-nodeArgs = runArgParser nodeConfig short long
+nodeArgs = runArgParser nodeModifier short long
       where short = "Amoeba client"
             long  = "Launch a single node in an Amoeba network"
 
@@ -89,63 +89,56 @@ drawingArgs = runArgParser drawingConfig short long
 
 
 
-nodeConfig :: Parser (Ty.OptionModifier Ty.NodeConfig)
-nodeConfig = mconcat <$> T.sequenceA [ port
-                                     , minNeighbours
-                                     , maxNeighbours
-                                     , maxChanSize
-                                     , bounces
-                                     , acceptP
-                                     , maxSoftBounces
-                                     , shortTickRate
-                                     , mediumTickRate
-                                     , longTickRate
-                                     , poolTimeout
-                                     , verbosity
-                                     , pure mempty
-                                     , floodMessageCache
-                                     ]
-                        -- TODO: specify bootstrap servers via command line
+nodeModifier :: Parser (Ty.OptionModifier Ty.NodeConfig)
+nodeModifier = (fmap mconcat . T.sequenceA) mods
+      where mods = [ port
+                   , minNeighbours
+                   , maxNeighbours
+                   , maxChanSize
+                   , bounces
+                   , acceptP
+                   , maxSoftBounces
+                   , shortTickRate
+                   , mediumTickRate
+                   , longTickRate
+                   , poolTimeout
+                   , verbosity
+                   , pure mempty
+                   , floodMessageCache
+                   ]
+                   -- TODO: specify bootstrap servers via command line
 
 
 
-poolConfig :: Parser (Ty.OptionModifier Ty.PoolConfig)
-poolConfig = mconcat <$> T.sequenceA [ poolSize ]
+poolModifier :: Parser (Ty.OptionModifier Ty.PoolConfig)
+poolModifier = (fmap mconcat . T.sequenceA) mods
+      where mods = [ poolSize ]
 
 
 
 bootstrapConfig :: Parser (Ty.OptionModifier Ty.BootstrapConfig)
-bootstrapConfig = mconcat <$> T.sequenceA [ restartEvery
-                                          , restartMinimumPeriod
-                                          , liftNodeConfig <$> nodeConfig
-                                          , liftPoolConfig <$> poolConfig
-                                          ]
-      where liftNodeConfig (Ty.OptionModifier x) = Ty.OptionModifier
-                  ( \c -> c { Ty._bootstrapNodeConfig = x (Ty._bootstrapNodeConfig c) } )
-            liftPoolConfig (Ty.OptionModifier x) = Ty.OptionModifier
-                  ( \c -> c { Ty._bootstrapPoolConfig = x (Ty._bootstrapPoolConfig c) } )
+bootstrapConfig = (fmap mconcat . T.sequenceA) mods
+      where mods = [ restartEvery
+                   , restartMinimumPeriod
+                   , Ty.liftNodeModifier <$> nodeModifier
+                   , Ty.liftPoolModifier <$> poolModifier
+                   ]
 
 
 
 multiConfig :: Parser (Ty.OptionModifier Ty.MultiConfig)
-multiConfig = mconcat <$> T.sequenceA [ liftNodeConfig <$> nodeConfig
-                                      , liftPoolConfig <$> poolConfig
-                                      ]
-      where liftNodeConfig (Ty.OptionModifier x) = Ty.OptionModifier
-                  ( \c -> c { Ty._multiNodeConfig = x (Ty._multiNodeConfig c) } )
-            liftPoolConfig (Ty.OptionModifier x) = Ty.OptionModifier
-                  ( \c -> c { Ty._multiPoolConfig = x (Ty._multiPoolConfig c) } )
+multiConfig = (fmap mconcat . T.sequenceA)  mods
+      where mods = [ Ty.liftNodeModifier <$> nodeModifier
+                   , Ty.liftPoolModifier <$> poolModifier
+                   ]
 
 
 
 drawingConfig :: Parser (Ty.OptionModifier Ty.DrawingConfig)
-drawingConfig = mconcat <$> T.sequenceA [ liftNodeConfig <$> nodeConfig
-                                        , liftPoolConfig <$> poolConfig
-                                        ]
-      where liftNodeConfig (Ty.OptionModifier x) = Ty.OptionModifier
-                  ( \c -> c { Ty._drawingNodeConfig = x (Ty._drawingNodeConfig c) } )
-            liftPoolConfig (Ty.OptionModifier x) = Ty.OptionModifier
-                  ( \c -> c { Ty._drawingPoolConfig = x (Ty._drawingPoolConfig c) } )
+drawingConfig = (fmap mconcat . T.sequenceA) mods
+      where mods = [ Ty.liftNodeModifier <$> nodeModifier
+                   , Ty.liftPoolModifier <$> poolModifier
+                   ]
 
 
 
