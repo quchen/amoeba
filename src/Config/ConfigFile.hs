@@ -4,10 +4,10 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Config.ConfigFile (
-        nodeConfig
-      , bootstrapConfig
-      , drawingConfig
-      , multiConfig
+        nodeModifier
+      , bootstrapModifier
+      , drawingModifier
+      , multiModifier
 ) where
 
 import Data.Char (toLower)
@@ -24,7 +24,6 @@ import qualified Data.Configurator.Types as C
 import qualified Data.Text as Text
 import qualified Data.Traversable as T
 
-import qualified Config.DefaultConfig as Default
 import qualified Types as Ty
 import Config.OptionModifier
 
@@ -38,34 +37,34 @@ configFiles = [ C.Optional "./amoeba.cfg"
 
 
 -- | Get the node option modifier from the top level of the configuration file
-nodeConfig :: IO (OptionModifier Ty.NodeConfig)
-nodeConfig = C.load configFiles >>= runReaderT (nodeModifier [])
+nodeModifier :: IO (OptionModifier Ty.NodeConfig)
+nodeModifier = C.load configFiles >>= runReaderT (nodeModifier' [])
 
 -- | Get the bootstrap option modifier by first reading the top level of the
 --   configuration file, and then overwriting the values obtained by what is
 --   found under the \"bootstrap\" prefix.
-bootstrapConfig :: IO (OptionModifier Ty.BootstrapConfig)
-bootstrapConfig = C.load configFiles >>= runReaderT bootstrapModifier
+bootstrapModifier :: IO (OptionModifier Ty.BootstrapConfig)
+bootstrapModifier = C.load configFiles >>= runReaderT bootstrapModifier'
 
 -- | Get the drawing option modifier by first reading the top level of the
 --   configuration file, and then overwriting the values obtained by what is
 --   found under the \"drawing\" prefix.
-drawingConfig :: IO (OptionModifier Ty.DrawingConfig)
-drawingConfig = C.load configFiles >>= runReaderT drawingModifier
+drawingModifier :: IO (OptionModifier Ty.DrawingConfig)
+drawingModifier = C.load configFiles >>= runReaderT drawingModifier'
 
 -- | Get the multi option modifier by first reading the top level of the
 --   configuration file, and then overwriting the values obtained by what is
 --   found under the \"multi\" prefix.
-multiConfig :: IO (OptionModifier Ty.MultiConfig)
-multiConfig = C.load configFiles >>= runReaderT multiModifier
+multiModifier :: IO (OptionModifier Ty.MultiConfig)
+multiModifier = C.load configFiles >>= runReaderT multiModifier'
 
 
 
 
 
 -- | Get the pool node modifier given a certain "Prefix".
-nodeModifier :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-nodeModifier prefixes = (fmap mconcat . T.sequenceA) mods
+nodeModifier' :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
+nodeModifier' prefixes = (fmap mconcat . T.sequenceA) mods
       where mods = map ($ prefixes)
                   [ serverPort
                   , minNeighbours
@@ -86,8 +85,8 @@ nodeModifier prefixes = (fmap mconcat . T.sequenceA) mods
 
 
 -- | Get the pool modifier given a certain "Prefix".
-poolModifier :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.PoolConfig)
-poolModifier prefixes = (fmap mconcat . T.sequenceA) mods
+poolModifier' :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.PoolConfig)
+poolModifier' prefixes = (fmap mconcat . T.sequenceA) mods
       where mods = map ($ prefixes) [ poolSize ]
 
 
@@ -95,14 +94,14 @@ poolModifier prefixes = (fmap mconcat . T.sequenceA) mods
 -- | Read the general config, before overwriting it with values with the
 --   @bootstrap@ prefix, i.e. for the @foo@ setting first looks for @foo@ and
 --   then for @bootstrap.foo@.
-bootstrapModifier :: ReaderT C.Config IO (OptionModifier Ty.BootstrapConfig)
-bootstrapModifier = (fmap mconcat . T.sequenceA) mods
-      where mods = [ liftNodeModifier <$> nodeModifier noPrefix
-                   , liftPoolModifier <$> poolModifier noPrefix
+bootstrapModifier' :: ReaderT C.Config IO (OptionModifier Ty.BootstrapConfig)
+bootstrapModifier' = (fmap mconcat . T.sequenceA) mods
+      where mods = [ liftNodeModifier <$> nodeModifier' noPrefix
+                   , liftPoolModifier <$> poolModifier' noPrefix
                    , restartEvery prefix
                    , restartMinimumPeriod prefix
-                   , liftNodeModifier <$> nodeModifier prefix
-                   , liftPoolModifier <$> poolModifier prefix
+                   , liftNodeModifier <$> nodeModifier' prefix
+                   , liftPoolModifier <$> poolModifier' prefix
                    ]
             noPrefix = []
             prefix = ["bootstrap"]
@@ -111,12 +110,12 @@ bootstrapModifier = (fmap mconcat . T.sequenceA) mods
 
 -- | Same as "bootstrapModifier", but for the drawing server (using the
 --   @drawing@ prefix).
-drawingModifier :: ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
-drawingModifier = (fmap mconcat . T.sequenceA) mods
-      where mods = [ liftNodeModifier <$> nodeModifier noPrefix
-                   , liftPoolModifier <$> poolModifier noPrefix
-                   , liftNodeModifier <$> nodeModifier prefix
-                   , liftPoolModifier <$> poolModifier prefix
+drawingModifier' :: ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
+drawingModifier' = (fmap mconcat . T.sequenceA) mods
+      where mods = [ liftNodeModifier <$> nodeModifier' noPrefix
+                   , liftPoolModifier <$> poolModifier' noPrefix
+                   , liftNodeModifier <$> nodeModifier' prefix
+                   , liftPoolModifier <$> poolModifier' prefix
                    ]
             noPrefix = []
             prefix = ["drawing"]
@@ -125,12 +124,12 @@ drawingModifier = (fmap mconcat . T.sequenceA) mods
 
 -- | Same as "bootstrapModifier", but for the multi client (using the
 --   @multi@ prefix).
-multiModifier :: ReaderT C.Config IO (OptionModifier Ty.MultiConfig)
-multiModifier = (fmap mconcat . T.sequenceA) mods
-      where mods = [ liftNodeModifier <$> nodeModifier noPrefix
-                   , liftPoolModifier <$> poolModifier noPrefix
-                   , liftNodeModifier <$> nodeModifier prefix
-                   , liftPoolModifier <$> poolModifier prefix
+multiModifier' :: ReaderT C.Config IO (OptionModifier Ty.MultiConfig)
+multiModifier' = (fmap mconcat . T.sequenceA) mods
+      where mods = [ liftNodeModifier <$> nodeModifier' noPrefix
+                   , liftPoolModifier <$> poolModifier' noPrefix
+                   , liftNodeModifier <$> nodeModifier' prefix
+                   , liftPoolModifier <$> poolModifier' prefix
                    ]
             noPrefix = []
             prefix = ["drawing"]
