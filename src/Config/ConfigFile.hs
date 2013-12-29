@@ -196,8 +196,7 @@ verbosity' prefixes = do
             Nothing -> Nothing
 
       where
-            strToLower = map toLower
-            parseVerbosity (strToLower -> y)
+            parseVerbosity (map toLower -> y)
                   | y == "mute"    = Just Ty.Mute
                   | y == "quiet"   = Just Ty.Quiet
                   | y == "default" = Just Ty.Default
