@@ -19,9 +19,10 @@ import Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
 
 import NodePool
-import CmdArgParser
 import Utilities
 import Types
+import qualified Config.Getter as Config
+import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
 
 
 
@@ -33,27 +34,23 @@ main = bootstrapServerMain
 bootstrapServerMain :: IO ()
 bootstrapServerMain = do
 
-      -- Preliminaries
-      bsConfig <- parseBSArgs
-      (output, _) <- outputThread (_maxChanSize (_nodeConfig bsConfig))
+      config <- Config.bootstrap
 
-      -- TODO: Add self to the list of bootstrap servers in the config
+      (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
 
-      -- Node pool
       ldc <- newChan
       terminate <- newEmptyMVar
-      nodePool (_poolSize bsConfig)
-               (_nodeConfig bsConfig)
+      nodePool (_poolSize (_poolConfig config))
+               (_nodeConfig config)
                ldc
                output
                terminate
 
-      -- Bootstrap service
       toIO' output (printf "Starting bootstrap server with %d nodes\n"
-                           (_poolSize bsConfig))
-      (_rthread, restart) <- restarter (_restartMinimumPeriod bsConfig)
+                           (_poolSize (_poolConfig config)))
+      (_rthread, restart) <- restarter (_restartMinimumPeriod config)
                                        terminate
-      bootstrapServer bsConfig output ldc restart
+      bootstrapServer config output ldc restart
 
 
 
@@ -84,7 +81,7 @@ restarter minPeriod trigger = do
 
 
 
-bootstrapServer :: BSConfig
+bootstrapServer :: BootstrapConfig
                 -> IOQueue
                 -> Chan NormalSignal
                 -> IO () -- ^ Restarting action, see "restarter"
@@ -101,7 +98,7 @@ bootstrapServer config ioq ldc restart =
 
 
 bootstrapServerLoop
-      :: BSConfig          -- ^ Configuration to determine how many requests to
+      :: BootstrapConfig   -- ^ Configuration to determine how many requests to
                            --   send out per new node
       -> IOQueue
       -> TVar Int          -- ^ Number of total clients served
@@ -127,7 +124,7 @@ bootstrapServerLoop config ioq counter serverSock ldc restartTrigger = forever $
           restartMaybe _ | count <= poolSize = return ()
           restartMaybe c = when (c `rem` (_restartEvery config) == 0)
                                 restartTrigger
-          poolSize = _poolSize config
+          poolSize = _poolSize (_poolConfig config)
 
           bootstrapRequestH socket node = do
                 dispatchSignal nodeConfig node ldc
@@ -153,7 +150,7 @@ bootstrapServerLoop config ioq counter serverSock ldc restartTrigger = forever $
 
 
 -- | Send bootstrap requests on behalf of the new node to the node pool
-dispatchSignal :: Config
+dispatchSignal :: NodeConfig
                -> To -- ^ Benefactor, i.e. 'BootstrapRequest' issuer's server
                      --   address
                -> Chan NormalSignal
@@ -167,7 +164,7 @@ dispatchSignal config to ldc = mapM_ order edges
 
 
 -- | Construct a new edge request
-edgeRequest :: Config
+edgeRequest :: NodeConfig
             -> To
             -> Direction
             -> NormalSignal

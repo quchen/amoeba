@@ -20,9 +20,10 @@ import qualified Pipes.Concurrent as P
 import qualified Network.Simple.TCP as N
 
 import Utilities
-import CmdArgParser (parseBSArgs)
 import Types
 import NodePool
+import qualified Config.Getter as Config
+import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
 
 
 
@@ -32,26 +33,24 @@ main = drawingServerMain
 drawingServerMain :: IO ()
 drawingServerMain = do
 
-      -- Preliminaries
-      bsConfig <- parseBSArgs -- TODO: Drawing server config parser
-      (output, _) <- outputThread (_maxChanSize (_nodeConfig bsConfig))
+      config <- Config.drawing
 
-      -- Node pool
+      (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
+
       ldc <- newChan
       terminate <- newEmptyMVar -- TODO: Never actually used. Refactor node pool?
-      nodePool (_poolSize bsConfig)
-               (_nodeConfig bsConfig)
+      nodePool (_poolSize (_poolConfig config))
+               (_nodeConfig config)
                ldc
                output
                terminate
 
-      -- Bootstrap service
       printf "Starting drawing server with %d nodes\n"
-             (_poolSize bsConfig)
-      drawingServer bsConfig output ldc
+             (_poolSize (_poolConfig config))
+      drawingServer config output ldc
 
 
-drawingServer :: BSConfig
+drawingServer :: DrawingConfig
               -> IOQueue
               -> Chan NormalSignal
               -> IO ()
@@ -63,7 +62,7 @@ drawingServer config ioq ldc = do
       let port = _serverPort (_nodeConfig config)
       N.listen (N.Host "127.0.0.1") (show port) $ \(socket, _addr) -> do
             let selfTo = To (Node "127.0.0.1" port)
-            forkIO (networkAsker (_poolSize config) selfTo ldc)
+            forkIO (networkAsker (_poolSize (_poolConfig config)) selfTo ldc)
             incomingLoop ioq stg socket
 
 
@@ -72,7 +71,7 @@ incomingLoop :: IOQueue
              -> PChan (To, Set To)
              -> N.Socket
              -> IO ()
-incomingLoop ioq stg serverSock = forever $ do
+incomingLoop _ioq stg serverSock = forever $ do
       N.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
             receive clientSock >>= \case
                   Just (NeighbourList node neighbours) -> do

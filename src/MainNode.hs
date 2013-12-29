@@ -2,7 +2,7 @@
 
 module Main (main) where
 
-import CmdArgParser
+import qualified Config.Getter as Config
 import Node
 import Types
 import Utilities
@@ -10,6 +10,8 @@ import Utilities
 -- | Starts a single node.
 main :: IO ()
 main = do
-      config <- parseNodeArgs
+
+      config <- Config.node
+
       (output, _) <- outputThread (_maxChanSize config)
       startNode Nothing output config

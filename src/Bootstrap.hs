@@ -12,6 +12,7 @@ import Control.Exception
 import GHC.IO.Exception (ioe_description)
 import Data.Typeable
 import Text.Printf
+import qualified Data.Set as Set
 
 import Types
 import Utilities
@@ -28,7 +29,7 @@ instance Exception BootstrapError
 
 -- | Send out a 'BootstrapRequest' to a bootstrap server and handle the
 --   response.
-bootstrap :: Config
+bootstrap :: NodeConfig
           -> To -- Own address so other nodes can connect
           -> IO ()
 bootstrap config self =
@@ -72,6 +73,5 @@ bootstrap config self =
 
 -- | Find the address of a suitable bootstrap server.
 -- TODO: Make bootstrap server selection a little more complex :-)
-getBootstrapServer :: Config -> To
-getBootstrapServer = head . _bootstrapServers . setBootstrap
-setBootstrap x = x { _bootstrapServers = [To $ Node "127.0.0.1" 20000] }
+getBootstrapServer :: NodeConfig -> To
+getBootstrapServer = const (To (Node "127.0.0.1" 20000))

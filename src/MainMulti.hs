@@ -8,7 +8,8 @@ import           Control.Concurrent
 import           Text.Printf
 
 import Utilities
-import CmdArgParser (parseBSArgs)
+import qualified Config.Getter as Config
+import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
 import Types
 import NodePool
 
@@ -20,18 +21,17 @@ main = multiNodeMain
 multiNodeMain :: IO ()
 multiNodeMain = do
 
-      -- Preliminaries
-      bsConfig <- parseBSArgs -- TODO: Multi-node config parser
-      (output, _) <- outputThread (_maxChanSize (_nodeConfig bsConfig))
+      config <- Config.multi
+
+      (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
 
       printf "Starting pool with %d nodes\n"
-             (_poolSize bsConfig)
+             (_poolSize (_poolConfig config))
 
-      -- Node pool
       ldc <- newChan
       terminate <- newEmptyMVar -- TODO: Never actually used. Refactor node pool?
-      nodePool (_poolSize bsConfig)
-               (_nodeConfig bsConfig)
+      nodePool (_poolSize (_poolConfig config))
+               (_nodeConfig config)
                ldc
                output
                terminate

@@ -28,8 +28,7 @@ import Utilities
 --   IO thread.
 startNode :: Maybe (PChan NormalSignal) -- ^ Local direct connection (LDC)
           -> IOQueue -- ^ Channel to output thread
-          -> Config -- ^ Configuration, most likely given by command line
-                    --   parameters
+          -> NodeConfig
           -> IO ()
 startNode ldc output config = do
 
@@ -70,7 +69,7 @@ getSelfInfo addr = fromJust' <$> NS.getNameInfo flags True True addr
 initEnvironment :: To                         -- ^ Own address
                 -> Maybe (PChan NormalSignal) -- ^ Local direct connection
                 -> IOQueue                    -- ^ Channel to output thread
-                -> Config
+                -> NodeConfig
                 -> IO Environment
 initEnvironment node ldc output config = Environment
 
