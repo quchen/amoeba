@@ -31,32 +31,33 @@ import Config.OptionModifier
 
 
 
-loadConfigs :: [C.Worth FilePath] -> IO C.Config
-loadConfigs files = C.load files
+configFiles = [ C.Optional "./amoeba.cfg"
+              , C.Optional "$(HOME)/.local/share/amoeba/amoeba.cfg"
+              ]
 
 
 
 -- | Get the node option modifier from the top level of the configuration file
-nodeConfig :: C.Config -> IO (OptionModifier Ty.NodeConfig)
-nodeConfig = runReaderT (nodeModifier [])
+nodeConfig :: IO (OptionModifier Ty.NodeConfig)
+nodeConfig = C.load configFiles >>= runReaderT (nodeModifier [])
 
 -- | Get the bootstrap option modifier by first reading the top level of the
 --   configuration file, and then overwriting the values obtained by what is
 --   found under the \"bootstrap\" prefix.
-bootstrapConfig :: C.Config -> IO (OptionModifier Ty.BootstrapConfig)
-bootstrapConfig = runReaderT bootstrapModifier
+bootstrapConfig :: IO (OptionModifier Ty.BootstrapConfig)
+bootstrapConfig = C.load configFiles >>= runReaderT bootstrapModifier
 
 -- | Get the drawing option modifier by first reading the top level of the
 --   configuration file, and then overwriting the values obtained by what is
 --   found under the \"drawing\" prefix.
-drawingConfig :: C.Config -> IO (OptionModifier Ty.DrawingConfig)
-drawingConfig = runReaderT drawingModifier
+drawingConfig :: IO (OptionModifier Ty.DrawingConfig)
+drawingConfig = C.load configFiles >>= runReaderT drawingModifier
 
 -- | Get the multi option modifier by first reading the top level of the
 --   configuration file, and then overwriting the values obtained by what is
 --   found under the \"multi\" prefix.
-multiConfig :: C.Config -> IO (OptionModifier Ty.MultiConfig)
-multiConfig = runReaderT multiModifier
+multiConfig :: IO (OptionModifier Ty.MultiConfig)
+multiConfig = C.load configFiles >>= runReaderT multiModifier
 
 
 
