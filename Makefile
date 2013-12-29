@@ -77,7 +77,7 @@ doc :
 # HLint
 .PHONY : hlint
 hlint :
-	$(HLINT) $(SRC)/*.hs | $(PAGER)
+	find $(SRC) -name "*.hs" | xargs $(HLINT) | $(PAGER)
 
 
 .PHONY : clean
