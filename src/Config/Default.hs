@@ -2,7 +2,7 @@
 --   module is intended to be used qualified, e.g. as \"Default\" to make nice
 --   names such as \"Default.nodeConfig\".
 
-module Config.DefaultConfig where
+module Config.Default where
 
 
 import qualified Data.Set as Set

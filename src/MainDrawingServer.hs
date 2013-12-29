@@ -22,9 +22,8 @@ import qualified Network.Simple.TCP as N
 import Utilities
 import Types
 import NodePool
-import qualified Config.CmdArgParser as CmdArgParser
-import qualified Config.DefaultConfig as Default
-import Config.OptionModifier
+import qualified Config.Getter as Config
+import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
 
 
 
@@ -34,8 +33,7 @@ main = drawingServerMain
 drawingServerMain :: IO ()
 drawingServerMain = do
 
-      cmdArgs <- CmdArgParser.drawingArgs
-      let config = applyOptionModifier cmdArgs Default.drawingConfig
+      config <- Config.drawing
 
       (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
 

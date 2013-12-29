@@ -1,17 +1,3 @@
--- TODO: Warn/error on bad parameters instead of blindly taking them
---
---       - short < medium < long tickrate, timeout > long
---       - Port should be between 0 and 2^16-1
---       - poolsize > minneighbours: the BS server can't satisfy itself otherwise
---       - restartEvery should be larger than 0.
---           - 1: Every new neighbour triggers a restart (if coolown is over).
---           - 2: Same as 1, since the restart makes one node reconnect to the
---                pool
---           - 3: Every other new node triggers restart
---               TODO: subtract this offset of 1 everywhereto make configuration
---                     easier?
-
-
 -- | Parser for command line arguments. The idea is to use the parser to
 --   generate option modifier functions that can then be applied to the default
 --   options.
@@ -20,10 +6,10 @@
 --   make nice names such as \"CmdArgParser.nodeArgs\".
 
 module Config.CmdArgParser (
-        nodeArgs
-      , multiArgs
-      , bootstrapArgs
-      , drawingArgs
+        nodeModifier
+      , multiModifier
+      , bootstrapModifier
+      , drawingModifier
 ) where
 
 import Options.Applicative
@@ -35,7 +21,7 @@ import qualified Data.Traversable as T
 import Data.Char (toLower)
 import Text.Read (readEither)
 
-import qualified Config.DefaultConfig as Default
+import qualified Config.Default as Default
 import qualified Types as Ty
 import Config.OptionModifier
 
@@ -54,30 +40,30 @@ runArgParser parser short long = execParser parser'
 
 
 
-nodeArgs :: IO (OptionModifier Ty.NodeConfig)
-nodeArgs = runArgParser nodeModifier short long
+nodeModifier :: IO (OptionModifier Ty.NodeConfig)
+nodeModifier = runArgParser nodeModifier' short long
       where short = "Amoeba client"
             long  = "Launch a single node in an Amoeba network"
 
 
 
-multiArgs :: IO (OptionModifier Ty.MultiConfig)
-multiArgs = runArgParser multiModifier short long
+multiModifier :: IO (OptionModifier Ty.MultiConfig)
+multiModifier = runArgParser multiModifier' short long
       where short = "Amoeba multi-node client"
             long  = "Launch multiple independent Amoeba nodes"
 
 
 
-bootstrapArgs :: IO (OptionModifier Ty.BootstrapConfig)
-bootstrapArgs = runArgParser bootstrapModifier short long
+bootstrapModifier :: IO (OptionModifier Ty.BootstrapConfig)
+bootstrapModifier = runArgParser bootstrapModifier' short long
       where short = "Amoeba bootstrap server"
             long  = "Start a bootstrap server to allow new nodes to\
                           \ connect to an existing network"
 
 
 
-drawingArgs :: IO (OptionModifier Ty.DrawingConfig)
-drawingArgs = runArgParser drawingModifier short long
+drawingModifier :: IO (OptionModifier Ty.DrawingConfig)
+drawingModifier = runArgParser drawingModifier' short long
       where short = "Amoeba bootstrap server"
             long  = "Start a bootstrap server to allow new nodes to\
                           \ connect to an existing network"
@@ -90,8 +76,8 @@ drawingArgs = runArgParser drawingModifier short long
 
 
 
-nodeModifier :: Parser (OptionModifier Ty.NodeConfig)
-nodeModifier = (fmap mconcat . T.sequenceA) mods
+nodeModifier' :: Parser (OptionModifier Ty.NodeConfig)
+nodeModifier' = (fmap mconcat . T.sequenceA) mods
       where mods = [ port
                    , minNeighbours
                    , maxNeighbours
@@ -111,34 +97,34 @@ nodeModifier = (fmap mconcat . T.sequenceA) mods
 
 
 
-poolModifier :: Parser (OptionModifier Ty.PoolConfig)
-poolModifier = (fmap mconcat . T.sequenceA) mods
+poolModifier' :: Parser (OptionModifier Ty.PoolConfig)
+poolModifier' = (fmap mconcat . T.sequenceA) mods
       where mods = [ poolSize ]
 
 
 
-bootstrapModifier :: Parser (OptionModifier Ty.BootstrapConfig)
-bootstrapModifier = (fmap mconcat . T.sequenceA) mods
+bootstrapModifier' :: Parser (OptionModifier Ty.BootstrapConfig)
+bootstrapModifier' = (fmap mconcat . T.sequenceA) mods
       where mods = [ restartEvery
                    , restartMinimumPeriod
-                   , liftNodeModifier <$> nodeModifier
-                   , liftPoolModifier <$> poolModifier
+                   , liftNodeModifier <$> nodeModifier'
+                   , liftPoolModifier <$> poolModifier'
                    ]
 
 
 
-multiModifier :: Parser (OptionModifier Ty.MultiConfig)
-multiModifier = (fmap mconcat . T.sequenceA)  mods
-      where mods = [ liftNodeModifier <$> nodeModifier
-                   , liftPoolModifier <$> poolModifier
+multiModifier' :: Parser (OptionModifier Ty.MultiConfig)
+multiModifier' = (fmap mconcat . T.sequenceA)  mods
+      where mods = [ liftNodeModifier <$> nodeModifier'
+                   , liftPoolModifier <$> poolModifier'
                    ]
 
 
 
-drawingModifier :: Parser (OptionModifier Ty.DrawingConfig)
-drawingModifier = (fmap mconcat . T.sequenceA) mods
-      where mods = [ liftNodeModifier <$> nodeModifier
-                   , liftPoolModifier <$> poolModifier
+drawingModifier' :: Parser (OptionModifier Ty.DrawingConfig)
+drawingModifier' = (fmap mconcat . T.sequenceA) mods
+      where mods = [ liftNodeModifier <$> nodeModifier'
+                   , liftPoolModifier <$> poolModifier'
                    ]
 
 
