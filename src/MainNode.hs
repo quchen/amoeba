@@ -2,9 +2,7 @@
 
 module Main (main) where
 
-import qualified Config.CmdArgParser as CmdArgParser
-import qualified Config.DefaultConfig as Default
-import Config.OptionModifier
+import qualified Config.Getter as Config
 import Node
 import Types
 import Utilities
@@ -13,8 +11,7 @@ import Utilities
 main :: IO ()
 main = do
 
-      cmdArgs <- CmdArgParser.nodeArgs
-      let config = applyOptionModifier cmdArgs Default.nodeConfig
+      config <- Config.node
 
       (output, _) <- outputThread (_maxChanSize config)
       startNode Nothing output config

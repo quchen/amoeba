@@ -8,9 +8,8 @@ import           Control.Concurrent
 import           Text.Printf
 
 import Utilities
-import qualified Config.CmdArgParser as CmdArgParser
-import qualified Config.DefaultConfig as Default
-import Config.OptionModifier
+import qualified Config.Getter as Config
+import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
 import Types
 import NodePool
 
@@ -22,9 +21,7 @@ main = multiNodeMain
 multiNodeMain :: IO ()
 multiNodeMain = do
 
-      cmdArgs <- CmdArgParser.multiArgs
-      let config = applyOptionModifier cmdArgs Default.multiConfig
-
+      config <- Config.multi
 
       (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
 

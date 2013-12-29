@@ -21,9 +21,8 @@ import qualified Pipes.Network.TCP as PN
 import NodePool
 import Utilities
 import Types
-import qualified Config.CmdArgParser as CmdArgParser
-import qualified Config.DefaultConfig as Default
-import Config.OptionModifier
+import qualified Config.Getter as Config
+import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
 
 
 
@@ -35,8 +34,7 @@ main = bootstrapServerMain
 bootstrapServerMain :: IO ()
 bootstrapServerMain = do
 
-      cmdArgs <- CmdArgParser.bootstrapArgs
-      let config = applyOptionModifier cmdArgs Default.bootstrapConfig
+      config <- Config.bootstrap
 
       (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
 
