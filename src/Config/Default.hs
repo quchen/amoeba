@@ -18,14 +18,14 @@ nodeConfig = NodeConfig {
       , _maxNeighbours     = 10
       , _minNeighbours     = 5
       , _maxChanSize       = 100
-      , _bounces           = 1
+      , _bounces           = 2
       , _acceptP           = 0.5
       , _maxSoftBounces    = 10
       , _shortTickRate     = 1 * 10^5
       , _mediumTickRate    = 3 * 10^5
       , _longTickRate      = 10^6
       , _poolTimeout       = 5
-      , _verbosity         = Debug -- TODO: Change back to Default for production
+      , _verbosity         = Default
       , _bootstrapServers  = Set.empty
       , _floodMessageCache = 1024
       }

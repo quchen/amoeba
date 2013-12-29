@@ -139,10 +139,13 @@ port :: Parser (OptionModifier Ty.NodeConfig)
 port = toModifier <$> (option . mconcat)
       [ long    "port"
       , short   'p'
+      , showDefault
+      , value   defaultValue
       , metavar "PORT"
       , help    "Server port"
       ]
       where toModifier x = OptionModifier (\c -> c { Ty._serverPort = x })
+            defaultValue = Ty._serverPort Default.nodeConfig
 
 
 

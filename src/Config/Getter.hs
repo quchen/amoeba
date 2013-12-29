@@ -43,22 +43,22 @@ runModifier defaultConfig mods = do
 
 node :: IO NodeConfig
 node = runModifier Default.nodeConfig mods
-      where mods = [ File.nodeModifier, CmdArg.nodeModifier]
+      where mods = [ CmdArg.nodeModifier, File.nodeModifier]
 
 
 
 bootstrap :: IO BootstrapConfig
 bootstrap = runModifier Default.bootstrapConfig mods
-      where mods = [ File.bootstrapModifier, CmdArg.bootstrapModifier]
+      where mods = [ CmdArg.bootstrapModifier, File.bootstrapModifier]
 
 
 
 drawing :: IO DrawingConfig
 drawing = runModifier Default.drawingConfig mods
-      where mods = [ File.drawingModifier, CmdArg.drawingModifier]
+      where mods = [ CmdArg.drawingModifier, File.drawingModifier]
 
 
 
 multi :: IO MultiConfig
 multi = runModifier Default.multiConfig mods
-      where mods = [ File.multiModifier, CmdArg.multiModifier]
+      where mods = [ CmdArg.multiModifier, File.multiModifier]

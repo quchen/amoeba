@@ -29,9 +29,11 @@ import Config.OptionModifier
 
 
 
-
-configFiles = [ C.Optional "./amoeba.cfg"
-              , C.Optional "$(HOME)/.local/share/amoeba/amoeba.cfg"
+-- | Files to read the config from. The later in the list, the higher the
+--   precedence of the contained settings.
+configFiles = [ C.Optional "$(HOME)/.local/share/amoeba/amoeba.cfg"
+              , C.Optional "$(HOME)/.amoeba.cfg"
+              , C.Optional "amoeba.cfg"
               ]
 
 
