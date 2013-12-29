@@ -62,14 +62,14 @@ nodeArgs = runArgParser nodeModifier short long
 
 
 multiArgs :: IO (OptionModifier Ty.MultiConfig)
-multiArgs = runArgParser multiConfig short long
+multiArgs = runArgParser multiModifier short long
       where short = "Amoeba multi-node client"
             long  = "Launch multiple independent Amoeba nodes"
 
 
 
 bootstrapArgs :: IO (OptionModifier Ty.BootstrapConfig)
-bootstrapArgs = runArgParser bootstrapConfig short long
+bootstrapArgs = runArgParser bootstrapModifier short long
       where short = "Amoeba bootstrap server"
             long  = "Start a bootstrap server to allow new nodes to\
                           \ connect to an existing network"
@@ -77,7 +77,7 @@ bootstrapArgs = runArgParser bootstrapConfig short long
 
 
 drawingArgs :: IO (OptionModifier Ty.DrawingConfig)
-drawingArgs = runArgParser drawingConfig short long
+drawingArgs = runArgParser drawingModifier short long
       where short = "Amoeba bootstrap server"
             long  = "Start a bootstrap server to allow new nodes to\
                           \ connect to an existing network"
@@ -117,8 +117,8 @@ poolModifier = (fmap mconcat . T.sequenceA) mods
 
 
 
-bootstrapConfig :: Parser (OptionModifier Ty.BootstrapConfig)
-bootstrapConfig = (fmap mconcat . T.sequenceA) mods
+bootstrapModifier :: Parser (OptionModifier Ty.BootstrapConfig)
+bootstrapModifier = (fmap mconcat . T.sequenceA) mods
       where mods = [ restartEvery
                    , restartMinimumPeriod
                    , liftNodeModifier <$> nodeModifier
@@ -127,16 +127,16 @@ bootstrapConfig = (fmap mconcat . T.sequenceA) mods
 
 
 
-multiConfig :: Parser (OptionModifier Ty.MultiConfig)
-multiConfig = (fmap mconcat . T.sequenceA)  mods
+multiModifier :: Parser (OptionModifier Ty.MultiConfig)
+multiModifier = (fmap mconcat . T.sequenceA)  mods
       where mods = [ liftNodeModifier <$> nodeModifier
                    , liftPoolModifier <$> poolModifier
                    ]
 
 
 
-drawingConfig :: Parser (OptionModifier Ty.DrawingConfig)
-drawingConfig = (fmap mconcat . T.sequenceA) mods
+drawingModifier :: Parser (OptionModifier Ty.DrawingConfig)
+drawingModifier = (fmap mconcat . T.sequenceA) mods
       where mods = [ liftNodeModifier <$> nodeModifier
                    , liftPoolModifier <$> poolModifier
                    ]
