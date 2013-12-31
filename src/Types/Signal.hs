@@ -8,6 +8,7 @@ module Types.Signal where
 import GHC.Generics (Generic)
 import Control.Concurrent.Async (Async)
 import Text.Printf
+import Data.Set (Set)
 
 import Data.Binary
 import Pipes.Concurrent as P
@@ -40,21 +41,27 @@ data NormalSignal =
       --   the graph of nodes will have a new edge.
         EdgeRequest To EdgeData
 
-      -- | Randomly sent to downstream nodes so the timestamps are refreshed,
-      --   and the node is kept in the books as an upstream neighbour
+      -- | Signals meant to be considered by every node in the network.
+      | Flood Timestamp FloodSignal
+
+      -- | Sent to downstream nodes so the timestamps are refreshed, and the
+      --   node is kept in the books as a living upstream neighbour
       | KeepAlive
 
       -- | Current node is shutting down, remove it from your upstream
       --   neighbour pool.
       | ShuttingDown
 
-      -- | Signals meant to be considered by every node in the network.
-      | Flood Timestamp FloodSignal
+      -- | To avoid unnecessarily many connections, the "Prune" signal asks a
+      --   DSN whether the connection can be dropped without making it cross
+      --   its minimum connection threshold.
+      | Prune
 
       deriving (Eq, Ord, Generic)
 
 instance Show NormalSignal where
       show KeepAlive = "KeepAlive"
+      show Prune = "Prune"
       show ShuttingDown = "ShuttingDown"
       show (Flood t s) = printf "Flood %s %s" (show t) (show s)
       show (EdgeRequest to ed) = printf "EdgeRequest { %s, %s }" (show to) (show ed)
@@ -73,7 +80,7 @@ data FloodSignal =
 
       -- | Used to send a drawing server a full list of all neighbours. The
       --   address is of the painting server.
-      | NeighbourList To
+      | SendNeighbourList To
 
       deriving (Eq, Ord, Show, Generic)
 
@@ -92,6 +99,9 @@ data ServerResponse =
 
         -- | Generic error
       | Error String
+
+        -- | Confirmation that dropping the connection is alright
+      | PruneOK
 
         -- | Sent to node that tries to connect without being a registered
         --   upstream neighbour
@@ -136,6 +146,10 @@ data SpecialSignal =
       -- | Initiates a handshake, with the goal of adding the recipient as a
       --   downstream neighbour.
       | Handshake
+
+      -- | Own address and list of DSNs sent to the drawing server. Represents
+      --   one node in the network graph.
+      | NeighbourList To (Set To)
 
       deriving (Eq, Ord, Show, Generic)
 

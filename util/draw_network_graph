@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+neato -Tpng network_graph.dot > network_graph.png

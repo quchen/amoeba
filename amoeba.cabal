@@ -33,23 +33,8 @@ library
 
       hs-source-dirs:   src
       ghc-options:      -O2 -W -threaded
+      default-language: Haskell2010
 
-      other-modules:    Bootstrap
-                        ClientPool
-                        Housekeeping
-                        Node
-                        Server
-                        Client
-                        CmdArgParser
-                        Types
-                        Utilities
-      other-extensions: MultiWayIf
-                        RankNTypes
-                        LambdaCase
-                        TupleSections
-                        ViewPatterns
-                        DeriveDataTypeable
-                        DeriveGeneric
       build-depends:    base                 >=4.6  && <4.7  ,
                         stm                  >=2.4  && <2.5  ,
                         mtl                  >=2.1  && <2.2  ,
@@ -67,4 +52,3 @@ library
                         exceptions           >=0.3  && <0.4  ,
                         random               >=1.0  && <1.1  ,
                         optparse-applicative >=0.7  && <0.8
-      default-language: Haskell2010

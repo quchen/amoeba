@@ -1,16 +1,4 @@
--- TODO: Randomly replace downstream neighbours?
--- TODO: Randomly kick nodes if the maximum capacity is reached
--- TODO: Exception handling
--- TODO: Restart bootstrapping process if all downstream neighbours are lost
---       (Wait some time for incoming edge requests though? They may contain
---       potential new downstream neighbours.)
--- TODO: Configuration sanity checks:
---           neighbours  -->  max >= min
---           tickrates   -->  short <= medium <= long
--- TODO: Database utilities module
-
-
-
+-- | A node is a single participant in an Amoeba network.
 
 module Node (startNode) where
 
@@ -40,8 +28,7 @@ import Utilities
 --   IO thread.
 startNode :: Maybe (PChan NormalSignal) -- ^ Local direct connection (LDC)
           -> IOQueue -- ^ Channel to output thread
-          -> Config -- ^ Configuration, most likely given by command line
-                    --   parameters
+          -> NodeConfig
           -> IO ()
 startNode ldc output config = do
 
@@ -82,7 +69,7 @@ getSelfInfo addr = fromJust' <$> NS.getNameInfo flags True True addr
 initEnvironment :: To                         -- ^ Own address
                 -> Maybe (PChan NormalSignal) -- ^ Local direct connection
                 -> IOQueue                    -- ^ Channel to output thread
-                -> Config
+                -> NodeConfig
                 -> IO Environment
 initEnvironment node ldc output config = Environment
 

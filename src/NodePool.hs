@@ -14,10 +14,8 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.Async
 import Control.Concurrent.MVar
 import Control.Concurrent.Chan
-import Control.Concurrent.STM
 import Control.Exception
 import Control.Monad
-import Data.Word
 
 import Pipes
 import qualified Pipes.Concurrent as P
@@ -31,8 +29,8 @@ import Utilities
 -- | Start a node pool of a certain size, and provide a channel to
 --   communitcate with (random nodes in) it
 nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
-         -> Config  -- ^ Configuration for a single node. Of particular
-                    --   importance are the port (nodes will be spawned
+         -> NodeConfig  -- ^ Configuration for a single node. Of particular
+                    --   importance is the port (nodes will be spawned
                     --   in the range [port+1, port+range]).
          -> Chan NormalSignal
                     -- ^ Local direct connection to one node (taking
@@ -43,10 +41,11 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
                     --   node (due to fairness) is killed and restarted,
                     --   see 'janitor'.
          -> IO ()
-nodePool n config ldc output terminate = forM_ [1..n] $ \portOffset ->
+nodePool n config ldc output terminate = void . forkIO $ forM_ [1..n] $ \portOffset ->
       let port = _serverPort config + fromIntegral portOffset
           config' = config { _serverPort = port }
-      in  forkIO $ janitor config' ldc output terminate
+      in do forkIO (janitor config' ldc output terminate)
+            delay (_longTickRate config)
 
 
 
@@ -57,7 +56,7 @@ nodePool n config ldc output terminate = forM_ [1..n] $ \portOffset ->
 --   example the initial bootstrap nodes are very interconnected, which is not
 --   desirable. Restarting these nodes when there's an actual network leads to
 --   more natural neighbourships.
-janitor :: Config            -- ^ Node configuration
+janitor :: NodeConfig
         -> Chan NormalSignal -- ^ Local direct connection
         -> IOQueue           -- ^ Channel to output thread
         -> MVar ()           -- ^ Termination MVar. If filled, a node is

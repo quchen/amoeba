@@ -1,16 +1,39 @@
 -- | Environment/configuration types.
 
-module Types.Config where
+module Types.Config (
+
+
+      -- * Environment
+        Environment     (..)
+
+
+      -- * Configurations
+
+      , NodeConfig      (..)
+      , PoolConfig      (..)
+      , BootstrapConfig (..)
+      , MultiConfig     (..)
+      , DrawingConfig   (..)
+
+) where
+
+
 
 import Control.Concurrent.STM
 import Data.Set
 import Data.Map
+import Data.Word
 
 import Types.Signal
 import Types.Misc
-import Data.Word
 
 
+
+
+
+-- #############################################################################
+-- ###  Environment  ###########################################################
+-- #############################################################################
 
 
 
@@ -20,48 +43,54 @@ data Environment = Environment {
 
       -- Mutable environment
 
+        -- | Neighbours the current node knows, and when they have last been
+        --   sent a signal
         _downstream :: TVar (Map To Client)
-                                       -- ^ Neighbours the current node knows,
-                                       --   and when they have last been sent
-                                       --   a signal
 
+        -- | Nodes the current node knows it's a downstream neighbour of, or
+        --   equivalently the set of upstream neighbours of the current node.
+        --   Also carries a timestamp to keep track of when the last signal was
+        --   received.
       , _upstream   :: TVar (Map From Timestamp)
-                                       -- ^ Nodes the current node knows it's
-                                       --   a downstream neighbour of, or
-                                       --   equivalently the set of upstream
-                                       --   neighbours of the current node.
-                                       --   Also carries a timestamp to keep
-                                       --   track of when the last signal was
-                                       --   received.
 
-      , _st1c       :: PChan NormalSignal -- ^ Channel read by all clients.
-                                          --   Sending a signal here will
-                                          --   semi-randomly reach one of them.
+        -- | Channel read by all clients. Sending a signal here will
+        --   semi-randomly reach one of them.
+      , _st1c       :: PChan NormalSignal
 
-      , _io         :: IOQueue         -- ^ Send action to the output thread
-                                       --   (so that concurrent prints don't
-                                       --   get interleaved)
+        -- | Send action to the output thread (so that concurrent prints don't
+        --   get interleaved)
+      , _io         :: IOQueue
 
+        -- | Timestamped signals that have already been handled by the current
+        --   node, and can thus be ignored if they come in again.
       , _handledFloods :: TVar (Set (Timestamp, FloodSignal))
-                                       -- ^ Timestamped signals that have
-                                       --   already been handled by the current
-                                       --   node, and can thus be ignored if
-                                       --   they come in again.
+                        -- Order of the tuple matters so that Timestamp is the
+                        -- most significant in the Set's Ord type, and
+                        -- Set.deleteMin works properly!
 
-      , _self       :: To              -- ^ Own hostname/port
+        -- | Own hostname/port
+      , _self       :: To
 
+        -- | Local direct connection (LDC) to a node. Used by NodePool.
       , _ldc        :: Maybe (PChan NormalSignal)
-                                       -- ^ Local direct connection (LDC) to a
-                                       --   node. Used by NodePool.
 
-      , _config     :: Config          -- ^ Program start configuration
+        -- | Program start configuration
+      , _config     :: NodeConfig
 
       }
 
 
 
+
+
+-- #############################################################################
+-- ###  Configs  ###############################################################
+-- #############################################################################
+
+
+
 -- | Configuration parameters accessible before anything goes online.
-data Config = Config {
+data NodeConfig = NodeConfig {
 
         _serverPort     :: Int        -- ^ Port to open the server socket on
 
@@ -77,6 +106,8 @@ data Config = Config {
                                       --   communication channels can hold
 
       , _bounces        :: Word       -- ^ Number of initial bounces
+
+            -- TODO: Rename nounces to hardBounces
 
       , _acceptP        :: Double     -- ^ Edge request acceptance probability
                                       --   for the second bounce phase.
@@ -102,15 +133,58 @@ data Config = Config {
       , _verbosity      :: Verbosity  -- ^ Determines quantity of messages
                                       --   printed
 
-      , _bootstrapServers :: [To]     -- ^ Addresses of bootstrap servers
+      , _bootstrapServers :: Set To   -- ^ Addresses of bootstrap servers
                                       --   statically known
 
-      }
+      , _floodMessageCache :: Int     -- ^ Number of past flood messages to
+                                      --   store so duplicates can be discarded
+
+      } deriving (Show)
+
+
+
+-- ^ Node pool configuration
+data PoolConfig = PoolConfig {
+
+        _poolSize :: Int     -- ^ Number of nodes in the server's pool
+
+      } deriving (Show)
 
 
 
 -- ^ Configuration of the bootstrap server
-data BSConfig = BSConfig {
-        _poolSize :: Int -- ^ Number of nodes in the server's pool
+data BootstrapConfig = BootstrapConfig {
 
-      }
+        _restartEvery :: Int -- ^ Every n connected nodes, one client is
+                             --   restarted at random
+
+      , _restartMinimumPeriod :: Int -- ^ Limit the maximal frequency at which
+                                     --   restarts can happen
+
+      , _bootstrapNodeConfig :: NodeConfig
+
+      , _bootstrapPoolConfig :: PoolConfig
+
+      } deriving (Show)
+
+
+
+-- | Multi client config
+data MultiConfig = MultiConfig {
+
+        _multiNodeConfig :: NodeConfig
+
+      , _multiPoolConfig :: PoolConfig
+
+      } deriving (Show)
+
+
+
+-- | Drawing server config
+data DrawingConfig = DrawingConfig {
+
+        _drawingNodeConfig :: NodeConfig
+
+      , _drawingPoolConfig :: PoolConfig
+
+      } deriving (Show)

@@ -8,4 +8,5 @@ echo -n "Haskell SLOC: "
 #   Then: possibly a comment
 #     Comment: "--" followed by either nothing or by whitespace and arbitrary text
 #   EOL
-find .. -name '*.hs' | xargs cat | sed '/^\s*\(--\(\s\+.*\)\?\)\?$/d'
+AMOEBA_ROOT=$(dirname $0)/../
+find $AMOEBA_ROOT -name '*.hs' | xargs cat | sed '/^\s*\(--\(\s\+.*\)\?\)\?$/d' | wc -l
