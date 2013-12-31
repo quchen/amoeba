@@ -35,30 +35,30 @@ import Types
 runModifier :: a -- ^ Default config
             -> [IO (OptionModifier a)] -- ^ List of modifiers
             -> IO a
-runModifier defaultConfig mods = do
-      mod <- (fmap mconcat . T.sequenceA) mods
-      return (applyOptionModifier mod defaultConfig)
+runModifier defaultConfig ioMods = do
+      mods <- (fmap mconcat . T.sequenceA) ioMods
+      return (applyOptionModifier mods defaultConfig)
 
 
 
 node :: IO NodeConfig
 node = runModifier Default.nodeConfig mods
-      where mods = [ CmdArg.nodeModifier, File.nodeModifier]
+      where mods = [ File.nodeModifier, CmdArg.nodeModifier ]
 
 
 
 bootstrap :: IO BootstrapConfig
 bootstrap = runModifier Default.bootstrapConfig mods
-      where mods = [ CmdArg.bootstrapModifier, File.bootstrapModifier]
+      where mods = [ File.bootstrapModifier, CmdArg.bootstrapModifier ]
 
 
 
 drawing :: IO DrawingConfig
 drawing = runModifier Default.drawingConfig mods
-      where mods = [ CmdArg.drawingModifier, File.drawingModifier]
+      where mods = [ File.drawingModifier, CmdArg.drawingModifier ]
 
 
 
 multi :: IO MultiConfig
 multi = runModifier Default.multiConfig mods
-      where mods = [ CmdArg.multiModifier, File.multiModifier]
+      where mods = [ File.multiModifier, CmdArg.multiModifier ]

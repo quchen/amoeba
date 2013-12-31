@@ -74,4 +74,5 @@ bootstrap config self =
 -- | Find the address of a suitable bootstrap server.
 -- TODO: Make bootstrap server selection a little more complex :-)
 getBootstrapServer :: NodeConfig -> To
-getBootstrapServer = const (To (Node "127.0.0.1" 20000))
+getBootstrapServer _config = To (Node "127.0.0.1" 20000)
+      where _dummy = Set.empty

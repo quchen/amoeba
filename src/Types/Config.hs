@@ -23,7 +23,6 @@ import Control.Concurrent.STM
 import Data.Set
 import Data.Map
 import Data.Word
-import Data.Monoid
 
 import Types.Signal
 import Types.Misc
