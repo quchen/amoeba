@@ -94,8 +94,7 @@ bootstrapServer config ioq ldc restart =
                       toIO' ioq (STDLOG (printf "Bootstrap server listening\
                                                       \ on %s\n"
                                                 (show addr)))
-                      counter <- newTVarIO 1
-                      bootstrapServerLoop config ioq counter sock ldc restart)
+                      bootstrapServerLoop config ioq 1 sock ldc restart)
 
 
 
@@ -103,27 +102,25 @@ bootstrapServerLoop
       :: BootstrapConfig   -- ^ Configuration to determine how many requests to
                            --   send out per new node
       -> IOQueue
-      -> TVar Int          -- ^ Number of total clients served
+      -> Int               -- ^ Number of total clients served
       -> Socket            -- ^ Socket to listen on for bootstrap requests
       -> Chan NormalSignal -- ^ LDC to the node pool
       -> IO ()             -- ^ Restarting action, see "restarter"
       -> IO r
-bootstrapServerLoop config ioq counter serverSock ldc restartTrigger = forever $ do
+bootstrapServerLoop config ioq counter serverSock ldc restartTrigger = do
 
-
-      count <- atomically (readTVar counter)
       let
           -- The first couple of new nodes should not bounce, as there are not
           -- enough nodes to relay the requests (hence the queues fill up and the
           -- nodes block indefinitely.
-          nodeConfig | count <= poolSize = (_nodeConfig config) { _bounces = 0 }
+          nodeConfig | counter <= poolSize = (_nodeConfig config) { _bounces = 0 }
                      | otherwise         = _nodeConfig config
 
           -- If nodes are restarted when the server goes up there are
           -- multi-connections to non-existing nodes, and the network dies off
           -- after a couple of cycles for some reason. Disable restarting for
           -- the first couple of nodes.
-          restartMaybe _ | count <= poolSize = return ()
+          restartMaybe _ | counter <= poolSize = return ()
           restartMaybe c = when (c `rem` (_restartEvery config) == 0)
                                 restartTrigger
           poolSize = _poolSize (_poolConfig config)
@@ -131,7 +128,6 @@ bootstrapServerLoop config ioq counter serverSock ldc restartTrigger = forever $
           bootstrapRequestH socket node = do
                 dispatchSignal nodeConfig node ldc
                 send socket OK
-
 
       PN.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
             receive clientSock >>= \case
@@ -141,13 +137,14 @@ bootstrapServerLoop config ioq counter serverSock ldc restartTrigger = forever $
                                                     \ of %s\n"
                                               (show benefactor)))
                         bootstrapRequestH clientSock benefactor
-                        restartMaybe count
-                        toIO' ioq (STDLOG (printf "Client %d served\n" count))
-                        atomically (modifyTVar' counter (+1))
+                        restartMaybe counter
+                        toIO' ioq (STDLOG (printf "Client %d served\n" counter))
                   Just _other_signal -> do
                         toIO' ioq (STDLOG "Non-BootstrapRequest signal received")
                   _no_signal -> do
                         toIO' ioq (STDLOG "No signal received")
+
+      bootstrapServerLoop config ioq (counter+1) serverSock ldc restartTrigger
 
 
 
