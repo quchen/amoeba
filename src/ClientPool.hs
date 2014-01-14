@@ -33,7 +33,7 @@ import Utilities
 --
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
-clientPool env = withAsync hkeep $ \_ -> fillPool env
+clientPool env = do withAsync hkeep $ \_ -> fillPool env
       where hkeep = dsnHousekeeping env
 
 
@@ -85,7 +85,7 @@ balanceEdges env = forever $ do
             -- downstream 5/(5..10)"to indicate there are 7 of a minimum of 5,
             -- and a maximum of 10, upstream connections (and similarly for
             -- downstream).
-            toIO env Debug $ printf -- DEBUG colours
+            toIO env Debug . STDLOG $ printf -- DEBUG colours
                   "[%s] Network connections:\
                         \ upstream %*d/(%d..%d),\
                         \ downstream %*d/(%d..%d)\
@@ -94,7 +94,6 @@ balanceEdges env = forever $ do
                   maxNDigits usnCount minN maxN
                   maxNDigits dsnCount minN maxN
                   ((++ "]") . ("[" ++) . intercalate ", " $ map (coloredNumber m) dsn)
-                  -- ^ Some hardcore colored debugging stuff
 
             return ( minN - usnCount
                    , minN - dsnCount

@@ -38,4 +38,9 @@ data NodeRelationship = IsSelf
 
 
 -- | Wrapper around the queue to the output thread
-newtype IOQueue = IOQueue { _getIOQueue :: TBQueue (IO ()) }
+newtype IOQueue = IOQueue { _getIOQueue :: TBQueue OutMsg }
+
+-- | Used to send a message to the terminal via "IOQueue"s
+data OutMsg = STDOUT String
+            | STDERR String
+            | STDLOG String

@@ -36,6 +36,7 @@ bootstrapServerMain = do
 
       config <- Config.bootstrap
 
+      prepareOutputBuffers
       (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
 
       ldc <- newChan
@@ -46,8 +47,8 @@ bootstrapServerMain = do
                output
                terminate
 
-      toIO' output (printf "Starting bootstrap server with %d nodes\n"
-                           (_poolSize (_poolConfig config)))
+      toIO' output (STDLOG (printf "Starting bootstrap server with %d nodes\n"
+                                   (_poolSize (_poolConfig config))))
       (_rthread, restart) <- restarter (_restartMinimumPeriod config)
                                        terminate
       bootstrapServer config output ldc restart
@@ -90,8 +91,9 @@ bootstrapServer config ioq ldc restart =
       PN.listen (PN.Host "127.0.0.1")
                 (show (_serverPort (_nodeConfig config)))
                 (\(sock, addr) -> do
-                      toIO' ioq (printf "Bootstrap server listening on %s\n"
-                                        (show addr))
+                      toIO' ioq (STDLOG (printf "Bootstrap server listening\
+                                                      \ on %s\n"
+                                                (show addr)))
                       counter <- newTVarIO 1
                       bootstrapServerLoop config ioq counter sock ldc restart)
 
@@ -135,16 +137,17 @@ bootstrapServerLoop config ioq counter serverSock ldc restartTrigger = forever $
             receive clientSock >>= \case
                   Just (BootstrapRequest benefactor) -> do
                         toIO' ioq
-                              (printf "Sending requests on behalf of %s\n"
-                                      (show benefactor))
+                              (STDLOG (printf "Sending requests on behalf\
+                                                    \ of %s\n"
+                                              (show benefactor)))
                         bootstrapRequestH clientSock benefactor
                         restartMaybe count
-                        toIO' ioq (printf "Client %d served" count)
+                        toIO' ioq (STDLOG (printf "Client %d served\n" count))
                         atomically (modifyTVar' counter (+1))
                   Just _other_signal -> do
-                        toIO' ioq (putStrLn "Non-BootstrapRequest signal received")
+                        toIO' ioq (STDLOG "Non-BootstrapRequest signal received")
                   _no_signal -> do
-                        toIO' ioq (putStrLn "No signal received")
+                        toIO' ioq (STDLOG "No signal received")
 
 
 

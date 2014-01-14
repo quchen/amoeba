@@ -46,10 +46,10 @@ cleanupDsn env (Timestamp now) = do
             (keep, kill) <- Map.partition notTimedOut <$> readTVar ds
 
             when (not (Map.null kill)) $ toIO env Debug $
-                       putStrLn "Downstream neighbour housekilled. This is\
-                                \ likely a bug, as clients should clean\
-                                \ themselves up after termination."
-                                -- TODO: Verify this claim
+                       STDLOG "Downstream neighbour housekilled. This is\
+                               \ likely a bug, as clients should clean\
+                               \ themselves up after termination."
+                               -- TODO: Verify this claim
 
             return (keep, kill)
 
@@ -62,9 +62,9 @@ cleanupDsn env (Timestamp now) = do
       let deadNodes = Map.filter isJust polledClients
       when (not (Map.null deadNodes)) $
             atomically . toIO env Debug $
-                 putStrLn "Client housekilled. This may be a bug\
-                          \ (client should cleanup itself)."
-                          -- TODO: Verify this claim
+                 STDLOG "Client housekilled. This may be a bug\
+                        \ (client should cleanup itself)."
+                        -- TODO: Verify this claim
 
       -- Remove timed out or otherwise terminated nodes
       let toKill = Map.keysSet killTimeout <> Map.keysSet deadNodes

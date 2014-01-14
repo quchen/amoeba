@@ -52,16 +52,16 @@ server env serverSocket = do
                   return (From c)
 
             pid <- PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
-                  atomically . toIO env Debug $
-                        printf "New worker %s from %s\n"
-                               (show from)
-                               (show addr)
+                  (atomically . toIO env Debug . STDLOG)
+                        (printf "New worker %s from %s\n"
+                                (show from)
+                                (show addr))
                   terminationReason <- worker env from clientSocket
-                  atomically $ toIO env Debug $
-                        printf "Worker %s from %s terminated (%s)\n"
-                               (show from)
-                               (show addr)
-                               (show terminationReason)
+                  (atomically . toIO env Debug . STDLOG)
+                        (printf "Worker %s from %s terminated (%s)\n"
+                                (show from)
+                                (show addr)
+                                (show terminationReason))
 
             forkIO (workerWatcher env from pid)
 
@@ -150,7 +150,7 @@ normalH env from signal =
                   return result
 
             deny = do
-                  atomically . toIO env Debug . putStrLn $
+                  atomically . toIO env Debug . STDLOG $
                         "Illegally contacted by " ++ show from ++ "; ignoring"
                   return Ignore
 
@@ -196,9 +196,7 @@ specialH env from socket signal = case signal of
 illegal :: Environment
         -> String
         -> IO ServerResponse
-illegal env msg = do
-      atomically . toIO env Debug $ putStrLn msg
-      return Illegal
+illegal env msg = (atomically . toIO env Debug . STDLOG) msg >> return Illegal
 
 
 
@@ -223,9 +221,10 @@ keepAliveH :: Environment
            -> From
            -> IO ServerResponse
 keepAliveH env from = do
-      atomically . toIO env Chatty $ printf
-            "KeepAlive signal received from %s\n" (show from)
-            -- This is *very* chatty, probably too much so.
+      (atomically . toIO env Chatty . STDLOG )
+            (printf "KeepAlive signal received from %s\n"
+                    (show from))
+                  -- This is *very* chatty, probably too much so.
       return OK
 
 
@@ -279,7 +278,7 @@ textMessageH :: Environment
              -> String
              -> IO ServerResponse
 textMessageH env msg = do
-      atomically (toIO env Quiet (putStrLn msg))
+      atomically (toIO env Quiet (STDOUT msg))
       return OK
 
 
@@ -290,7 +289,7 @@ neighbourListH :: Environment
                -> IO ServerResponse
 neighbourListH env painter = do
       connectToNode painter $ \(socket, _) -> do
-            atomically (toIO env Chatty (putStrLn "Processing painter request"))
+            atomically (toIO env Chatty (STDLOG "Processing painter request"))
             let self = _self env
             dsns <- Map.keysSet <$> atomically (readTVar (_downstream env))
             send socket (NeighbourList self dsns)
@@ -303,7 +302,7 @@ shuttingDownH :: Environment
               -> From
               -> IO ServerResponse
 shuttingDownH env from = atomically $ do
-      toIO env Debug . putStrLn $
+      toIO env Debug . STDLOG $
             "Shutdown notice from " ++ show from
       return ConnectionClosed
       -- NB: Cleanup of the USN DB happens when the worker shuts down
@@ -381,10 +380,11 @@ edgeBounceH env origin (EdgeData dir (HardBounce n)) = do
                                           -- | node's configuration to
                                           -- | prevent "maxBound bounces
                                           -- | left" attacks
-            toIO env Chatty $ printf "Hardbounced %s request from %s (%d left)\n"
-                                     (show dir)
-                                     (show origin)
-                                     n
+            (toIO env Chatty . STDLOG)
+                  (printf "Hardbounced %s request from %s (%d left)\n"
+                          (show dir)
+                          (show origin)
+                          n)
 
             return OK
 
@@ -417,7 +417,7 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
 
             -- Don't connect to self
             (IsSelf, _) -> atomically $ do
-                  toIO env Chatty . putStrLn $
+                  toIO env Chatty . STDLOG $
                         "Edge to self requested, bouncing"
                   bounceReset
 
@@ -427,9 +427,9 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
                   -- directions in that pattern (Incoming+Downstream): The
                   -- direction is from the viewpoint of the requestee, while the
                   -- relationship to that node is seen from the current node.
-                  toIO env Chatty $ printf
-                        "Edge to %s already exists, bouncing\n"
-                        (show origin)
+                  (toIO env Chatty . STDLOG)
+                        (printf "Edge to %s already exists, bouncing\n"
+                                (show origin))
                   bounceOn -- TODO: bounceReset here to avoid clustering?
 
             -- No room
@@ -439,29 +439,29 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
                       -- produce an incoming connection for example.
                       relativeDir Outgoing = "incoming"
                       relativeDir Incoming = "outgoing"
-                  toIO env Chatty $ printf
-                        "No room for another %s connection to handle the %s\
-                        \ request"
-                        (relativeDir dir)
-                        (show dir)
+                  (toIO env Chatty . STDLOG)
+                        (printf "No room for another %s connection to handle\
+                                      \ the %s request"
+                                (relativeDir dir)
+                                (show dir))
                   bounceOn
 
             -- Request randomly denied
             _ | not acceptEdge -> atomically $ do
-                  toIO env Chatty . putStrLn $
+                  toIO env Chatty . STDLOG $
                         "Random bounce (accept: p = " ++ show p ++ ")"
                   bounceOn
 
             -- Try accepting an Outgoing request
             (_, Outgoing) -> do
-                  atomically . toIO env Chatty . putStrLn $
+                  atomically . toIO env Chatty . STDLOG $
                         "Outgoing edge request accepted, sending handshake\
                         \ request" ++ show dir
                   sendHandshakeRequest env origin
 
             -- Try accepting an Incoming request
             (_, Incoming) -> do
-                  atomically . toIO env Chatty . putStrLn $
+                  atomically . toIO env Chatty . STDLOG $
                         "Incoming edge request accepted, starting handshake"
                   void $ Client.startHandshakeH env origin
                   -- TODO: Bounce on if failed, otherwise an almost saturated
@@ -477,7 +477,7 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
 
             -- Build "bounce on" action to relay signal if necessary
             bounceOn | n >= _maxSoftBounces (_config env) =
-                             toIO env Chatty . putStrLn $
+                             toIO env Chatty . STDLOG $
                                    "Too many bounces, swallowing"
                      | otherwise =
                            let p' = max p (_acceptP (_config env))
