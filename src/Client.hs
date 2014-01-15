@@ -85,15 +85,15 @@ newClient env to socket = whenM allowed . (`finally` cleanup) $ do
 
             allowed = atomically $ nodeRelationship env to >>= \case
                   IsSelf -> do
-                        toIO env Debug (putStrLn "Tried to launch client to self")
+                        toIO env Debug (STDERR "Tried to launch client to self")
                         return False
                   IsDownstreamNeighbour -> do
-                        toIO env Debug (putStrLn "Tried to launch client to already known node")
+                        toIO env Debug (STDERR "Tried to launch client to already known node")
                         return False
                   IsUnrelated -> do
                         isRoom <- isRoomIn env _downstream
                         if not isRoom
-                              then do toIO env Debug (putStrLn "No room for new client")
+                              then do toIO env Debug (STDERR "No room for new client")
                                       return False
                               else return True
 
@@ -175,7 +175,10 @@ errorPrint :: (MonadIO io)
            => Environment
            -> String
            -> io ()
-errorPrint env = liftIO . atomically . toIO env Debug . putStrLn
+errorPrint env = liftIO . atomically . toIO env Debug . STDLOG
+      -- TODO: Rename this function, since it only reports the results to
+      --       STDLOG; the messages aren't errors of this client after all, but
+      --       a result of the DSN's behaviour
 
 
 

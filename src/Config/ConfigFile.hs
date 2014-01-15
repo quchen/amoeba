@@ -15,9 +15,7 @@ import Data.Word
 import Data.Monoid
 import Data.Functor
 import Control.Applicative
-import Control.Monad
 import Control.Monad.Reader
-import Control.Monad.Trans
 
 import qualified Data.Configurator as C
 import qualified Data.Configurator.Types as C

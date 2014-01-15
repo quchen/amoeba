@@ -18,6 +18,7 @@ module Utilities (
       , asyncMany
       , toIO
       , toIO'
+      , prepareOutputBuffers
       , delay
 
       -- * Networking
@@ -41,7 +42,7 @@ module Utilities (
       , outputThread
 ) where
 
-import           Control.Concurrent (threadDelay)
+import           Control.Concurrent (threadDelay, ThreadId, forkIO)
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
 import           Control.Monad
@@ -50,6 +51,7 @@ import           Control.Exception
 import           Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteString as BS
 import qualified Data.Map as Map
+import           System.IO
 import           System.Timeout
 
 import           Pipes
@@ -222,21 +224,21 @@ encodeMany = for cat P.encode
 
 
 
--- | Send an IO action depending on the verbosity level.
+-- | Send a message depending on the verbosity level.
 toIO :: Environment
      -> Verbosity
-     -> IO ()
+     -> OutMsg
      -> STM ()
-toIO env verbosity io = when p (writeTBQueue (_getIOQueue (_io env)) io)
+toIO env verbosity msg = when p (writeTBQueue (_getIOQueue (_io env)) msg)
       where p = verbosity >= _verbosity (_config env)
 
 
 
--- | Send an "IO" action to an "IOQueue" directly
+-- | Send a message to an "IOQueue" directly (ignoring verbosity).
 toIO' :: IOQueue
+      -> OutMsg
       -> IO ()
-      -> IO ()
-toIO' ioq io = atomically (writeTBQueue (_getIOQueue ioq) io)
+toIO' ioq msg = atomically (writeTBQueue (_getIOQueue ioq) msg)
 
 
 
@@ -274,16 +276,54 @@ asyncMany (io:ios) = withAsync io $ \a -> do
 
 
 -- | Set up the decicated IO thread. Forks said thread, and returns a "TBQueue"
---   to it, along with the "Async" of the thread (which may be useful for
---   cancelling it).
+--   to it, along with the "ThreadId" of the thread (which may be useful for
+--   killing it).
+--
+--   Sends messages tagged as STDOUT to stdout
+--                            STDERR to stderr
+--                            STDLOG to stderr
+--
+--   Note: This does not change the buffering behaviour of STDERR, which is
+--         unbuffered by default.
 outputThread :: Int           -- ^ Thread size
              -> IO ( IOQueue  -- Channel
-                   , Async () -- Async of the printer thread
+                   , ThreadId -- Thread ID of the spawned printer thread
                    )
 outputThread size = do
+      checkOutputBuffers
       q <- newTBQueueIO size
-      thread <- async $ (forever . join . atomically . readTBQueue) q
+      thread <- forkIO (dispatchSignals q)
       return (IOQueue q, thread)
+
+      where dispatchSignals q = forever $ atomically (readTBQueue q) >>= \case
+                  STDOUT s -> hPutStr stdout s
+                  STDERR s -> hPutStr stderr s
+                  STDLOG s -> hPutStr stderr s
+
+
+
+-- | Prepares the output buffers for logging text by making them line-buffered.
+--
+-- (STDERR in particular is unbuffered by default.)
+prepareOutputBuffers :: IO ()
+prepareOutputBuffers = do
+      hSetBuffering stdout LineBuffering
+      hSetBuffering stderr LineBuffering
+
+
+
+checkOutputBuffers :: IO ()
+checkOutputBuffers = do
+      let err buffer = hPutStr stderr $
+            buffer ++ " unbuffered! You may want to change it to buffered for\
+                            \ performance reasons (e.g. using\
+                            \ Utilities.prepareOutputBuffers).\n"
+      hGetBuffering stdout >>= \case
+            NoBuffering -> err "STDOUT"
+            _ -> return ()
+      hGetBuffering stderr >>= \case
+            NoBuffering -> err "STDERR"
+            _ -> return ()
 
 
 

@@ -13,10 +13,8 @@ module Config.CmdArgParser (
 ) where
 
 import Options.Applicative
-import Data.Word
 import Data.Monoid
 import Text.Printf
-import qualified Data.Set as Set
 import qualified Data.Traversable as T
 import Data.Char (toLower)
 import Text.Read (readEither)
@@ -156,8 +154,7 @@ restartEvery = toModifier <$> (nullOption . mconcat)
       , showDefault
       , value   defaultValue
       , metavar "(Int > 0)"
-      , help    "Restart a random pool node every n new nodes. (Note that a\
-                \ restart is one new node by itself already.)"
+      , help    "Restart a random pool node every n new nodes."
       , hidden
       ]
       where toModifier x = OptionModifier (\c -> c { Ty._restartEvery = x })

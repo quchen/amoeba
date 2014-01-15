@@ -1,6 +1,6 @@
 # Filenames
 MAIN_NODE  = amoeba
-MAIN_MULTI = amoeba_pool
+MAIN_MULTI = amoeba_multi
 MAIN_BS    = bootstrap
 MAIN_DRAW  = drawing
 SRC = src
@@ -77,7 +77,7 @@ doc :
 # HLint
 .PHONY : hlint
 hlint :
-	$(HLINT) $(SRC)/*.hs | $(PAGER)
+	find $(SRC) -name "*.hs" | xargs $(HLINT) | $(PAGER)
 
 
 .PHONY : clean
