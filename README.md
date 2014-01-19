@@ -328,7 +328,7 @@ inherently require unknown nodes to establish connections.
 These may help reading the source comments:
 
 - _x:   Accessor functions that don't do any computation otherwise
-- BS:   Bootstrap (Server), Bytestring
+- BSS:  Bootstrap server
 - DSN:  Downstream node, i.e. a neighbouring node the current sends commands do.
 - LDC:  Local direct connection. Used by the node pool to send signals directly
         to its nodes instead of taking a detour over the network.
