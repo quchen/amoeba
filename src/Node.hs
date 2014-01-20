@@ -37,7 +37,8 @@ startNode ldc output config = do
       PN.listen (PN.Host "127.0.0.1") (show port) $ \(socket, addr) -> do
 
             (selfHost, selfPort) <- getSelfInfo addr
-            assert (port == read selfPort) $ return ()
+            assert (port == read selfPort)
+                   (return ())
             let self = To (Node selfHost port)
 
             bootstrap config self

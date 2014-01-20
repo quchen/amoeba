@@ -40,7 +40,10 @@ module Utilities (
       -- * Pipe-based communication channels
       , spawn
       , outputThread
+
 ) where
+
+
 
 import           Control.Concurrent (threadDelay, ThreadId, forkIO)
 import           Control.Concurrent.STM
@@ -272,6 +275,7 @@ asyncMany [] = return ()
 asyncMany (io:ios) = withAsync io $ \a -> do
       void $ waitAnyCancel <$> mapM async ios
       wait a
+      -- TODO: Is this function even used?
 
 
 
@@ -306,9 +310,8 @@ outputThread size = do
 --
 -- (STDERR in particular is unbuffered by default.)
 prepareOutputBuffers :: IO ()
-prepareOutputBuffers = do
-      hSetBuffering stdout LineBuffering
-      hSetBuffering stderr LineBuffering
+prepareOutputBuffers = do hSetBuffering stdout LineBuffering
+                          hSetBuffering stderr LineBuffering
 
 
 
@@ -327,7 +330,7 @@ checkOutputBuffers = do
 
 
 
--- | Catches all exceptions, "yell"s their contents, and rethrows them.
+-- | Catch all exceptions, "yell" their contents, and rethrow them.
 yellAndRethrow :: (MonadIO io)
                => Int
                -> (String -> String) -- ^ Modify error message, e.g. (++ "foo")
@@ -380,9 +383,8 @@ mergeLists (x:xs) ys = x : mergeLists ys xs
 nodeRelationship :: Environment
                  -> To
                  -> STM NodeRelationship
-nodeRelationship env node =
-      if node == _self env
-            then return IsSelf
-            else do isDS <- Map.member node <$> readTVar (_downstream env)
-                    return $ if isDS then IsDownstreamNeighbour
-                                     else IsUnrelated
+nodeRelationship env node
+      | node == _self env = return IsSelf
+      | otherwise = do isDS <- Map.member node <$> readTVar (_downstream env)
+                       return (if isDS then IsDownstreamNeighbour
+                                       else IsUnrelated)

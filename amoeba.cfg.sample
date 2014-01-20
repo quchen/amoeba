@@ -1,0 +1,124 @@
+# Amoeba configuration file.
+
+
+
+
+################################################################################
+#####  General node  ###########################################################
+################################################################################
+
+## Common settings
+
+# The server port is where the node is going to listen for incoming data.
+# For pool-based network services (bootstrap server etc) it is the start of the
+# port range to be used for all the clients.
+serverPort = 21000
+
+
+# Minimum/maximum number of neighbours a client may have in each direction.
+# A client will attempt to get a minimum of neighbours on its own, accept more
+# neighbours after that to help other nodes, but reject new requests once it is
+# over the maximum threshold.
+minNeighbours = 3
+maxNeighbours = 6
+
+
+# Amount of output generated. Possible settings:
+#      "mute":    Messages only when the house is burning down
+#      "quiet":   Only the most pressing messages
+#      "default": Messages useful for operation as an ordinary clinet
+#      "debug":   Include messages about important events and values
+#      "chatty":  Even minor events generate notices
+verbosity = "debug" # Don't forget the quotes!
+
+
+# List of bootstrap servers to take into account.
+#
+# Note that this is overwritten (and not appended) when there are multiple
+# configuration files in multiple locations.
+bootstrapServers = []
+
+
+## Rarely used settings
+
+
+# Maximum number of elements in the internal communication channels. Provides
+# a buffer with an upper memory bound. On the order of neighbours^2 should be
+# plenty.
+maxChanSize = 100
+
+
+# Number of times an edge request is guaranteed to bounce throug the network
+# before entering the probabilistic acceptance phase.
+#
+# Ideally, this, combined with the expected travel length given by acceptP
+# below, should be around the expected network diameter.
+bounces = 3
+
+
+# Chance an edge request is accepted, given that it is in probabilistic
+# acceptance phase. To avoid indefinite bouncing there is a hard cutoff on the
+# number of these events.
+acceptP = 0.5
+maxSoftBounces = 10
+
+
+# Period length of various internal loops.
+# Unit: int of milliseconds.
+shortTickRate  = 100000
+mediumTickRate = 300000
+longTickRate   = 1000000
+
+
+# Time after which an Amoeba network connection is regarded as timed out, and
+# its worker/client is terminated.
+# Unit: double of seconds.
+poolTimeout = 5
+
+
+# Number of past flood messages to store in order to avoid processing
+# duplicates.
+floodMessageCache = 1024
+
+
+
+################################################################################
+#####  Special services  #######################################################
+################################################################################
+
+# Each of the {} blocks below allow all the options given above in them, with
+# higher priority.
+
+
+
+# Number of nodes to have.
+poolSize = 8
+
+
+
+# Multi-node client
+multi {
+}
+
+
+
+# Bootstrap server
+bootstrap {
+      serverPort = 20000
+
+      # Restart a node in the node pool once every 5 bootstrapped nodes. This
+      # is supposed to break up high interconnectedness in the bootstrap pool.
+      restartEvery = 5
+
+      # Minimum amount of time to wait for a node restart. (To avoid restarting
+      # the entire pool if a lot of nodes connect all of a sudden.)
+      # Unit: int of milliseconds
+      restartMinimumPeriod = 1000000
+}
+
+
+
+# Drawing server
+drawing {
+      poolSize = 3
+}

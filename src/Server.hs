@@ -372,7 +372,6 @@ edgeBounceH env origin (EdgeData dir (HardBounce n)) = do
 
       atomically $ do
 
-            -- FIXME: The TQueue is now a PQueue.
             P.send (_pOutput (_st1c env))
                    (buildSignal (HardBounce (min (n - 1) nMax)))
                                           -- ^ Cap the number of hard
