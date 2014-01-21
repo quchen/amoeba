@@ -48,7 +48,7 @@ bootstrapServerMain = do
                output
                terminate
 
-      toIO' output (STDLOG (printf "Starting bootstrap server with %d nodes\n"
+      toIO' output (STDLOG (printf "Starting bootstrap server with %d nodes"
                                    (_poolSize (_poolConfig config))))
       (_rthread, restart) <- restarter (_restartMinimumPeriod config)
                                        terminate
@@ -93,7 +93,7 @@ bootstrapServer config ioq ldc restart =
                 (show (_serverPort (_nodeConfig config)))
                 (\(sock, addr) -> do
                       toIO' ioq (STDLOG (printf "Bootstrap server listening\
-                                                      \ on %s\n"
+                                                      \ on %s"
                                                 (show addr)))
                       bssLoop config ioq 1 sock ldc restart)
 
@@ -138,11 +138,11 @@ bssLoop config ioq counter' serverSock ldc restartTrigger = go counter' where
                         Just (BootstrapRequest benefactor) -> do
                               toIO' ioq
                                     (STDLOG (printf "Sending requests on behalf\
-                                                          \ of %s\n"
+                                                          \ of %s"
                                                     (show benefactor)))
                               bootstrapRequestH clientSock benefactor
                               restartMaybe counter
-                              toIO' ioq (STDLOG (printf "Client %d served\n"
+                              toIO' ioq (STDLOG (printf "Client %d served"
                                                         counter))
                         Just _other_signal -> do
                               toIO' ioq (STDLOG "Non-BootstrapRequest signal\

@@ -53,12 +53,12 @@ server env serverSocket = do
 
             pid <- PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
                   (atomically . toIO env Debug . STDLOG)
-                        (printf "New worker %s from %s\n"
+                        (printf "New worker %s from %s"
                                 (show from)
                                 (show addr))
                   terminationReason <- worker env from clientSocket
                   (atomically . toIO env Debug . STDLOG)
-                        (printf "Worker %s from %s terminated (%s)\n"
+                        (printf "Worker %s from %s terminated (%s)"
                                 (show from)
                                 (show addr)
                                 (show terminationReason))
@@ -222,7 +222,7 @@ keepAliveH :: Environment
            -> IO ServerResponse
 keepAliveH env from = do
       (atomically . toIO env Chatty . STDLOG )
-            (printf "KeepAlive signal received from %s\n"
+            (printf "KeepAlive signal received from %s"
                     (show from))
                   -- This is *very* chatty, probably too much so.
       return OK
@@ -380,7 +380,7 @@ edgeBounceH env origin (EdgeData dir (HardBounce n)) = do
                                           -- | prevent "maxBound bounces
                                           -- | left" attacks
             (toIO env Chatty . STDLOG)
-                  (printf "Hardbounced %s request from %s (%d left)\n"
+                  (printf "Hardbounced %s request from %s (%d left)"
                           (show dir)
                           (show origin)
                           n)
@@ -427,7 +427,7 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
                   -- direction is from the viewpoint of the requestee, while the
                   -- relationship to that node is seen from the current node.
                   (toIO env Chatty . STDLOG)
-                        (printf "Edge to %s already exists, bouncing\n"
+                        (printf "Edge to %s already exists, bouncing"
                                 (show origin))
                   bounceOn -- TODO: bounceReset here to avoid clustering?
 

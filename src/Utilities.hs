@@ -300,9 +300,9 @@ outputThread size = do
       return (IOQueue q, thread)
 
       where dispatchSignals q = forever $ atomically (readTBQueue q) >>= \case
-                  STDOUT s -> hPutStr stdout s
-                  STDERR s -> hPutStr stderr s
-                  STDLOG s -> hPutStr stderr s
+                  STDOUT s -> hPutStr stdout (s ++ "\n")
+                  STDERR s -> hPutStr stderr (s ++ "\n")
+                  STDLOG s -> hPutStr stderr (s ++ "\n")
 
 
 
@@ -320,7 +320,7 @@ checkOutputBuffers = do
       let err buffer = hPutStr stderr $
             buffer ++ " unbuffered! You may want to change it to buffered for\
                             \ performance reasons (e.g. using\
-                            \ Utilities.prepareOutputBuffers).\n"
+                            \ Utilities.prepareOutputBuffers)."
       hGetBuffering stdout >>= \case
             NoBuffering -> err "STDOUT"
             _ -> return ()

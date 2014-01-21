@@ -69,31 +69,34 @@ balanceEdges env = forever $ do
 
       delay ((_mediumTickRate . _config) env)
 
-      (usnDeficit, dsnDeficit) <- liftIO $ atomically $ do
+      (usnDeficit, dsnDeficit) <- liftIO . atomically $ do
 
             usnCount <- dbSize env _upstream
             dsnCount <- dbSize env _downstream
 
-            dsn <- map (_port . getTo) . toList . Map.keysSet <$> readTVar (_downstream env)
+            dsnPorts <- fmap (map (_port . getTo) . toList . Map.keysSet)
+                             (readTVar (_downstream env))
 
             let coloredNumber :: Int -> Int -> String
                 coloredNumber m x = printf "\ESC[3%dm%d\ESC[0m" (x `rem` m + 1) x
-
+                -- Like List's Show instance, but won't recursively show
+                -- list elements (therefore avoiding "\ESC..." in the output).
+                showColoured = (++ "]") . ("[" ++) . intercalate ", "
                 m = 8 -- modulus for colouring
 
             -- Print status message: "Network connections: upstream 7/(5..10),
             -- downstream 5/(5..10)"to indicate there are 7 of a minimum of 5,
             -- and a maximum of 10, upstream connections (and similarly for
             -- downstream).
-            toIO env Debug . STDLOG $ printf -- DEBUG colours
-                  "[%s] Network connections:\
-                        \ upstream %*d/(%d..%d),\
-                        \ downstream %*d/(%d..%d)\
-                        \ %s\n"
-                  (coloredNumber m serverPort)
-                  maxNDigits usnCount minN maxN
-                  maxNDigits dsnCount minN maxN
-                  ((++ "]") . ("[" ++) . intercalate ", " $ map (coloredNumber m) dsn)
+            (toIO env Debug . STDLOG)
+                  (printf "[%s] Network connections:\
+                                \ upstream %*d/(%d..%d),\
+                                \ downstream %*d/(%d..%d)\
+                                \ %s"
+                          (coloredNumber m serverPort)
+                          maxNDigits usnCount minN maxN
+                          maxNDigits dsnCount minN maxN
+                          (showColoured (map (coloredNumber m) dsnPorts)))
 
             return ( minN - usnCount
                    , minN - dsnCount
