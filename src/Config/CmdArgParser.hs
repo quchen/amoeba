@@ -196,7 +196,7 @@ minNeighbours :: Parser (OptionModifier Ty.NodeConfig)
 minNeighbours = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
                   [ reader positive
-                  , long    "maxn"
+                  , long    "minn"
                   , metavar "(Int > 0)"
                   , help    "Minimum amount of neighbours (up-/downstream\
                             \ separate)"
@@ -209,7 +209,7 @@ maxNeighbours :: Parser (OptionModifier Ty.NodeConfig)
 maxNeighbours = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
                   [ reader positive
-                  , long    "minn"
+                  , long    "maxn"
                   , metavar "(Int > 0)"
                   , help    "Maximum amount of neighbours (up-/downstream\
                             \ separate)"
