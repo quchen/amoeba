@@ -153,7 +153,7 @@ port = value <|> defaultValue
 restartEvery :: Parser (OptionModifier Ty.BootstrapConfig)
 restartEvery = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader positive
+                  [ reader  positive
                   , long    "restart-every"
                   , metavar "(Int > 0)"
                   , help    "Restart a random pool node every n new nodes."
@@ -167,7 +167,7 @@ restartEvery = value <|> defaultValue
 restartMinimumPeriod :: Parser (OptionModifier Ty.BootstrapConfig)
 restartMinimumPeriod = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader positive
+                  [ reader  positive
                   , long    "restart-minperiod"
                   , metavar "[ms]"
                   , help    "Restart a random pool node every n new nodes.\
@@ -182,7 +182,7 @@ restartMinimumPeriod = value <|> defaultValue
 poolSize :: Parser (OptionModifier Ty.PoolConfig)
 poolSize = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader positive
+                  [ reader  positive
                   , long    "poolsize"
                   , short   'n'
                   , metavar "(Int > 0)"
@@ -195,7 +195,7 @@ poolSize = value <|> defaultValue
 minNeighbours :: Parser (OptionModifier Ty.NodeConfig)
 minNeighbours = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader positive
+                  [ reader  positive
                   , long    "minn"
                   , metavar "(Int > 0)"
                   , help    "Minimum amount of neighbours (up-/downstream\
@@ -208,7 +208,7 @@ minNeighbours = value <|> defaultValue
 maxNeighbours :: Parser (OptionModifier Ty.NodeConfig)
 maxNeighbours = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader positive
+                  [ reader  positive
                   , long    "maxn"
                   , metavar "(Int > 0)"
                   , help    "Maximum amount of neighbours (up-/downstream\
@@ -220,7 +220,7 @@ maxNeighbours = value <|> defaultValue
 maxChanSize :: Parser (OptionModifier Ty.NodeConfig)
 maxChanSize = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader positive
+                  [ reader  positive
                   , long    "chansize"
                   , metavar "(Int > 0)"
                   , help    "Maximum communication channel size"
@@ -232,7 +232,7 @@ maxChanSize = value <|> defaultValue
 floodMessageCache :: Parser (OptionModifier Ty.NodeConfig)
 floodMessageCache = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader nonnegative
+                  [ reader  nonnegative
                   , long    "floodcache"
                   , metavar "(Int >= 0)"
                   , help    "Number of past flood messages to cache"
@@ -244,7 +244,7 @@ floodMessageCache = value <|> defaultValue
 bounces :: Parser (OptionModifier Ty.NodeConfig)
 bounces = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader nonnegative
+                  [ reader  nonnegative
                   , long    "bounces"
                   , metavar "(Int >= 0)"
                   , help    "Minimum edge search hard bounces"
@@ -256,7 +256,7 @@ bounces = value <|> defaultValue
 maxSoftBounces :: Parser (OptionModifier Ty.NodeConfig)
 maxSoftBounces = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader positive
+                  [ reader  positive
                   , long    "hbounce"
                   , metavar "(Int > 0)"
                   , help    "Maximum edge search soft bounces"
@@ -268,7 +268,7 @@ maxSoftBounces = value <|> defaultValue
 acceptP :: Parser (OptionModifier Ty.NodeConfig)
 acceptP = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader probability
+                  [ reader  probability
                   , long    "acceptp"
                   , metavar "(0 < p <= 1)"
                   , help    "Edge request soft bounce acceptance probability"
@@ -280,7 +280,7 @@ acceptP = value <|> defaultValue
 shortTickRate :: Parser (OptionModifier Ty.NodeConfig)
 shortTickRate = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader positive
+                  [ reader  positive
                   , long    "stick"
                   , metavar "[ms]"
                   , help    "Tick rate of short loops"
@@ -292,7 +292,7 @@ shortTickRate = value <|> defaultValue
 mediumTickRate :: Parser (OptionModifier Ty.NodeConfig)
 mediumTickRate = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader positive
+                  [ reader  positive
                   , long    "mtick"
                   , metavar "[ms]"
                   , help    "Tick rate of medium loops"
@@ -304,7 +304,7 @@ mediumTickRate = value <|> defaultValue
 longTickRate :: Parser (OptionModifier Ty.NodeConfig)
 longTickRate = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader positive
+                  [ reader  positive
                   , long    "ltick"
                   , metavar "[ms]"
                   , help    "Tick rate of long loops"
@@ -316,7 +316,7 @@ longTickRate = value <|> defaultValue
 poolTimeout :: Parser (OptionModifier Ty.NodeConfig)
 poolTimeout = value <|> defaultValue
       where value = toModifier <$> (nullOption . mconcat)
-                  [ reader positive
+                  [ reader  positive
                   , long    "timeout"
                   , metavar "[s]"
                   , help    "Timeout for removal of nodes from the USN/DSN pool"
