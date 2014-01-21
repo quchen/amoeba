@@ -17,7 +17,7 @@ import Data.Monoid
 import qualified Config.ConfigFile   as File
 import qualified Config.CmdArgParser as CmdArg
 import qualified Config.Default      as Default
-import qualified Config.Verifier     as Verify
+import qualified Config.Verify       as Verify
 import Config.OptionModifier
 import Types
 

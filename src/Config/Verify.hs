@@ -1,9 +1,12 @@
 -- | Verifies whether the invariants of a configuration are satisfied, in order
 --   to avoid nonsense program behaviour because of human error.
+--
+--   This module is intended to be used qualified, e.g. as \"Verify\" to
+--   make nice names such as \"Verify.nodeArgs\".
 
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module Config.Verifier (
+module Config.Verify (
         node
       , multi
       , bootstrap
@@ -41,7 +44,6 @@ node config = sequence_ [portRange, tickRates, poolTimeout, poolSize]
             -- Is the server port in range?
             portRange = unless (p >= 0 && p < 2^16) (throwIO PortRange)
                   where p = _serverPort config
-
 
             -- Are the tickrates in the right order?
             -- (small <= medium <= long)
