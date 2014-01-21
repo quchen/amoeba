@@ -133,230 +133,207 @@ drawingModifier' = (fmap mconcat . T.sequenceA) mods
 
 
 
+defaultValue :: Monoid m => Parser m
+defaultValue = pure mempty
+
+
+
 port :: Parser (OptionModifier Ty.NodeConfig)
-port = toModifier <$> (option . mconcat)
-      [ long    "port"
-      , short   'p'
-      , showDefault
-      , value   defaultValue
-      , metavar "PORT"
-      , help    "Server port"
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._serverPort = x })
-            defaultValue = Ty._serverPort Default.nodeConfig
+port = value <|> defaultValue
+      where value = toModifier <$> (option . mconcat)
+                  [ long    "port"
+                  , short   'p'
+                  , metavar "PORT"
+                  , help    "Server port"
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._serverPort = x })
 
 
 
 restartEvery :: Parser (OptionModifier Ty.BootstrapConfig)
-restartEvery = toModifier <$> (nullOption . mconcat)
-      [ reader positive
-      , long    "restart-every"
-      , showDefault
-      , value   defaultValue
-      , metavar "(Int > 0)"
-      , help    "Restart a random pool node every n new nodes."
-      , hidden
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._restartEvery = x })
-            defaultValue = Ty._restartEvery Default.bootstrapConfig
+restartEvery = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  positive
+                  , long    "restart-every"
+                  , metavar "(Int > 0)"
+                  , help    "Restart a random pool node every n new nodes."
+                  , hidden
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._restartEvery = x })
 
 
 
 
 restartMinimumPeriod :: Parser (OptionModifier Ty.BootstrapConfig)
-restartMinimumPeriod = toModifier <$> (nullOption . mconcat)
-      [ reader positive
-      , long    "restart-minperiod"
-      , showDefault
-      , value   defaultValue
-      , metavar "[ms]"
-      , help    "Restart a random pool node every n new nodes. (Note that a\
-                \ restart is one new node by itself already.)"
-      , hidden
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._restartMinimumPeriod = x })
-            defaultValue = Ty._restartMinimumPeriod Default.bootstrapConfig
+restartMinimumPeriod = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  positive
+                  , long    "restart-minperiod"
+                  , metavar "[ms]"
+                  , help    "Restart a random pool node every n new nodes.\
+                            \ (Note that a restart is one new node by itself\
+                            \ already.)"
+                  , hidden
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._restartMinimumPeriod = x })
 
 
 
 poolSize :: Parser (OptionModifier Ty.PoolConfig)
-poolSize = toModifier <$> (nullOption . mconcat)
-      [ reader positive
-      , long    "poolsize"
-      , short   'n'
-      , showDefault
-      , value   defaultValue
-      , metavar "(Int > 0)"
-      , help    "Number of nodes in the pool"
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._poolSize = x })
-            defaultValue = Ty._poolSize Default.poolConfig
+poolSize = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  positive
+                  , long    "poolsize"
+                  , short   'n'
+                  , metavar "(Int > 0)"
+                  , help    "Number of nodes in the pool"
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._poolSize = x })
 
 
 
 minNeighbours :: Parser (OptionModifier Ty.NodeConfig)
-minNeighbours = toModifier <$> (nullOption . mconcat)
-      [ reader positive
-      , showDefault
-      , value   defaultValue
-      , long    "maxn"
-      , metavar "(Int > 0)"
-      , help    "Minimum amount of neighbours (up-/downstream separate)"
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._minNeighbours = x })
-            defaultValue = Ty._minNeighbours Default.nodeConfig
+minNeighbours = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  positive
+                  , long    "minn"
+                  , metavar "(Int > 0)"
+                  , help    "Minimum amount of neighbours (up-/downstream\
+                            \ separate)"
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._minNeighbours = x })
 
 
 
 maxNeighbours :: Parser (OptionModifier Ty.NodeConfig)
-maxNeighbours = toModifier <$> (nullOption . mconcat)
-      [ reader positive
-      , showDefault
-      , value   defaultValue
-      , long    "minn"
-      , metavar "(Int > 0)"
-      , help    "Maximum amount of neighbours (up-/downstream separate)"
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._maxNeighbours = x })
-            defaultValue = Ty._maxNeighbours Default.nodeConfig
+maxNeighbours = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  positive
+                  , long    "maxn"
+                  , metavar "(Int > 0)"
+                  , help    "Maximum amount of neighbours (up-/downstream\
+                            \ separate)"
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._maxNeighbours = x })
 
 
 maxChanSize :: Parser (OptionModifier Ty.NodeConfig)
-maxChanSize = toModifier <$> (nullOption . mconcat)
-      [ reader positive
-      , showDefault
-      , value   defaultValue
-      , long    "chansize"
-      , metavar "(Int > 0)"
-      , help    "Maximum communication channel size"
-      , hidden
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._maxChanSize = x })
-            defaultValue = Ty._maxChanSize Default.nodeConfig
+maxChanSize = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  positive
+                  , long    "chansize"
+                  , metavar "(Int > 0)"
+                  , help    "Maximum communication channel size"
+                  , hidden
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._maxChanSize = x })
 
 
 floodMessageCache :: Parser (OptionModifier Ty.NodeConfig)
-floodMessageCache = toModifier <$> (nullOption . mconcat)
-      [ reader nonnegative
-      , showDefault
-      , value   defaultValue
-      , long    "floodcache"
-      , metavar "(Int >= 0)"
-      , help    "Number of past flood messages to cache"
-      , hidden
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._floodMessageCache = x })
-            defaultValue = Ty._floodMessageCache Default.nodeConfig
+floodMessageCache = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  nonnegative
+                  , long    "floodcache"
+                  , metavar "(Int >= 0)"
+                  , help    "Number of past flood messages to cache"
+                  , hidden
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._floodMessageCache = x })
 
 
 bounces :: Parser (OptionModifier Ty.NodeConfig)
-bounces = toModifier <$> (nullOption . mconcat)
-      [ reader nonnegative
-      , showDefault
-      , value   defaultValue
-      , long    "bounces"
-      , metavar "(Int >= 0)"
-      , help    "Minimum edge search hard bounces"
-      , hidden
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._bounces = x })
-            defaultValue = Ty._bounces Default.nodeConfig
+bounces = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  nonnegative
+                  , long    "bounces"
+                  , metavar "(Int >= 0)"
+                  , help    "Minimum edge search hard bounces"
+                  , hidden
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._bounces = x })
 
 
 maxSoftBounces :: Parser (OptionModifier Ty.NodeConfig)
-maxSoftBounces = toModifier <$> (nullOption . mconcat)
-      [ reader positive
-      , showDefault
-      , value   defaultValue
-      , long    "hbounce"
-      , metavar "(Int > 0)"
-      , help    "Maximum edge search soft bounces"
-      , hidden
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._maxSoftBounces = x })
-            defaultValue = Ty._maxSoftBounces Default.nodeConfig
+maxSoftBounces = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  positive
+                  , long    "hbounce"
+                  , metavar "(Int > 0)"
+                  , help    "Maximum edge search soft bounces"
+                  , hidden
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._maxSoftBounces = x })
 
 
 acceptP :: Parser (OptionModifier Ty.NodeConfig)
-acceptP = toModifier <$> (nullOption . mconcat)
-      [ reader probability
-      , showDefault
-      , value   defaultValue
-      , long    "acceptp"
-      , metavar "(0 < p <= 1)"
-      , help    "Edge request soft bounce acceptance probability"
-      , hidden
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._acceptP = x })
-            defaultValue = Ty._acceptP Default.nodeConfig
+acceptP = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  probability
+                  , long    "acceptp"
+                  , metavar "(0 < p <= 1)"
+                  , help    "Edge request soft bounce acceptance probability"
+                  , hidden
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._acceptP = x })
 
 
 shortTickRate :: Parser (OptionModifier Ty.NodeConfig)
-shortTickRate = toModifier <$> (nullOption . mconcat)
-      [ reader positive
-      , showDefault
-      , value   defaultValue
-      , long    "stick"
-      , metavar "[ms]"
-      , help    "Tick rate of short loops"
-      , hidden
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._shortTickRate = x })
-            defaultValue = Ty._shortTickRate Default.nodeConfig
+shortTickRate = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  positive
+                  , long    "stick"
+                  , metavar "[ms]"
+                  , help    "Tick rate of short loops"
+                  , hidden
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._shortTickRate = x })
 
 
 mediumTickRate :: Parser (OptionModifier Ty.NodeConfig)
-mediumTickRate = toModifier <$> (nullOption . mconcat)
-      [ reader positive
-      , showDefault
-      , value   defaultValue
-      , long    "mtick"
-      , metavar "[ms]"
-      , help    "Tick rate of medium loops"
-      , hidden
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._mediumTickRate = x })
-            defaultValue = Ty._mediumTickRate Default.nodeConfig
+mediumTickRate = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  positive
+                  , long    "mtick"
+                  , metavar "[ms]"
+                  , help    "Tick rate of medium loops"
+                  , hidden
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._mediumTickRate = x })
 
 
 longTickRate :: Parser (OptionModifier Ty.NodeConfig)
-longTickRate = toModifier <$> (nullOption . mconcat)
-      [ reader positive
-      , showDefault
-      , value   defaultValue
-      , long    "ltick"
-      , metavar "[ms]"
-      , help    "Tick rate of long loops"
-      , hidden
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._longTickRate = x })
-            defaultValue = Ty._longTickRate Default.nodeConfig
+longTickRate = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  positive
+                  , long    "ltick"
+                  , metavar "[ms]"
+                  , help    "Tick rate of long loops"
+                  , hidden
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._longTickRate = x })
 
 
 poolTimeout :: Parser (OptionModifier Ty.NodeConfig)
-poolTimeout = toModifier <$> (nullOption . mconcat)
-      [ reader positive
-      , showDefault
-      , value   defaultValue
-      , long    "timeout"
-      , metavar "[s]"
-      , help    "Timeout for removal of nodes from the USN/DSN pool"
-      , hidden
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._poolTimeout = x })
-            defaultValue = Ty._poolTimeout Default.nodeConfig
+poolTimeout = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader  positive
+                  , long    "timeout"
+                  , metavar "[s]"
+                  , help    "Timeout for removal of nodes from the USN/DSN pool"
+                  , hidden
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._poolTimeout = x })
 
 
 verbosity :: Parser (OptionModifier Ty.NodeConfig)
-verbosity = toModifier <$> (nullOption . mconcat)
-      [ reader readVerbosity
-      , value   defaultValue
-      , long    "verbosity"
-      , metavar "(mute|quiet|default|debug|chatty)"
-      , help    "Verbosity level, increasing from left to right"
-      ]
-      where toModifier x = OptionModifier (\c -> c { Ty._verbosity = x })
-            defaultValue = Ty._verbosity Default.nodeConfig
+verbosity = value <|> defaultValue
+      where value = toModifier <$> (nullOption . mconcat)
+                  [ reader readVerbosity
+                  , long    "verbosity"
+                  , metavar "(mute|quiet|default|debug|chatty)"
+                  , help    "Verbosity level, increasing from left to right"
+                  ]
+            toModifier x = OptionModifier (\c -> c { Ty._verbosity = x })
 
 
 

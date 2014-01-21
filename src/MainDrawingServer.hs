@@ -45,7 +45,7 @@ drawingServerMain = do
                output
                terminate
 
-      printf "Starting drawing server with %d nodes\n"
+      printf "Starting drawing server with %d nodes"
              (_poolSize (_poolConfig config))
       drawingServer config output ldc
 
@@ -102,7 +102,7 @@ graphDrawer t'graph = forever $ do
       graph <- atomically (readTVar t'graph)
       let graphSize (Graph g) = Map.size g
           s = graphSize graph
-      printf "Drawing graph. Current network size: %d nodes\n" s -- TODO: Use IOQueue
+      printf "Drawing graph. Current network size: %d nodes" s -- TODO: Use IOQueue
       writeFile "network_graph.dot" (graphToDot graph) -- TODO: Make filename configurable
 
 
