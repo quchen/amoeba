@@ -356,14 +356,17 @@ dbSize env db = Map.size <$> readTVar (db env)
 
 
 
--- | Add an \"s\" in print statements
+-- | To add an \"s\" in print statements if the first argument is 1.
+--
+--   >>> printf "%d minute%s remaining" n (pluralS n)
 pluralS :: (Eq a, Num a) => a -> String
 pluralS 1 = ""
 pluralS _ = "s"
 
 
 
--- | Merges two lists by alternatingly taking one element of each.
+-- | Merges two lists by alternatingly taking one element of each. Overflow is
+--   appended as bulk.
 --
 --   > mergeLists [a,b] [w,x,y,z]  ==  [a,w,b,x,y,z]
 mergeLists :: [a] -> [a] -> [a]
