@@ -64,28 +64,29 @@ janitor :: NodeConfig
                              --   terminated (and replaced by a new one by the
                              --   janitor). Also see 'terminationWatch'.
         -> IO ()
-janitor config fromPool output terminate = handle (\(SomeException e) -> yell 41 ("Janitor crashed! Exception: " ++ show e)) $
-  forever $ do
-      toNode <- spawn (P.Bounded $ _maxChanSize config)
-      let handlers = [ Handler $ \ThreadKilled -> return ()
+janitor config fromPool output terminate = yellCatchall . forever $ do
+      toNode <- spawn (P.Bounded (_maxChanSize config))
+      let handlers = [ Handler (\ThreadKilled -> return ())
                      ]
       (`catches` handlers) $
             withAsync (startNode (Just toNode) output config) $ \node ->
-             withAsync (fromPool `pipeTo` toNode) $ \_ ->
-              withAsync (terminationWatch terminate node) $ \_ ->
+             withAsync (fromPool `pipeTo` toNode)             $ \_chanPipe ->
+              withAsync (terminationWatch terminate node)     $ \_terminator ->
                wait node
+
+      where yellCatchall = handle (\(SomeException e) ->
+                             yell 41 ("Janitor crashed! Exception: " ++ show e))
 
 
 
 -- | Send everything from one channel to the other
-pipeTo :: Chan NormalSignal -> PChan NormalSignal -> IO ()
+pipeTo :: Chan  NormalSignal -- ^ From
+       -> PChan NormalSignal -- ^ To
+       -> IO ()
 pipeTo input output =
-
-      runEffect $ fromChan input >-> P.toOutput (_pOutput output)
-
-      where fromChan chan = forever $ do
-                  signal <- liftIO $ readChan chan
-                  yield signal
+      let fromChan chan = forever (liftIO (readChan chan) >>= yield)
+          toChan        = _pOutput output
+      in  runEffect (fromChan input >-> P.toOutput toChan)
 
 
 
