@@ -35,6 +35,7 @@ drawingServerMain = do
 
       config <- Config.drawing
 
+      prepareOutputBuffers
       (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
 
       ldc <- newChan

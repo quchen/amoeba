@@ -23,6 +23,7 @@ multiNodeMain = do
 
       config <- Config.multi
 
+      prepareOutputBuffers
       (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
 
       printf "Starting pool with %d nodes"

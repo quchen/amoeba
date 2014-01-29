@@ -66,6 +66,7 @@ import qualified Pipes.Binary as P
 import Control.Monad.Catch (MonadCatch)
 
 import Data.Binary
+import Text.Printf
 
 import Types
 
@@ -255,8 +256,7 @@ catchAll x = void x `catch` handler
 
 -- | Easily print colored text for debugging
 yell :: MonadIO io => Int -> String -> io ()
-yell n text = liftIO . putStrLn $
-      "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ "\ESC[0m"
+yell n text = liftIO (printf "\ESC[%dm%d - %s\ESC[0m\n" n n text)
 
 
 
