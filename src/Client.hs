@@ -97,8 +97,11 @@ newClient env to socket = whenM allowed . (`finally` cleanup) $ do
                                       return False
                               else return True
 
-            cleanup = timeout (_mediumTickRate (_config env))
-                              (send socket (Normal ShuttingDown))
+            cleanup = do atomically (modifyTVar (_downstream env)
+                                                (Map.delete (_self env)))
+                         timeout (_mediumTickRate (_config env))
+                                 (send socket (Normal ShuttingDown))
+
 
 
 
@@ -113,7 +116,6 @@ clientLoop :: Environment
 clientLoop env socket to stsc = do
       waitForDBEntry
       runEffect (P.fromInput input >-> signalH env socket to)
-      removeFromDB
 
       where input = mconcat [ _pInput (_st1c env)
                             , _pInput stsc
@@ -125,9 +127,6 @@ clientLoop env socket to stsc = do
             waitForDBEntry = atomically $
                   whenM (Map.notMember to <$> readTVar (_downstream env))
                         retry
-
-            removeFromDB = atomically $
-                  modifyTVar (_downstream env) (Map.delete (_self env))
 
 
 
