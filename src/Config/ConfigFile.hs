@@ -312,12 +312,12 @@ floodMessageCache prefixes = toModifier <$> floodMessageCache' prefixes
 
 -- TODO
 bootstrapServers' :: Prefixes -> ReaderT C.Config IO (Maybe a)
-bootstrapServers' prefixes = undefined
+bootstrapServers' prefixes = undefined prefixes
 
 bootstrapServers :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 bootstrapServers prefixes = undefined
       where
-            foo = toModifier <$> bootstrapServers' prefixes
+            _foo = toModifier <$> bootstrapServers' prefixes
             toModifier (Just x) = OptionModifier (\c -> c { Ty._bootstrapServers = x })
             toModifier _ = mempty
 

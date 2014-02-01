@@ -54,7 +54,7 @@ prof :
 
 
 # Minimize compilation time
-FAST_FLAGS =
+FAST_FLAGS = $(WARN)
 .PHONY : fast
 fast :
 	@echo -e "\e[32mSingle client\e[0m"

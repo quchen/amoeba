@@ -19,7 +19,6 @@ import qualified Data.Traversable as T
 import Data.Char (toLower)
 import Text.Read (readEither)
 
-import qualified Config.Default as Default
 import qualified Types as Ty
 import Config.OptionModifier
 

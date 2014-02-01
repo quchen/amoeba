@@ -51,7 +51,6 @@ import           Control.Concurrent.STM
 import           Control.Concurrent.Async
 import           Control.Monad
 import           Control.Applicative
-import           Control.Exception
 import           Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteString as BS
 import qualified Data.Map as Map
@@ -67,7 +66,6 @@ import qualified Pipes.Binary as P
 import Control.Monad.Catch (MonadCatch)
 
 import Data.Binary
-import Text.Printf
 
 import Types
 import Utilities.Debug

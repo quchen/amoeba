@@ -11,7 +11,6 @@
 module Main where
 
 import Control.Concurrent.Async
-import Control.Concurrent.STM
 import Control.Concurrent hiding (yield)
 import Control.Monad
 import Text.Printf

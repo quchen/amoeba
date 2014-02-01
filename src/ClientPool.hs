@@ -33,7 +33,7 @@ import Utilities
 --
 --   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
-clientPool env = do withAsync hkeep $ \_ -> fillPool env
+clientPool env = withAsync hkeep $ \_ -> fillPool env
       where hkeep = dsnHousekeeping env
 
 

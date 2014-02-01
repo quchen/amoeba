@@ -8,13 +8,7 @@ module Utilities.Debug where
 
 import           Control.Monad
 import           Control.Monad.Trans
-import           Control.Applicative
 import           Control.Exception
-import           Data.Time.Clock.POSIX (getPOSIXTime)
-import qualified Data.ByteString as BS
-import qualified Data.Map as Map
-import           System.IO
-import           System.Timeout
 
 import Text.Printf
 
