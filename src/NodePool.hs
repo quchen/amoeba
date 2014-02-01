@@ -66,15 +66,14 @@ janitor :: NodeConfig
         -> IO ()
 janitor config fromPool output terminate = yellCatchall . forever $ do
       toNode <- spawn (P.Bounded (_maxChanSize config))
-      let handlers = [ Handler (\ThreadKilled -> return ())
-                     ]
       (`catches` handlers) $
             withAsync (startNode (Just toNode) output config) $ \node ->
              withAsync (fromPool `pipeTo` toNode)             $ \_chanPipe ->
               withAsync (terminationWatch terminate node)     $ \_terminator ->
                wait node
 
-      where yellCatchall = handle (\(SomeException e) ->
+      where handlers = [ Handler (\ThreadKilled -> return ()) ]
+            yellCatchall = handle (\(SomeException e) ->
                              yell 41 ("Janitor crashed! Exception: " ++ show e))
 
 
@@ -83,10 +82,9 @@ janitor config fromPool output terminate = yellCatchall . forever $ do
 pipeTo :: Chan  NormalSignal -- ^ From
        -> PChan NormalSignal -- ^ To
        -> IO ()
-pipeTo input output =
-      let fromChan chan = forever (liftIO (readChan chan) >>= yield)
-          toChan        = _pOutput output
-      in  runEffect (fromChan input >-> P.toOutput toChan)
+pipeTo input output = runEffect (fromChan input >-> P.toOutput toChan) where
+      fromChan chan = forever (liftIO (readChan chan) >>= yield)
+      toChan        = _pOutput output
 
 
 

@@ -15,7 +15,6 @@ module Utilities (
       , nodeRelationship
 
       -- * Concurrency
-      , asyncMany
       , toIO
       , toIO'
       , prepareOutputBuffers
@@ -48,7 +47,6 @@ module Utilities (
 
 import           Control.Concurrent (threadDelay, ThreadId, forkIO)
 import           Control.Concurrent.STM
-import           Control.Concurrent.Async
 import           Control.Monad
 import           Control.Applicative
 import           Data.Time.Clock.POSIX (getPOSIXTime)
@@ -252,17 +250,6 @@ toIO' ioq msg = atomically (writeTBQueue (_getIOQueue ioq) msg)
 spawn :: P.Buffer a -> IO (PChan a)
 spawn buffer = toPChan <$> P.spawn' buffer
       where toPChan (output, input, seal) = PChan output input seal
-
-
-
--- | Concurrently run multiple IO actions, and wait for the first "Async" to
---   complete. If one of them returns or throws, all others are "cancel"ed.
-asyncMany :: [IO ()] -> IO ()
-asyncMany [] = return ()
-asyncMany (io:ios) = withAsync io $ \a -> do
-      void (waitAnyCancel <$> mapM async ios)
-      wait a
-      -- TODO: Is this function even used?
 
 
 
