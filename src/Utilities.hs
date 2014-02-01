@@ -36,6 +36,7 @@ module Utilities (
       , yell
       , yellAndRethrow
       , catchAll
+      -- (Re-exported definitions from in Utilities/Debug.hs)
 
       -- * Pipe-based communication channels
       , spawn
@@ -69,12 +70,13 @@ import Data.Binary
 import Text.Printf
 
 import Types
+import Utilities.Debug
 
 
 
 -- | Creates a timestamp, which is a Double representation of the Unix time.
 makeTimestamp :: (MonadIO m) => m Timestamp
-makeTimestamp = liftIO $ Timestamp . realToFrac <$> getPOSIXTime
+makeTimestamp = liftIO (Timestamp . realToFrac <$> getPOSIXTime)
 --   Since Haskell's Time library is borderline retarded, this seems to be the
 --   cleanest way to get something that is easily an instance of Binary and
 --   comparable to seconds.
@@ -197,7 +199,7 @@ fromSocketTimeout t socket nBytes = loop where
 receive :: (MonadIO io, Binary b)
         => N.Socket
         -> io (Maybe b)
-receive s = runEffect $ (P.head . void . receiver) s
+receive s = runEffect ((P.head . void . receiver) s)
 
 
 
@@ -206,7 +208,7 @@ send :: (MonadIO io, Binary b)
      => N.Socket
      -> b
      -> io ()
-send s x = runEffect $ yield x >-> void (sender s)
+send s x = runEffect (yield x >-> void (sender s))
 
 
 
@@ -233,7 +235,8 @@ toIO :: Environment
      -> Verbosity
      -> OutMsg
      -> STM ()
-toIO env verbosity msg = when p (writeTBQueue (_getIOQueue (_io env)) msg)
+toIO env verbosity msg = when p (writeTBQueue (_getIOQueue (_io env))
+                                              msg)
       where p = verbosity >= _verbosity (_config env)
 
 
@@ -243,20 +246,6 @@ toIO' :: IOQueue
       -> OutMsg
       -> IO ()
 toIO' ioq msg = atomically (writeTBQueue (_getIOQueue ioq) msg)
-
-
-
-
--- | Mandatory silly catchall function. Intended to be used as a safety net
---   only, not as a cpeap getaway :-)
-catchAll :: IO a -> IO ()
-catchAll x = void x `catch` handler
-      where handler :: SomeException -> IO ()
-            handler _ = return ()
-
--- | Easily print colored text for debugging
-yell :: MonadIO io => Int -> String -> io ()
-yell n text = liftIO (printf "\ESC[%dm%d - %s\ESC[0m\n" n n text)
 
 
 
@@ -273,7 +262,7 @@ spawn buffer = toPChan <$> P.spawn' buffer
 asyncMany :: [IO ()] -> IO ()
 asyncMany [] = return ()
 asyncMany (io:ios) = withAsync io $ \a -> do
-      void $ waitAnyCancel <$> mapM async ios
+      void (waitAnyCancel <$> mapM async ios)
       wait a
       -- TODO: Is this function even used?
 
@@ -300,9 +289,9 @@ outputThread size = do
       return (IOQueue q, thread)
 
       where dispatchSignals q = forever $ atomically (readTBQueue q) >>= \case
-                  STDOUT s -> hPutStr stdout (s ++ "\n")
-                  STDERR s -> hPutStr stderr (s ++ "\n")
-                  STDLOG s -> hPutStr stderr (s ++ "\n")
+                  STDOUT s -> hPutStrLn stdout s
+                  STDERR s -> hPutStrLn stderr s
+                  STDLOG s -> hPutStrLn stderr s
 
 
 
@@ -317,28 +306,19 @@ prepareOutputBuffers = do hSetBuffering stdout LineBuffering
 
 checkOutputBuffers :: IO ()
 checkOutputBuffers = do
-      let err buffer = hPutStr stderr $
-            buffer ++ " unbuffered! You may want to change it to buffered for\
-                            \ performance reasons (e.g. using\
-                            \ Utilities.prepareOutputBuffers)."
+
+      let err buffer = hPutStr stderr (buffer ++ " unbuffered! You may want to\
+                                       \ change it to buffered for performance\
+                                       \ reasons (e.g. using \
+                                       \ Utilities.prepareOutputBuffers).")
+
       hGetBuffering stdout >>= \case
             NoBuffering -> err "STDOUT"
-            _ -> return ()
+            _else       -> return ()
+
       hGetBuffering stderr >>= \case
             NoBuffering -> err "STDERR"
-            _ -> return ()
-
-
-
--- | Catch all exceptions, "yell" their contents, and rethrow them.
-yellAndRethrow :: (MonadIO io)
-               => Int
-               -> (String -> String) -- ^ Modify error message, e.g. (++ "foo")
-               -> IO ()
-               -> io ()
-yellAndRethrow n f = liftIO . handle handler
-      where handler :: SomeException -> IO ()
-            handler (SomeException e) = yell n (f (show e)) >> throw e
+            _else       -> return ()
 
 
 
