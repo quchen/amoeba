@@ -2,8 +2,9 @@
 
 module Utilities.Databases (
 
+
+      -- * General
         isRoomIn
-      , nodeRelationship
       , dbSize
       , makeTimestamp
 
@@ -21,6 +22,7 @@ module Utilities.Databases (
       , deleteDsn
       , dumpDsnDB
       , updateDsnTimestamp
+      , nodeRelationship
 
 
       -- * Flood signal DB
@@ -40,38 +42,32 @@ import Types
 
 
 
--- | What is the relationship between this node and another one? A node must not
---   connect to itself or to known neighbours multiple times.
---
---   Due to the fact that an "EdgeRequest" does not contain the upstream address
---   of the connection to be established, it cannot be checked whether the node
---   is already an upstream neighbour directly; timeouts will have to take care
---   of that.
-nodeRelationship :: Environment
-                 -> To
-                 -> STM NodeRelationship
-nodeRelationship env node
-      | node == _self env = return IsSelf
-      | otherwise = do isDS <- Map.member node <$> readTVar (_downstream env)
-                       return (if isDS then IsDownstreamNeighbour
-                                       else IsUnrelated)
+
+
+-- #############################################################################
+-- ##  General functions  ######################################################
+-- #############################################################################
+
+
+
+-- | Projector of the upstream or downstream DB from the "Environment".
+--   Unifies with "_upstream" and "_downstream".
+type DBProjector k a = Environment -> TVar (Map.Map k a)
 
 
 
 -- | Check whether there is room to add another node to the pool.
 isRoomIn :: Environment
-         -> (Environment -> TVar (Map.Map k a))
-            -- ^ Projector from 'Environment' to the database, i.e. either
-            -- "_upstream" or "_downstream".
+         -> DBProjector k a -- ^ "_upstream" or "_downstream"
          -> STM Bool
 isRoomIn env db = (maxSize >) <$> dbSize env db
-      where maxSize = fromIntegral (_maxNeighbours (_config env))
+      where maxSize = (fromIntegral . _maxNeighbours . _config) env
 
 
 
 -- | Determine the current size of a database
 dbSize :: Environment
-       -> (Environment -> TVar (Map.Map k a)) -- _upstream or _downstream
+       -> DBProjector k a -- ^ "_upstream" or "_downstream"
        -> STM Int
 dbSize env db = Map.size <$> readTVar (db env)
 
@@ -83,6 +79,14 @@ makeTimestamp = liftIO (Timestamp . realToFrac <$> getPOSIXTime)
 --   Since Haskell's Time library is borderline retarded, this seems to be the
 --   cleanest way to get something that is easily an instance of Binary and
 --   comparable to seconds.
+
+
+
+
+
+-- #############################################################################
+-- ##  USN DB handling  ########################################################
+-- #############################################################################
 
 
 
@@ -110,6 +114,14 @@ deleteUsn env from = modifyTVar (_upstream env)
 updateUsnTimestamp :: Environment -> From -> Timestamp -> STM ()
 updateUsnTimestamp env from t = modifyTVar (_upstream env)
                                            (Map.adjust (const t) from)
+
+
+
+
+
+-- #############################################################################
+-- ##  DSN DB handling  ########################################################
+-- #############################################################################
 
 
 
@@ -148,6 +160,31 @@ updateDsnTimestamp env to t = modifyTVar (_downstream env)
                                          (Map.adjust updateTimestamp to)
 
       where updateTimestamp client = client { _clientTimestamp = t }
+
+
+
+-- | What is the relationship between this node and another one? A node must not
+--   connect to itself or to known neighbours multiple times.
+--
+--   Due to the fact that an "EdgeRequest" does not contain the upstream address
+--   of the connection to be established, it cannot be checked whether the node
+--   is already an upstream neighbour directly; timeouts will have to take care
+--   of that.
+nodeRelationship :: Environment
+                 -> To
+                 -> STM NodeRelationship
+nodeRelationship env node
+      | node == _self env = return IsSelf
+      | otherwise = do isDS <- Map.member node <$> readTVar (_downstream env)
+                       return (if isDS then IsDownstreamNeighbour
+                                       else IsUnrelated)
+
+
+
+
+-- #############################################################################
+-- ##  Flood signal DB handling  ###############################################
+-- #############################################################################
 
 
 
