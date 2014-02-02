@@ -110,16 +110,3 @@ balanceEdges env = forever $ do
             maxN       = _maxNeighbours (_config env)
             maxNDigits = round (logBase 10 (fromIntegral maxN)) + 1 :: Int
             serverPort = _serverPort (_config env)
-
-
-
--- | Check whether there is room to add another node to the pool. The second
---   argument is supposed to be either
-isRoomIn :: Environment
-         -> (Environment -> TVar (Map.Map k a))
-            -- ^ Projector from 'Environment' to the database, i.e. either
-            -- "_upstream" or "_downstream".
-         -> STM Bool
-isRoomIn env db = (maxSize >) <$> dbSize env db
-      where maxSize = fromIntegral (_maxNeighbours (_config env))
-

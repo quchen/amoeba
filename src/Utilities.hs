@@ -3,16 +3,13 @@
 
 module Utilities (
 
+      module Reexport
+
       -- * Various utilities
-        whenM
+      , whenM
       , whileM
       , pluralS
       , mergeLists
-
-      -- * Database-related functions
-      , makeTimestamp
-      , dbSize
-      , nodeRelationship
 
       -- * Concurrency
       , toIO
@@ -31,12 +28,6 @@ module Utilities (
       , receive
       , request
 
-      -- * Debugging
-      , yell
-      , yellAndRethrow
-      , catchAll
-      -- (Re-exported definitions from in Utilities/Debug.hs)
-
       -- * Pipe-based communication channels
       , spawn
       , outputThread
@@ -49,9 +40,7 @@ import           Control.Concurrent (threadDelay, ThreadId, forkIO)
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Control.Applicative
-import           Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteString as BS
-import qualified Data.Map as Map
 import           System.IO
 import           System.Timeout
 
@@ -66,16 +55,8 @@ import Control.Monad.Catch (MonadCatch)
 import Data.Binary
 
 import Types
-import Utilities.Debug
-
-
-
--- | Creates a timestamp, which is a Double representation of the Unix time.
-makeTimestamp :: (MonadIO m) => m Timestamp
-makeTimestamp = liftIO (Timestamp . realToFrac <$> getPOSIXTime)
---   Since Haskell's Time library is borderline retarded, this seems to be the
---   cleanest way to get something that is easily an instance of Binary and
---   comparable to seconds.
+import Utilities.Debug as Reexport
+import Utilities.Databases as Reexport
 
 
 
@@ -313,14 +294,6 @@ delay = liftIO . threadDelay
 
 
 
--- | Determine the current size of a database
-dbSize :: Environment
-       -> (Environment -> TVar (Map.Map k a)) -- _upstream or _downstream
-       -> STM Int
-dbSize env db = Map.size <$> readTVar (db env)
-
-
-
 -- | To add an \"s\" in print statements if the first argument is 1.
 --
 --   >>> printf "%d minute%s remaining" n (pluralS n)
@@ -337,22 +310,3 @@ pluralS _ = "s"
 mergeLists :: [a] -> [a] -> [a]
 mergeLists []     ys = ys
 mergeLists (x:xs) ys = x : mergeLists ys xs
-
-
-
-
--- | Check whether a connection to a certain node is allowed. A node must not
---   connect to itself or to known neighbours multiple times.
---
---   Due to the fact that an "EdgeRequest" does not contain the upstream address
---   of the connection to be established, it cannot be checked whether the node
---   is already an upstream neighbour directly; timeouts will have to take care
---   of that.
-nodeRelationship :: Environment
-                 -> To
-                 -> STM NodeRelationship
-nodeRelationship env node
-      | node == _self env = return IsSelf
-      | otherwise = do isDS <- Map.member node <$> readTVar (_downstream env)
-                       return (if isDS then IsDownstreamNeighbour
-                                       else IsUnrelated)
