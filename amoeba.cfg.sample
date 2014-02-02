@@ -20,8 +20,8 @@ serverPort = 21000
 # A client will attempt to get a minimum of neighbours on its own, accept more
 # neighbours after that to help other nodes, but reject new requests once it is
 # over the maximum threshold.
-minNeighbours = 3
-maxNeighbours = 6
+minNeighbours = 5
+maxNeighbours = 10
 
 
 # Amount of output generated. Possible settings:
@@ -93,7 +93,7 @@ floodMessageCache = 1024
 
 
 # Number of nodes to have.
-poolSize = 8
+poolSize = 10
 
 
 

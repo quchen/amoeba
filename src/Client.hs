@@ -14,7 +14,6 @@ import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Concurrent (forkIO)
 import           Data.Monoid
-import qualified Data.Map as Map
 import           System.Timeout
 import           Control.Monad
 import           Control.Exception
@@ -72,11 +71,10 @@ newClient env to socket = whenM allowed . (`finally` cleanup) $ do
       stsc   <- (spawn . P.Bounded . _maxChanSize . _config) env
       thread <- async (clientLoop env socket to stsc)
       -- (Client waits until its entry is in the DB before it starts working.)
-      let self = Client time thread stsc
+      let client = Client time thread stsc
       proceed <- atomically $ do
-            isNew <- Map.notMember to <$> readTVar (_downstream env)
-            when isNew (modifyTVar (_downstream env)
-                                   (Map.insert to self))
+            isNew <- not <$> isDsn env to
+            when isNew (insertDsn env to client)
             return isNew
       if proceed then wait   thread
                  else cancel thread
@@ -97,8 +95,10 @@ newClient env to socket = whenM allowed . (`finally` cleanup) $ do
                                       return False
                               else return True
 
-            cleanup = timeout (_mediumTickRate (_config env))
-                              (send socket (Normal ShuttingDown))
+            cleanup = do atomically (deleteDsn env to)
+                         timeout (_mediumTickRate (_config env))
+                                 (send socket (Normal ShuttingDown))
+
 
 
 
@@ -113,7 +113,6 @@ clientLoop :: Environment
 clientLoop env socket to stsc = do
       waitForDBEntry
       runEffect (P.fromInput input >-> signalH env socket to)
-      removeFromDB
 
       where input = mconcat [ _pInput (_st1c env)
                             , _pInput stsc
@@ -122,12 +121,8 @@ clientLoop env socket to stsc = do
             -- Retry until the client is inserted into the DB.
             -- Hack to allow forking the client and having it insert its
             -- own async in the DB (so it can clean up when it terminates).
-            waitForDBEntry = atomically $
-                  whenM (Map.notMember to <$> readTVar (_downstream env))
-                        retry
-
-            removeFromDB = atomically $
-                  modifyTVar (_downstream env) (Map.delete (_self env))
+            waitForDBEntry = atomically (whenM (not <$> isDsn env to)
+                                               retry)
 
 
 
@@ -162,12 +157,8 @@ ok :: (MonadIO io)
    => Environment
    -> To          -- ^ Target downstream neighbour
    -> io ()
-ok env node = liftIO $ do
-      timestamp <- makeTimestamp
-      let updateTimestamp client = client { _clientTimestamp = timestamp }
-      atomically $ modifyTVar (_downstream env) $
-            Map.adjust updateTimestamp node
-
+ok env to = liftIO (do t <- makeTimestamp
+                       atomically (updateDsnTimestamp env to t))
 
 
 

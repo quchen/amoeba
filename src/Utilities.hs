@@ -3,19 +3,15 @@
 
 module Utilities (
 
+      module Reexport
+
       -- * Various utilities
-        whenM
+      , whenM
       , whileM
       , pluralS
       , mergeLists
 
-      -- * Database-related functions
-      , makeTimestamp
-      , dbSize
-      , nodeRelationship
-
       -- * Concurrency
-      , asyncMany
       , toIO
       , toIO'
       , prepareOutputBuffers
@@ -32,11 +28,6 @@ module Utilities (
       , receive
       , request
 
-      -- * Debugging
-      , yell
-      , yellAndRethrow
-      , catchAll
-
       -- * Pipe-based communication channels
       , spawn
       , outputThread
@@ -47,13 +38,9 @@ module Utilities (
 
 import           Control.Concurrent (threadDelay, ThreadId, forkIO)
 import           Control.Concurrent.STM
-import           Control.Concurrent.Async
 import           Control.Monad
 import           Control.Applicative
-import           Control.Exception
-import           Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteString as BS
-import qualified Data.Map as Map
 import           System.IO
 import           System.Timeout
 
@@ -68,15 +55,8 @@ import Control.Monad.Catch (MonadCatch)
 import Data.Binary
 
 import Types
-
-
-
--- | Creates a timestamp, which is a Double representation of the Unix time.
-makeTimestamp :: (MonadIO m) => m Timestamp
-makeTimestamp = liftIO $ Timestamp . realToFrac <$> getPOSIXTime
---   Since Haskell's Time library is borderline retarded, this seems to be the
---   cleanest way to get something that is easily an instance of Binary and
---   comparable to seconds.
+import Utilities.Debug as Reexport
+import Utilities.Databases as Reexport
 
 
 
@@ -196,7 +176,7 @@ fromSocketTimeout t socket nBytes = loop where
 receive :: (MonadIO io, Binary b)
         => N.Socket
         -> io (Maybe b)
-receive s = runEffect $ (P.head . void . receiver) s
+receive s = runEffect ((P.head . void . receiver) s)
 
 
 
@@ -205,7 +185,7 @@ send :: (MonadIO io, Binary b)
      => N.Socket
      -> b
      -> io ()
-send s x = runEffect $ yield x >-> void (sender s)
+send s x = runEffect (yield x >-> void (sender s))
 
 
 
@@ -232,7 +212,8 @@ toIO :: Environment
      -> Verbosity
      -> OutMsg
      -> STM ()
-toIO env verbosity msg = when p (writeTBQueue (_getIOQueue (_io env)) msg)
+toIO env verbosity msg = when p (writeTBQueue (_getIOQueue (_io env))
+                                              msg)
       where p = verbosity >= _verbosity (_config env)
 
 
@@ -245,37 +226,11 @@ toIO' ioq msg = atomically (writeTBQueue (_getIOQueue ioq) msg)
 
 
 
-
--- | Mandatory silly catchall function. Intended to be used as a safety net
---   only, not as a cpeap getaway :-)
-catchAll :: IO a -> IO ()
-catchAll x = void x `catch` handler
-      where handler :: SomeException -> IO ()
-            handler _ = return ()
-
--- | Easily print colored text for debugging
-yell :: MonadIO io => Int -> String -> io ()
-yell n text = liftIO . putStrLn $
-      "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ "\ESC[0m"
-
-
-
 -- | Identical to "P.spawn'", but uses the typesfe "PChan" type instead of
 --   "(,,)".
 spawn :: P.Buffer a -> IO (PChan a)
 spawn buffer = toPChan <$> P.spawn' buffer
       where toPChan (output, input, seal) = PChan output input seal
-
-
-
--- | Concurrently run multiple IO actions, and wait for the first "Async" to
---   complete. If one of them returns or throws, all others are "cancel"ed.
-asyncMany :: [IO ()] -> IO ()
-asyncMany [] = return ()
-asyncMany (io:ios) = withAsync io $ \a -> do
-      void $ waitAnyCancel <$> mapM async ios
-      wait a
-      -- TODO: Is this function even used?
 
 
 
@@ -300,9 +255,9 @@ outputThread size = do
       return (IOQueue q, thread)
 
       where dispatchSignals q = forever $ atomically (readTBQueue q) >>= \case
-                  STDOUT s -> hPutStr stdout (s ++ "\n")
-                  STDERR s -> hPutStr stderr (s ++ "\n")
-                  STDLOG s -> hPutStr stderr (s ++ "\n")
+                  STDOUT s -> hPutStrLn stdout s
+                  STDERR s -> hPutStrLn stderr s
+                  STDLOG s -> hPutStrLn stderr s
 
 
 
@@ -317,28 +272,19 @@ prepareOutputBuffers = do hSetBuffering stdout LineBuffering
 
 checkOutputBuffers :: IO ()
 checkOutputBuffers = do
-      let err buffer = hPutStr stderr $
-            buffer ++ " unbuffered! You may want to change it to buffered for\
-                            \ performance reasons (e.g. using\
-                            \ Utilities.prepareOutputBuffers)."
+
+      let err buffer = hPutStr stderr (buffer ++ " unbuffered! You may want to\
+                                       \ change it to buffered for performance\
+                                       \ reasons (e.g. using \
+                                       \ Utilities.prepareOutputBuffers).")
+
       hGetBuffering stdout >>= \case
             NoBuffering -> err "STDOUT"
-            _ -> return ()
+            _else       -> return ()
+
       hGetBuffering stderr >>= \case
             NoBuffering -> err "STDERR"
-            _ -> return ()
-
-
-
--- | Catch all exceptions, "yell" their contents, and rethrow them.
-yellAndRethrow :: (MonadIO io)
-               => Int
-               -> (String -> String) -- ^ Modify error message, e.g. (++ "foo")
-               -> IO ()
-               -> io ()
-yellAndRethrow n f = liftIO . handle handler
-      where handler :: SomeException -> IO ()
-            handler (SomeException e) = yell n (f (show e)) >> throw e
+            _else       -> return ()
 
 
 
@@ -348,43 +294,19 @@ delay = liftIO . threadDelay
 
 
 
--- | Determine the current size of a database
-dbSize :: Environment
-       -> (Environment -> TVar (Map.Map k a)) -- _upstream or _downstream
-       -> STM Int
-dbSize env db = Map.size <$> readTVar (db env)
-
-
-
--- | Add an \"s\" in print statements
+-- | To add an \"s\" in print statements if the first argument is 1.
+--
+--   >>> printf "%d minute%s remaining" n (pluralS n)
 pluralS :: (Eq a, Num a) => a -> String
 pluralS 1 = ""
 pluralS _ = "s"
 
 
 
--- | Merges two lists by alternatingly taking one element of each.
+-- | Merges two lists by alternatingly taking one element of each. Overflow is
+--   appended as bulk.
 --
 --   > mergeLists [a,b] [w,x,y,z]  ==  [a,w,b,x,y,z]
 mergeLists :: [a] -> [a] -> [a]
 mergeLists []     ys = ys
 mergeLists (x:xs) ys = x : mergeLists ys xs
-
-
-
-
--- | Check whether a connection to a certain node is allowed. A node must not
---   connect to itself or to known neighbours multiple times.
---
---   Due to the fact that an "EdgeRequest" does not contain the upstream address
---   of the connection to be established, it cannot be checked whether the node
---   is already an upstream neighbour directly; timeouts will have to take care
---   of that.
-nodeRelationship :: Environment
-                 -> To
-                 -> STM NodeRelationship
-nodeRelationship env node
-      | node == _self env = return IsSelf
-      | otherwise = do isDS <- Map.member node <$> readTVar (_downstream env)
-                       return (if isDS then IsDownstreamNeighbour
-                                       else IsUnrelated)
