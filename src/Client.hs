@@ -98,7 +98,7 @@ newClient env to socket = whenM allowed . (`finally` cleanup) $ do
                               else return True
 
             cleanup = do atomically (modifyTVar (_downstream env)
-                                                (Map.delete (_self env)))
+                                                (Map.delete to))
                          timeout (_mediumTickRate (_config env))
                                  (send socket (Normal ShuttingDown))
 
