@@ -133,7 +133,7 @@ dumpDsnDB env = Map.keysSet <$> readTVar (_downstream env)
 
 -- | Is the USN in the DB?
 isDsn :: Environment -> To -> STM Bool
-isDsn env to = Map.notMember to <$> readTVar (_downstream env)
+isDsn env to = Map.member to <$> readTVar (_downstream env)
 
 
 
