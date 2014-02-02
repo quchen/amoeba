@@ -147,14 +147,14 @@ insertDsn env to client = modifyTVar (_downstream env)
 
 
 
-
+-- | Remove a DSN from the DB.
 deleteDsn :: Environment -> To -> STM ()
 deleteDsn env to = modifyTVar (_downstream env)
                               (Map.delete to)
 
 
 
--- | Update the "last communicated with" timestmap in the DSN database.
+-- | Update the "last communicated with" timestmap in the DSN DB.
 updateDsnTimestamp :: Environment -> To -> Timestamp -> STM ()
 updateDsnTimestamp env to t = modifyTVar (_downstream env)
                                          (Map.adjust updateTimestamp to)

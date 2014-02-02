@@ -67,17 +67,17 @@ newClient :: Environment
           -> Socket -- ^ Connection
           -> IO ()
 newClient env to socket = whenM allowed . (`finally` cleanup) $ do
-      time   <- makeTimestamp
-      stsc   <- (spawn . P.Bounded . _maxChanSize . _config) env
-      thread <- async (clientLoop env socket to stsc)
-      -- (Client waits until its entry is in the DB before it starts working.)
-      let client = Client time thread stsc
-      proceed <- atomically $ do
-            isNew <- not <$> isDsn env to
-            when isNew (insertDsn env to client)
-            return isNew
-      if proceed then wait   thread
-                 else cancel thread
+      time <- makeTimestamp
+      stsc <- (spawn . P.Bounded . _maxChanSize . _config) env
+      withAsync (clientLoop env socket to stsc) $ \thread -> do
+            -- (Client waits until its entry is in the DB
+            -- before it starts working.)
+            let client = Client time thread stsc
+            proceed <- atomically $ do
+                  isNew <- not <$> isDsn env to
+                  when isNew (insertDsn env to client)
+                  return isNew
+            when proceed (wait thread)
 
       where
 
@@ -98,7 +98,6 @@ newClient env to socket = whenM allowed . (`finally` cleanup) $ do
             cleanup = do atomically (deleteDsn env to)
                          timeout (_mediumTickRate (_config env))
                                  (send socket (Normal ShuttingDown))
-
 
 
 
@@ -138,21 +137,20 @@ signalH :: (MonadIO io)
         -> Socket
         -> To
         -> Consumer NormalSignal io ()
-signalH env socket to = go
-      where terminate = return ()
-            go = do
-                  signal <- await
-                  request socket (Normal signal) >>= \case
-                        Just OK              -> ok           env to >> go
-                        Just PruneOK         -> pruneOK      env    >> terminate
-                        Just (Error e)       -> genericError env e  >> terminate
-                        Just Ignore          -> ignore       env    >> terminate
-                        Just Denied          -> denied       env    >> terminate
-                        Just Illegal         -> illegal      env    >> terminate
-                        Just DecodeError     -> decodeError  env    >> terminate
-                        Just Timeout         -> timeoutError env    >> terminate
-                        Just ConnectionClosed -> cClosed     env    >> terminate
-                        Nothing              -> noResponse   env    >> terminate
+signalH env socket to = go where
+      terminate = return ()
+      go = do signal <- await
+              request socket (Normal signal) >>= \case
+                    Just OK              -> ok           env to >> go
+                    Just PruneOK         -> pruneOK      env    >> terminate
+                    Just (Error e)       -> genericError env e  >> terminate
+                    Just Ignore          -> ignore       env    >> terminate
+                    Just Denied          -> denied       env    >> terminate
+                    Just Illegal         -> illegal      env    >> terminate
+                    Just DecodeError     -> decodeError  env    >> terminate
+                    Just Timeout         -> timeoutError env    >> terminate
+                    Just ConnectionClosed -> cClosed     env    >> terminate
+                    Nothing              -> noResponse   env    >> terminate
 
 
 
