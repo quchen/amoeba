@@ -18,8 +18,6 @@ import           Control.Monad
 import           Control.Applicative
 import           System.Random
 import           Text.Printf
-import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Data.Foldable as F
 
 import           Pipes
@@ -32,7 +30,6 @@ import Types
 import Utilities
 import Client
 import Housekeeping
-import ClientPool (isRoomIn)
 
 
 
@@ -94,8 +91,7 @@ worker env from socket =
                         OK  -> terminator
                         err -> return err
 
-            release = atomically (modifyTVar (_upstream env)
-                                             (Map.delete from))
+            release = atomically (deleteUsn env from)
 
 
 -- | Handles "Signal"s coming in from the LDC (local direct connection).
@@ -146,32 +142,15 @@ normalH env from signal =
                         KeepAlive            -> keepAliveH    env from
                         ShuttingDown         -> shuttingDownH env from
                         Prune                -> pruneH        env
-                  when (result == OK) (updateTimestamp env from)
+                  when (result == OK)
+                       (do t <- makeTimestamp
+                           atomically (updateUsnTimestamp env from t))
                   return result
 
             deny = do
                   atomically . toIO env Debug . STDLOG $
                         "Illegally contacted by " ++ show from ++ "; ignoring"
                   return Ignore
-
-
-
--- | Check whether the contacting node is a registered upstream node (USN)
-isUsn :: Environment
-      -> From
-      -> STM Bool
-isUsn env from = Map.member from <$> readTVar (_upstream env)
-
-
-
--- | Update the "last heard of" timestmap in the database
-updateTimestamp :: Environment
-                -> From
-                -> IO ()
-updateTimestamp env from = do
-      t <- makeTimestamp
-      atomically (modifyTVar (_upstream env)
-                             (Map.adjust (const t) from))
 
 
 
@@ -234,13 +213,12 @@ keepAliveH env from = do
 floodSignalH :: Environment
              -> (Timestamp, FloodSignal)
              -> IO ServerResponse
-floodSignalH env tFSignal@(timestamp, fSignal) = do
+floodSignalH env tfSignal@(timestamp, fSignal) = do
 
       knownIO <- atomically $ do
-            knownSTM <- Set.member tFSignal <$> readTVar (_handledFloods env)
+            knownSTM <- knownFlood env tfSignal
             when (not knownSTM) $ do
-                  modifyTVar (_handledFloods env)
-                             (prune . Set.insert tFSignal)
+                  insertFlood env tfSignal
 
                   -- Broadcast message to all downstream neighbours
                   broadcast <- broadcastOutput env
@@ -255,12 +233,7 @@ floodSignalH env tFSignal@(timestamp, fSignal) = do
 
 
 
-      where -- Delete the oldest entry if the DB is full
-            prune :: Set.Set a -> Set.Set a
-            prune db | Set.size db > dbMaxSize = Set.deleteMin db
-                     | otherwise               = db
 
-            dbMaxSize = _floodMessageCache (_config env)
 
 
 
@@ -291,7 +264,7 @@ neighbourListH env painter = do
       connectToNode painter $ \(socket, _) -> do
             atomically (toIO env Chatty (STDLOG "Processing painter request"))
             let self = _self env
-            dsns <- Map.keysSet <$> atomically (readTVar (_downstream env))
+            dsns <- atomically (dumpDsnDB env)
             send socket (NeighbourList self dsns)
       return OK
 
@@ -311,7 +284,7 @@ shuttingDownH env from = atomically $ do
 pruneH :: Environment
        -> IO ServerResponse
 pruneH env = atomically $ do
-      dbSize <- Map.size <$> readTVar (_upstream env)
+      dbSize <- dbSize env _upstream
       if dbSize > _minNeighbours (_config env)
             then
                   -- Send back a special "OK" signal that terminates the
@@ -544,14 +517,14 @@ incomingHandshakeH env from socket = do
             -- Check for previous membership, just in case this method is called
             -- twice concurrently for some odd reason TODO: can this happen?
             -- This is an STM block after all
-            alreadyKnown <- Map.member from <$> readTVar (_upstream env)
+            alreadyKnown <- isUsn env from
 
             let p = isRoom && not alreadyKnown
 
             -- Reserve slot. Cleanup happens when the worker shuts down because
             -- of a non-OK signal.
-            when p (modifyTVar (_upstream env)
-                               (Map.insert from timestamp))
+            when p (insertUsn env from timestamp)
+
             return p
 
       if proceed

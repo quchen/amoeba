@@ -1,10 +1,31 @@
 -- | Functions to query the upstream/downstream databases
 
 module Utilities.Databases (
+
         isRoomIn
       , nodeRelationship
       , dbSize
       , makeTimestamp
+
+
+      -- * USN DB
+      , isUsn
+      , insertUsn
+      , deleteUsn
+      , updateUsnTimestamp
+
+
+      -- * DSN DB
+      , isDsn
+      , insertDsn
+      , deleteDsn
+      , dumpDsnDB
+      , updateDsnTimestamp
+
+
+      -- * Flood signal DB
+      , knownFlood
+      , insertFlood
 ) where
 
 
@@ -12,6 +33,7 @@ import Control.Concurrent.STM
 import Control.Monad.Trans
 import Control.Applicative
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.Time.Clock.POSIX (getPOSIXTime)
 
 import Types
@@ -61,3 +83,90 @@ makeTimestamp = liftIO (Timestamp . realToFrac <$> getPOSIXTime)
 --   Since Haskell's Time library is borderline retarded, this seems to be the
 --   cleanest way to get something that is easily an instance of Binary and
 --   comparable to seconds.
+
+
+
+-- | Is the USN in the DB?
+isUsn :: Environment -> From -> STM Bool
+isUsn env from = Map.member from <$> readTVar (_upstream env)
+
+
+
+-- | Add a USN to the DB.
+insertUsn :: Environment -> From -> Timestamp -> STM ()
+insertUsn env from t = modifyTVar (_upstream env)
+                                  (Map.insert from t)
+
+
+
+-- | Remove a USN from the DB.
+deleteUsn :: Environment -> From -> STM ()
+deleteUsn env from = modifyTVar (_upstream env)
+                                (Map.delete from)
+
+
+
+-- | Update the "last heard of" timestmap in the database.
+updateUsnTimestamp :: Environment -> From -> Timestamp -> STM ()
+updateUsnTimestamp env from t = modifyTVar (_upstream env)
+                                           (Map.adjust (const t) from)
+
+
+
+-- | "Set.Set" of all known DSN.
+dumpDsnDB :: Environment -> STM (Set.Set To)
+dumpDsnDB env = Map.keysSet <$> readTVar (_downstream env)
+
+
+
+-- | Is the USN in the DB?
+isDsn :: Environment -> To -> STM Bool
+isDsn env to = Map.notMember to <$> readTVar (_downstream env)
+
+
+
+-- | Insert/update a DSN.
+insertDsn :: Environment
+          -> To     -- ^ DSN address
+          -> Client -- ^ Local client connecting to this address
+          -> STM ()
+insertDsn env to client = modifyTVar (_downstream env)
+                                     (Map.insert to client)
+
+
+
+
+deleteDsn :: Environment -> To -> STM ()
+deleteDsn env to = modifyTVar (_downstream env)
+                              (Map.delete to)
+
+
+
+-- | Update the "last communicated with" timestmap in the DSN database.
+updateDsnTimestamp :: Environment -> To -> Timestamp -> STM ()
+updateDsnTimestamp env to t = modifyTVar (_downstream env)
+                                         (Map.adjust updateTimestamp to)
+
+      where updateTimestamp client = client { _clientTimestamp = t }
+
+
+
+-- | Check whether a flood signal is already in the DB.
+knownFlood :: Environment -> (Timestamp, FloodSignal) -> STM Bool
+knownFlood env tfSignal = fmap (Set.member tfSignal)
+                               (readTVar (_handledFloods env))
+
+
+
+-- | Insert a new flood signal into the DB. Deletes an old one if the DB is
+--   full.
+insertFlood :: Environment -> (Timestamp, FloodSignal) -> STM ()
+insertFlood env tfSignal = modifyTVar (_handledFloods env)
+                                      (prune . Set.insert tfSignal)
+
+      where -- Delete the oldest entry if the DB is full
+            prune :: Set.Set a -> Set.Set a
+            prune db | Set.size db > dbMaxSize = Set.deleteMin db
+                     | otherwise               = db
+
+            dbMaxSize = _floodMessageCache (_config env)

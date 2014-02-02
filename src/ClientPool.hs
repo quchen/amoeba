@@ -9,7 +9,6 @@ module ClientPool (
         , isRoomIn
 ) where
 
-import           Control.Applicative
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
 import qualified Data.Map as Map
