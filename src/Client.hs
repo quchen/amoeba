@@ -111,8 +111,9 @@ clientLoop :: Environment
            -> PChan NormalSignal -- ^ Channel to this client
            -> IO ()
 clientLoop env socket to stsc = do
-      waitForDBEntry
-      runEffect (P.fromInput input >-> signalH env socket to)
+      waitForDBEntry >>= \case
+            Nothing -> return ()
+            Just () -> runEffect (P.fromInput input >-> signalH env socket to)
 
       where input = mconcat [ _pInput (_st1c env)
                             , _pInput stsc
@@ -121,8 +122,13 @@ clientLoop env socket to stsc = do
             -- Retry until the client is inserted into the DB.
             -- Hack to allow forking the client and having it insert its
             -- own async in the DB (so it can clean up when it terminates).
-            waitForDBEntry = atomically (whenM (not <$> isDsn env to)
-                                               retry)
+            -- Since there is no DB entry to check, the timeout is added
+            -- explicitly here as well.
+            waitForDBEntry = timeout timeoutT
+                                     (atomically (whenM (not <$> isDsn env to)
+                                                        retry))
+
+            timeoutT = (round . (* 10^6) . _poolTimeout . _config) env
 
 
 
