@@ -12,6 +12,8 @@ import Control.Exception
 import GHC.IO.Exception (ioe_description)
 import Data.Typeable
 import Text.Printf
+import System.Random
+import Control.Monad
 import qualified Data.Set as Set
 
 import Types
@@ -61,7 +63,7 @@ bootstrap config self =
                   retryBootstrap
 
             go = handleMulti $ do
-                  let bsServer = getBootstrapServer config
+                  bsServer <- getBootstrapServer config
                   connectToNode bsServer $ \(s, _) -> do
                         request s (BootstrapRequest self) >>= \case
                               Just OK -> return ()
@@ -73,6 +75,22 @@ bootstrap config self =
 
 -- | Find the address of a suitable bootstrap server.
 -- TODO: Make bootstrap server selection a little more complex :-)
-getBootstrapServer :: NodeConfig -> To
-getBootstrapServer _config = To (Node "127.0.0.1" 20000)
-      where _dummy = Set.empty
+getBootstrapServer :: NodeConfig -> IO To
+getBootstrapServer config = randomSetElement (_bootstrapServers config)
+-- Fallback entry: return (To (Node "127.0.0.1" 20000))
+
+
+
+randomSetElement :: Set.Set a -> IO a
+randomSetElement set = do
+      when (Set.null set) (error "No bootstrap servers known")  -- TODO: This is beyond awful
+      let size = Set.size set
+      i <- randomRIO (0, size-1)
+      return (elemAt i set)
+
+
+
+-- | Equivalent to "Set.elemAt", which is only present in later versions of
+--   the containers package.
+elemAt :: Int -> Set.Set a -> a
+elemAt i set = Set.toList set !! i
