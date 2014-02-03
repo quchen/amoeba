@@ -23,6 +23,7 @@ import qualified Types as Ty
 import Config.OptionModifier
 
 
+
 runArgParser :: Parser a -- ^ Parser
              -> String   -- ^ Short help description
              -> String   -- ^ Long help description
@@ -87,10 +88,9 @@ nodeModifier' = (fmap mconcat . T.sequenceA) mods where
              , longTickRate
              , poolTimeout
              , verbosity
-             , pure mempty
-             , floodMessageCache
+             -- TODO: specify bootstrap servers
+             , floodCacheSize
              ]
-             -- TODO: specify bootstrap servers via command line
 
 
 
@@ -228,8 +228,8 @@ maxChanSize = value <|> defaultValue where
       toModifier x = OptionModifier (\c -> c { Ty._maxChanSize = x })
 
 
-floodMessageCache :: Parser (OptionModifier Ty.NodeConfig)
-floodMessageCache = value <|> defaultValue where
+floodCacheSize :: Parser (OptionModifier Ty.NodeConfig)
+floodCacheSize = value <|> defaultValue where
       value = toModifier <$> (nullOption . mconcat)
             [ reader  nonnegative
             , long    "floodcache"
