@@ -15,12 +15,14 @@ module Config.CmdArgParser (
 import Options.Applicative
 import Data.Monoid
 import Text.Printf
+import qualified Data.Set as Set
 import qualified Data.Traversable as T
 import Data.Char (toLower)
 import Text.Read (readEither)
 
 import qualified Types as Ty
 import Config.OptionModifier
+import qualified Config.AddressParser as AddressParser
 
 
 
@@ -88,7 +90,7 @@ nodeModifier' = (fmap mconcat . T.sequenceA) mods where
              , longTickRate
              , poolTimeout
              , verbosity
-             -- TODO: specify bootstrap servers
+             , bootstrapServer
              , floodCacheSize
              ]
 
@@ -327,12 +329,29 @@ poolTimeout = value <|> defaultValue where
 verbosity :: Parser (OptionModifier Ty.NodeConfig)
 verbosity = value <|> defaultValue where
       value = toModifier <$> (nullOption . mconcat)
-            [ reader readVerbosity
+            [ reader  readVerbosity
             , long    "verbosity"
             , metavar "(mute|quiet|default|debug|chatty)"
             , help    "Verbosity level, increasing from left to right"
             ]
       toModifier x = OptionModifier (\c -> c { Ty._verbosity = x })
+
+
+
+bootstrapServer :: Parser (OptionModifier Ty.NodeConfig)
+bootstrapServer = value <|> defaultValue where
+      value = toModifier <$> (nullOption . mconcat)
+            [ reader  readAddress
+            , long    "bootstrap"
+            , metavar "(hostname)"
+            , help    "Bootstrap server address"
+            ]
+      toModifier x = OptionModifier (\c -> c { Ty._bootstrapServers = x <> Ty._bootstrapServers c })
+
+      -- Lens version is a lot prettier:
+      -- toModifier x = OptionModifier (bootstrapServers <>~ x)
+
+
 
 
 
@@ -377,3 +396,10 @@ readVerbosity x = case map toLower x of
       "debug"   -> pure Ty.Debug
       "chatty"  -> pure Ty.Chatty
       _else     -> readerError (printf "Unrecognized verbosity level \"%d\"" x)
+
+
+
+readAddress :: String -> ReadM (Set.Set Ty.To)
+readAddress str = case AddressParser.parseAddress str of
+      Left e     -> readerError ("Bad address: " ++ show e)
+      Right addr -> pure (Set.singleton addr)

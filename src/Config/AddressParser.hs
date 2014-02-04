@@ -67,11 +67,13 @@ ipv4PartP = do p <- intP
 
 -- | Parser for "To" data.
 toP :: Parser To
-toP = do (a,b,c,d) <- ipv4P
-         let host = printf "%d.%d.%d.%d" a b c d
-         colon
-         port <- portP
-         return (To (Node host port))
+toP = try toP' <?> errMsg where
+      toP' = do (a,b,c,d) <- ipv4P
+                let host = printf "%d.%d.%d.%d" a b c d
+                colon
+                port <- portP
+                return (To (Node host port))
+      errMsg = "IPv4+port address of the form 127.0.0.1:12345"
 
 
 

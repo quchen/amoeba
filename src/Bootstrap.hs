@@ -39,36 +39,49 @@ bootstrap config self =
          go
          putStrLn "Bootstrap finished"
 
-      where handleMulti action = do catches action [ bootstrapErrorH
-                                                   , ioErrorH
-                                                   ]
+      where
 
-            retryBootstrap = delay (_longTickRate config) >> go
+      go = do
 
-            bootstrapErrorH = Handler $ \case
-                  BadResponse -> do
-                        putStrLn "Bad response from bootstrap server. Probably\
-                                 \ a bug."
-                        retryBootstrap
-                  NoResponse -> do
-                        putStrLn "No response from bootstrap server (altough it\
-                                 \ is online). Probably a bug."
-                        retryBootstrap
+            bsServer <- getBootstrapServer config
 
-            ioErrorH = Handler $ \e -> do
-                  let _ = e :: IOException
-                  printf "Cound not connect to bootstrap server (%s).\
-                         \ Is it online?\n"
-                         (ioe_description e)
-                  retryBootstrap
+            let handleMulti action = do catches action [ bootstrapErrorH
+                                                       , ioErrorH
+                                                       ]
 
-            go = handleMulti $ do
-                  bsServer <- getBootstrapServer config
-                  connectToNode bsServer $ \(s, _) -> do
-                        request s (BootstrapRequest self) >>= \case
-                              Just OK -> return ()
-                              Just _  -> throwIO BadResponse
-                              Nothing -> throwIO NoResponse
+                retryBootstrap = delay (_longTickRate config) >> go
+
+                bootstrapErrorH = Handler $ \case
+                      BadResponse -> do
+                            printf "Bad response from bootstrap server %s.\
+                                         \ This is a bug if the server is\
+                                         \ actually a bootstrap server.\n"
+                                   (showBss bsServer)
+                            retryBootstrap
+                      NoResponse -> do
+                            printf "No response from bootstrap server %s\
+                                         \ (altough it is online).\
+                                         \ This is a bug if the server is\
+                                         \ actually a bootstrap server.\n"
+                                   (showBss bsServer)
+                            retryBootstrap
+
+                ioErrorH = Handler $ \e -> do
+                      let _ = e :: IOException
+                      printf "Could not connect to bootstrap server %s\
+                                   \ (%s). Is it online?\n"
+                             (showBss bsServer)
+                             (ioe_description e)
+                      retryBootstrap
+
+                showBss :: To -> String
+                showBss (To (Node h p)) = printf "%s:%d" h p
+
+            handleMulti . connectToNode bsServer $ \(s, _) -> do
+                  request s (BootstrapRequest self) >>= \case
+                        Just OK -> return ()
+                        Just _  -> throwIO BadResponse
+                        Nothing -> throwIO NoResponse
 
 
 

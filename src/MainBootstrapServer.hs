@@ -35,7 +35,6 @@ bootstrapServerMain :: IO ()
 bootstrapServerMain = do
 
       config <- Config.bootstrap
-      BROKEN TODO: Add self to list of BSS
 
       prepareOutputBuffers
       (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
