@@ -91,8 +91,7 @@ bootstrapServer config ioq ldc restart =
       PN.listen (PN.Host "127.0.0.1")
                 (show (_serverPort (_nodeConfig config)))
                 (\(sock, addr) -> do
-                      toIO' ioq (STDLOG (printf "Bootstrap server listening\
-                                                      \ on %s"
+                      toIO' ioq (STDLOG (printf "Bootstrap server listening on %s"
                                                 (show addr)))
                       bssLoop config ioq 1 sock ldc restart)
 
