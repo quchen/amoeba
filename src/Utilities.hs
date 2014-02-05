@@ -41,6 +41,7 @@ import           Control.Concurrent.STM
 import           Control.Monad
 import           Control.Applicative
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BSL
 import           System.IO
 import           System.Timeout
 
@@ -50,14 +51,21 @@ import qualified Pipes.Concurrent as P
 import qualified Network.Simple.TCP as N
 import qualified Network.Socket.ByteString as NSB
 import qualified Pipes.Binary as P
+import qualified Pipes.ByteString
+import qualified Pipes.Parse as P
+import qualified Lens.Family.State.Strict as L
 import Control.Monad.Catch (MonadCatch)
 
 import Data.Binary
+import qualified Data.Binary.Put as Put
 
 import Types
 import Utilities.Debug as Reexport
 import Utilities.Databases as Reexport
 
+
+
+import Debug.Trace
 
 
 -- | Monadic version of 'when'.
@@ -128,11 +136,10 @@ toSocketTimeout :: (MonadIO io)
                 -> N.Socket
                 -> Consumer BS.ByteString io ServerResponse
 toSocketTimeout t socket = loop where
-      loop = do
-            bs <- await
-            liftIO (timeout t (NSB.sendAll socket bs)) >>= \case
-                  Just _  -> loop
-                  Nothing -> return Timeout
+      loop = do bs <- await
+                liftIO (timeout t (NSB.sendAll socket bs)) >>= \case
+                      Just _  -> loop
+                      Nothing -> return Timeout
 
 
 
@@ -142,14 +149,13 @@ toSocketTimeout t socket = loop where
 receiver :: (MonadIO io, Binary b)
          => N.Socket
          -> Producer b io ServerResponse
-receiver s = decoded >-> dataOnly
-      where dataOnly = P.map snd
-            input = fromSocketTimeout (3*10^6) s 4096 -- TODO: Don't hardcode timeout
+receiver s = decoded where
 
-            decoded = decodeError <$> P.decodeMany input
+      input = fromSocketTimeout (3*10^6) s 4096 -- TODO: Don't hardcode timeout
 
-            decodeError (Right r) = r
-            decodeError (Left _)  = DecodeError
+      decoded = P.evalStateT (L.zoom P.decoded P.draw) input >>= \case
+            Nothing -> return DecodeError
+            Just x  -> yield x >> decoded
 
 
 
@@ -202,8 +208,10 @@ request s x = send s x >> receive s
 --   downstream in "BS.ByteString" chunks.
 --
 --   (Sent a pull request to Pipes-Binary for adding this.)
-encodeMany :: (Monad m, Binary x) => Pipe x BS.ByteString m r
-encodeMany = for cat P.encode
+encodeMany :: (Monad m, Binary x) => Pipe x BS.ByteString m ServerResponse
+encodeMany = err <$ P.map (BSL.toStrict . Put.runPut . put)
+      where err = Error "Encoding failure, likely a bug"
+            -- TODO: Remove this case somehow
 
 
 
