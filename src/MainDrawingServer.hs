@@ -103,7 +103,7 @@ graphDrawer t'graph = forever $ do
       graph <- atomically (readTVar t'graph)
       let graphSize (Graph g) = Map.size g
           s = graphSize graph
-      printf "Drawing graph. Current network size: %d nodes" s -- TODO: Use IOQueue
+      printf "Drawing graph. Current network size: %d nodes\n" s -- TODO: Use IOQueue
       writeFile "network_graph.dot" (graphToDot graph) -- TODO: Make filename configurable
 
 
