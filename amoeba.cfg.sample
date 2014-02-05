@@ -82,6 +82,15 @@ poolTimeout = 5
 floodMessageCache = 1024
 
 
+# Bootstrap servers to make an initial connection to the network.
+# Can be either a single entry or a list of entries, e.g.
+#
+# bootstrapServers = "127.0.0.1:20000"
+# bootstrapServers = [ "127.0.0.1:20000","127.0.0.2:12345" ]
+# (Quotes are important!)
+bootstrapServers = "127.0.0.1:20000"
+
+
 
 ################################################################################
 #####  Special services  #######################################################
