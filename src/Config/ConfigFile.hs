@@ -15,8 +15,12 @@ import Data.Char (toLower)
 import Data.Word
 import Data.Monoid
 import Data.Functor
+import qualified Data.Foldable as F
+import Data.Either
+import Data.Maybe
 import Control.Applicative
 import Control.Monad.Reader
+import qualified Data.Set as Set
 
 import qualified Data.Configurator as C
 import qualified Data.Configurator.Types as C
@@ -25,7 +29,7 @@ import qualified Data.Traversable as T
 
 import qualified Types as Ty
 import Config.OptionModifier
-
+import qualified Config.AddressParser as AP
 
 
 -- | Files to read the config from. The later in the list, the higher the
@@ -79,7 +83,7 @@ nodeModifier' prefixes = (fmap mconcat . T.sequenceA) mods where
                   , longTickRate
                   , poolTimeout
                   , verbosity
-                  , \_ -> pure mempty -- TODO: Specify bootstrap servers
+                  , bootstrapServers
                   , floodMessageCache
                   ]
 
@@ -144,6 +148,7 @@ type Prefixes = [C.Name]
 
 
 
+-- | Look up a certain setting, possibly with a list of parent prefixes.
 lookupC :: C.Configured a
         => Prefixes -- ^ List of prefixes, e.g. ["foo", "bar"] for foo.bar.*
         -> C.Name   -- ^ Option name
@@ -295,15 +300,33 @@ floodMessageCache prefixes = toModifier <$> floodMessageCache' prefixes where
       toModifier Nothing  = mempty
 
 
--- TODO
-bootstrapServers' :: Prefixes -> ReaderT C.Config IO (Maybe a)
-bootstrapServers' prefixes = undefined prefixes
+
+bootstrapServers' :: Prefixes -> ReaderT C.Config IO (Set.Set Ty.To)
+bootstrapServers' prefixes = fmap m'valueToTo
+                                  (lookupC prefixes "bootstrapServers")
+
+      where
+
+      m'valueToTo :: Maybe C.Value -> Set.Set Ty.To
+      m'valueToTo = maybe Set.empty valueToTo
+
+      -- Convert a "C.Value" to a "Set.Set" of "Ty.To" addresses.
+      valueToTo :: C.Value -> Set.Set Ty.To
+      valueToTo (C.String text) =
+            either (const Set.empty)
+                   Set.singleton
+                   (parseAddrText text)
+      valueToTo (C.List vals) = foldr go Set.empty vals where
+            go (C.String text) xs = case parseAddrText text of
+                  Right to -> Set.insert to xs
+                  Left  _r -> xs
+            go _else xs = xs
+
+      parseAddrText = AP.parseAddress . Text.unpack
 
 bootstrapServers :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-bootstrapServers prefixes = undefined where
-      _foo = toModifier <$> bootstrapServers' prefixes
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._bootstrapServers = x })
-      toModifier Nothing  = mempty
+bootstrapServers prefixes = toModifier <$> bootstrapServers' prefixes where
+      toModifier x = OptionModifier (\c -> c { Ty._bootstrapServers = x <> Ty._bootstrapServers c })
 
 
 
