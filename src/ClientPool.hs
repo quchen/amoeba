@@ -39,24 +39,21 @@ clientPool env = withAsync hkeep $ \_ -> fillPool env
 -- | Watches the count of nodes in the database, and issues 'EdgeRequest's
 --   to fill the ranks if necessary.
 fillPool :: Environment -> IO ()
-fillPool env = yellAndRethrow 42 ("ClientPool: " ++) $
-
-      runEffect $ balanceEdges env
-              >-> P.map edgeRequest
-              >-> dispatch
+fillPool env = runEffect (balanceEdges env >-> P.map edgeRequest >-> dispatch)
 
       where
-            -- Send signal to the single worker channel
-            dispatch :: Consumer NormalSignal IO ()
-            dispatch = P.toOutput (_pOutput (_st1c env))
 
-            -- Create an EdgeRequest from a Direction
-            edgeRequest :: Direction
-                        -> NormalSignal
-            edgeRequest dir =
-                  EdgeRequest (_self env)
-                              (EdgeData dir
-                                        (HardBounce (_bounces (_config env))))
+      -- Send signal to the single worker channel
+      dispatch :: Consumer NormalSignal IO ()
+      dispatch = P.toOutput (_pOutput (_st1c env))
+
+      -- Create an EdgeRequest from a Direction
+      edgeRequest :: Direction
+                  -> NormalSignal
+      edgeRequest dir =
+            EdgeRequest (_self env)
+                        (EdgeData dir
+                                  (HardBounce (_bounces (_config env))))
 
 
 

@@ -67,17 +67,17 @@ newClient :: Environment
           -> Socket -- ^ Connection
           -> IO ()
 newClient env to socket = whenM allowed . (`finally` cleanup) $ do
-      time   <- makeTimestamp
-      stsc   <- (spawn . P.Bounded . _maxChanSize . _config) env
-      thread <- async (clientLoop env socket to stsc)
-      -- (Client waits until its entry is in the DB before it starts working.)
-      let client = Client time thread stsc
-      proceed <- atomically $ do
-            isNew <- not <$> isDsn env to
-            when isNew (insertDsn env to client)
-            return isNew
-      if proceed then wait   thread
-                 else cancel thread
+      time <- makeTimestamp
+      stsc <- (spawn . P.Bounded . _maxChanSize . _config) env
+      withAsync (clientLoop env socket to stsc) $ \thread -> do
+            -- (Client waits until its entry is in the DB
+            -- before it starts working.)
+            let client = Client time thread stsc
+            proceed <- atomically $ do
+                  isNew <- not <$> isDsn env to
+                  when isNew (insertDsn env to client)
+                  return isNew
+            when proceed (wait thread)
 
       where
 
@@ -101,7 +101,6 @@ newClient env to socket = whenM allowed . (`finally` cleanup) $ do
 
 
 
-
 -- | Main client function; read the communication channels and execute orders.
 clientLoop :: Environment
            -> Socket -- ^ Connection to use (created by the handshake process)
@@ -111,8 +110,9 @@ clientLoop :: Environment
            -> PChan NormalSignal -- ^ Channel to this client
            -> IO ()
 clientLoop env socket to stsc = do
-      waitForDBEntry
-      runEffect (P.fromInput input >-> signalH env socket to)
+      waitForDBEntry >>= \case
+            Nothing -> return ()
+            Just () -> runEffect (P.fromInput input >-> signalH env socket to)
 
       where input = mconcat [ _pInput (_st1c env)
                             , _pInput stsc
@@ -121,8 +121,13 @@ clientLoop env socket to stsc = do
             -- Retry until the client is inserted into the DB.
             -- Hack to allow forking the client and having it insert its
             -- own async in the DB (so it can clean up when it terminates).
-            waitForDBEntry = atomically (whenM (not <$> isDsn env to)
-                                               retry)
+            -- Since there is no DB entry to check, the timeout is added
+            -- explicitly here as well.
+            waitForDBEntry = timeout timeoutT
+                                     (atomically (whenM (not <$> isDsn env to)
+                                                        retry))
+
+            timeoutT = (round . (* 10^6) . _poolTimeout . _config) env
 
 
 
@@ -132,21 +137,20 @@ signalH :: (MonadIO io)
         -> Socket
         -> To
         -> Consumer NormalSignal io ()
-signalH env socket to = go
-      where terminate = return ()
-            go = do
-                  signal <- await
-                  request socket (Normal signal) >>= \case
-                        Just OK              -> ok           env to >> go
-                        Just PruneOK         -> pruneOK      env    >> terminate
-                        Just (Error e)       -> genericError env e  >> terminate
-                        Just Ignore          -> ignore       env    >> terminate
-                        Just Denied          -> denied       env    >> terminate
-                        Just Illegal         -> illegal      env    >> terminate
-                        Just DecodeError     -> decodeError  env    >> terminate
-                        Just Timeout         -> timeoutError env    >> terminate
-                        Just ConnectionClosed -> cClosed     env    >> terminate
-                        Nothing              -> noResponse   env    >> terminate
+signalH env socket to = go where
+      terminate = return ()
+      go = do signal <- await
+              request socket (Normal signal) >>= \case
+                    Just OK              -> ok           env to >> go
+                    Just PruneOK         -> pruneOK      env    >> terminate
+                    Just (Error e)       -> genericError env e  >> terminate
+                    Just Ignore          -> ignore       env    >> terminate
+                    Just Denied          -> denied       env    >> terminate
+                    Just Illegal         -> illegal      env    >> terminate
+                    Just DecodeError     -> decodeError  env    >> terminate
+                    Just Timeout         -> timeoutError env    >> terminate
+                    Just ConnectionClosed -> cClosed     env    >> terminate
+                    Nothing              -> noResponse   env    >> terminate
 
 
 
