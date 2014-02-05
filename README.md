@@ -5,11 +5,15 @@ Amœba is a program for setting up a decentralized network. The name comes from
 the hope that eventually, the network will be so robust that you can poke any of
 its parts without endangering its overall integrity.
 
-This is how a small network looks like. It consists of 81 nodes, each trying to
-maintain 3-6 incoming and outgoing connections (Node colour according to
-betweenness centrality):
+This is how a small network looks like. It consists of 359 nodes, each trying to
+maintain 5-10 incoming and outgoing connections. Initially, three independent
+clusters were created; the last 30 nodes knew of these clusters and joined them
+together over the course of a minute. Darker colours indicate a more central
+role of a node in the network ([betweenness centrality][wiki-betweenness]).
 
 ![(Picture missing, uh oh)](doc/network_example.png)
+
+
 
 The current development stage is Alpha.
 
@@ -19,7 +23,10 @@ stable  | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?bran
 master  | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=master)][travis]
 develop | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=develop)][travis]
 
+
+
 [travis]: https://travis-ci.org/quchen/amoeba
+[wiki-betweenness]: http://en.wikipedia.org/wiki/Betweenness_centrality
 
 
 

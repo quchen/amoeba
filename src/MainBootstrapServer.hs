@@ -112,26 +112,31 @@ bssLoop config ioq counter' serverSock ldc restartTrigger = go counter' where
       go !counter = do
 
             let
+                -- Number of times this loop runs with simplified settings
+                -- to help the node pool buildup.
+                preRestart = _poolSize (_poolConfig config)
+                             *
+                             _maxNeighbours (_nodeConfig config)
+
                 -- The first couple of new nodes should not bounce, as there are
                 -- not enough nodes to relay the requests (hence the queues fill
                 -- up and the nodes block indefinitely.
-                nodeConfig | counter <= poolSize = (_nodeConfig config) { _bounces = 0 }
-                           | otherwise           = _nodeConfig config
+                nodeConfig | counter <= preRestart = (_nodeConfig config) { _bounces = 0 }
+                           | otherwise             = _nodeConfig config
 
                 -- If nodes are restarted when the server goes up there are
                 -- multi-connections to non-existing nodes, and the network dies off
                 -- after a couple of cycles for some reason. Disable restarting for
                 -- the first couple of nodes.
-                restartMaybe _ | counter <= poolSize = return ()
-                restartMaybe c = when (c `rem` (_restartEvery config) == 0)
+                restartMaybe _ | counter <= preRestart = return ()
+                restartMaybe c = when (c `rem` _restartEvery config == 0)
                                       restartTrigger
-                poolSize = _poolSize (_poolConfig config)
 
                 bootstrapRequestH socket node = do
                       dispatchSignal nodeConfig node ldc
                       send socket OK
 
-            PN.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
+            PN.acceptFork serverSock $ \(clientSock, _clientAddr) ->
                   receive clientSock >>= \case
                         Just (BootstrapRequest benefactor) -> do
                               toIO' ioq
@@ -140,7 +145,7 @@ bssLoop config ioq counter' serverSock ldc restartTrigger = go counter' where
                                                     (show benefactor)))
                               bootstrapRequestH clientSock benefactor
                               restartMaybe counter
-                              toIO' ioq (STDLOG (printf "Client %d served"
+                              toIO' ioq (STDLOG (printf "Request %d served"
                                                         counter))
                         Just _other_signal -> do
                               toIO' ioq (STDLOG "Non-BootstrapRequest signal\
@@ -152,18 +157,14 @@ bssLoop config ioq counter' serverSock ldc restartTrigger = go counter' where
 
 
 
-
 -- | Send bootstrap requests on behalf of the new node to the node pool
 dispatchSignal :: NodeConfig
                -> To -- ^ Benefactor, i.e. 'BootstrapRequest' issuer's server
                      --   address
                -> Chan NormalSignal
                -> IO ()
-dispatchSignal config to ldc = mapM_ order edges
+dispatchSignal config to ldc = order Incoming >> order Outgoing
       where order dir = writeChan ldc (edgeRequest config to dir)
-            edges = mergeLists (replicate n Incoming)
-                               (replicate n Outgoing)
-            n = _minNeighbours config
 
 
 

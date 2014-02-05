@@ -155,7 +155,7 @@ data PoolConfig = PoolConfig {
 -- ^ Configuration of the bootstrap server
 data BootstrapConfig = BootstrapConfig {
 
-        _restartEvery :: Int -- ^ Every n connected nodes, one client is
+        _restartEvery :: Int -- ^ Every n bootstrap requests one client is
                              --   restarted at random
 
       , _restartMinimumPeriod :: Int -- ^ Limit the maximal frequency at which
