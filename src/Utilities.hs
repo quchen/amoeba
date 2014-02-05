@@ -149,18 +149,13 @@ toSocketTimeout t socket = loop where
 receiver :: (MonadIO io, Binary b)
          => N.Socket
          -> Producer b io ServerResponse
-receiver s = decoded >-> dataOnly where
-
-      dataOnly = P.map snd
+receiver s = decoded where
 
       input = fromSocketTimeout (3*10^6) s 4096 -- TODO: Don't hardcode timeout
 
-      decoded = fmap decodeError
-                     (P.evalStateT (L.zoom P.decoded P.draw)
-                                   input)
-
-      decodeError (Just x) = x
-      decodeError Nothing  = DecodeError
+      decoded = P.evalStateT (L.zoom P.decoded P.draw) input >>= \case
+            Nothing -> return DecodeError
+            Just x  -> yield x >> decoded
 
 
 
