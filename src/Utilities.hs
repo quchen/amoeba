@@ -51,7 +51,6 @@ import qualified Pipes.Concurrent as P
 import qualified Network.Simple.TCP as N
 import qualified Network.Socket.ByteString as NSB
 import qualified Pipes.Binary as P
-import qualified Pipes.ByteString
 import qualified Pipes.Parse as P
 import qualified Lens.Family.State.Strict as L
 import Control.Monad.Catch (MonadCatch)
@@ -63,9 +62,6 @@ import Types
 import Utilities.Debug as Reexport
 import Utilities.Databases as Reexport
 
-
-
-import Debug.Trace
 
 
 -- | Monadic version of 'when'.

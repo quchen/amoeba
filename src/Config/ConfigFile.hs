@@ -15,10 +15,6 @@ import Data.Char (toLower)
 import Data.Word
 import Data.Monoid
 import Data.Functor
-import qualified Data.Foldable as F
-import Data.Either
-import Data.Maybe
-import Control.Applicative
 import Control.Monad.Reader
 import qualified Data.Set as Set
 
@@ -321,7 +317,7 @@ bootstrapServers' prefixes = fmap m'valueToTo
                   Right to -> Set.insert to xs
                   Left  _r -> xs
             go _else xs = xs
-
+      valueToTo _else = Set.empty
       parseAddrText = AP.parseAddress . Text.unpack
 
 bootstrapServers :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)

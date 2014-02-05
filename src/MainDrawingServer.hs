@@ -98,7 +98,7 @@ graphWorker stg = do
 -- | Read the graph and compiles it to .dot format
 graphDrawer :: TVar (Graph To) -> IO ()
 graphDrawer t'graph = forever $ do
-      threadDelay (10^6) -- TODO: Configurable
+      threadDelay (10^7) -- TODO: Configurable
       cleanup t'graph
       graph <- atomically (readTVar t'graph)
       let graphSize (Graph g) = Map.size g
