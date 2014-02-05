@@ -133,7 +133,7 @@ multiModifier' = (fmap mconcat . T.sequenceA) mods where
              , liftPoolModifier <$> poolModifier' prefix
              ]
       noPrefix = []
-      prefix = ["drawing"]
+      prefix = ["multi"]
 
 
 
