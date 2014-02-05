@@ -9,6 +9,7 @@ module Bootstrap (bootstrap) where
 
 
 import Control.Exception
+import Control.Concurrent.Async
 import GHC.IO.Exception (ioe_description)
 import Data.Typeable
 import Text.Printf
@@ -34,22 +35,22 @@ instance Exception BootstrapError
 bootstrap :: NodeConfig
           -> To -- Own address so other nodes can connect
           -> IO ()
-bootstrap config self =
-      do putStrLn "Starting bootstrap"
-         go
-         putStrLn "Bootstrap finished"
+bootstrap config self = do putStrLn "Starting bootstrap"
+                           mapConcurrently (const dispatch)
+                                           [1 .. _maxNeighbours config]
+                           putStrLn "Bootstrap finished"
 
       where
 
-      go = do
+      dispatch = do
 
             bsServer <- getBootstrapServer config
 
-            let handleMulti action = do catches action [ bootstrapErrorH
-                                                       , ioErrorH
-                                                       ]
+            let handleMulti action = catches action [ bootstrapErrorH
+                                                    , ioErrorH
+                                                    ]
 
-                retryBootstrap = delay (_longTickRate config) >> go
+                retryBootstrap = delay (_longTickRate config) >> dispatch
 
                 bootstrapErrorH = Handler $ \case
                       BadResponse -> do
@@ -82,7 +83,6 @@ bootstrap config self =
                         Just OK -> return ()
                         Just _  -> throwIO BadResponse
                         Nothing -> throwIO NoResponse
-
 
 
 
