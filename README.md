@@ -10,8 +10,11 @@ maintain 5-10 incoming and outgoing connections. Initially, three independent
 clusters were created; the last 30 nodes knew of these clusters and joined them
 together over the course of a minute. Darker colours indicate a more central
 role of a node in the network ([betweenness centrality][wiki-betweenness]).
+Click for higher resolution.
 
-![(Picture missing, uh oh)](doc/network_example.png)
+[![(Picture missing, uh oh)](doc/network_example.png)][network-hires]
+
+[network-hires]: doc/network_example_hires_amoeba_n359_5-10-3cluster.png
 
 
 
@@ -41,7 +44,7 @@ I was always superficially fascinated by complex systems and networks, most nota
 
 Networks also exhibit a lot of emergent properties, and contrary to living organisms they are much more suitable to being simulated and applied by computers. A network in this sense is simply a number of constituents with connections to other constituents. These networks can consist of people (where conncetions can be "who likes who" or "have met each other at some point"), computers ("connected over the internet", "contains parts made by the same manufacturer"), languages ("what words can be used after others") and many other things.
 
-Amœba is a program that creates a computer network. I came up with the idea around the time of the first Bitcoin boom in 2013; the Torrent network did also seem somewhat interesting to me. So I thought "why not implement a basic version of something like that yourself?" - generously estimating 500 lines of code to get the core done. Months and thousands of lines of code added/removed/edited later, a satisfying first version is still just barely on the horizon, but it's finished enough to be able to play around with it. The "crumbled up piece of strings and dots" above is a snapshot of an Amoeba network, a few seconds before I terminated half of it to see whether it would survive that without clustering into many disconnected components. Research has begun! :-)
+Amœba is a program that creates a computer network. I came up with the idea around the time of the first Bitcoin boom in 2013; the Torrent network did also seem somewhat interesting to me. So I thought "why not implement a basic version of something like that yourself?" - generously estimating 500 lines of code to get the core done. Months and thousands of lines of code added/removed/edited later, a satisfying first version is still just barely on the horizon, but it's finished enough to be able to play around with it. The "crumbled up piece of strings and dots" above is a snapshot of an Amœba network, a few seconds before I terminated half of it to see whether it would survive that without clustering into many disconnected components. Research has begun! :-)
 
 [leafcutter]: https://en.wikipedia.org/wiki/Leaf_cutter_ant
 
