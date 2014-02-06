@@ -114,6 +114,7 @@ multi {
 
 # Bootstrap server
 bootstrap {
+
       serverPort = 20000
 
       # Restart a node in the node pool once every 5 bootstrap requests. This
@@ -125,11 +126,21 @@ bootstrap {
       # the entire pool if a lot of nodes connect all of a sudden.)
       # Unit: int of milliseconds
       restartMinimumPeriod = 1000000
+
 }
 
 
 
 # Drawing server
 drawing {
+
       poolSize = 3
+
+      # Send out requests and draw the currently known network periodically
+      # Unit: Int of ms
+      drawEvery = 10000000
+
+      # Filename to save the network state under
+      drawFilename = "network_graph.dot"
+
 }

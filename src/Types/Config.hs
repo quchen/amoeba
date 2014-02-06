@@ -183,7 +183,13 @@ data MultiConfig = MultiConfig {
 -- | Drawing server config
 data DrawingConfig = DrawingConfig {
 
-        _drawingNodeConfig :: NodeConfig
+        _drawEvery         :: Int -- ^ Interval for sending out neighbour list
+                                  --   requests and drawing the currently known
+                                  --   state of the network
+
+      , _drawFilename      :: FilePath -- ^ Filename for the .dot file
+
+      , _drawingNodeConfig :: NodeConfig
 
       , _drawingPoolConfig :: PoolConfig
 

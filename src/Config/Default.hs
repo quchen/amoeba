@@ -50,9 +50,12 @@ multiConfig = MultiConfig {
 
 drawingConfig :: DrawingConfig
 drawingConfig = DrawingConfig {
-        _drawingNodeConfig = nodeConfig
+        _drawEvery         = 10^7
+      , _drawFilename      = "network_graph.dot"
+      , _drawingNodeConfig = nodeConfig
       , _drawingPoolConfig = poolConfig
       }
+
 
 
 -- | Default bootstrap server configuration

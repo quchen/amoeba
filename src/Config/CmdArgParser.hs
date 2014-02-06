@@ -124,6 +124,8 @@ drawingModifier' :: Parser (OptionModifier Ty.DrawingConfig)
 drawingModifier' = (fmap mconcat . T.sequenceA) mods where
       mods = [ liftNodeModifier <$> nodeModifier'
              , liftPoolModifier <$> poolModifier'
+             , drawingInterval
+             , drawingFilename
              ]
 
 
@@ -162,6 +164,31 @@ restartEvery = value <|> defaultValue where
             ]
       toModifier x = OptionModifier (\c -> c { Ty._restartEvery = x })
 
+
+
+
+drawingInterval :: Parser (OptionModifier Ty.DrawingConfig)
+drawingInterval = value <|> defaultValue where
+      value = toModifier <$> (nullOption . mconcat)
+            [ reader  positive
+            , long    "draw-every"
+            , metavar "[ms]"
+            , help    "Tickrate for drawing the current network to file\
+                      \ and sending out neighbour information requests."
+            , hidden
+            ]
+      toModifier x = OptionModifier (\c -> c { Ty._drawEvery = x })
+
+
+
+drawingFilename :: Parser (OptionModifier Ty.DrawingConfig)
+drawingFilename = value <|> defaultValue where
+      value = toModifier <$> (strOption . mconcat)
+            [ long    "drawing-filename"
+            , metavar "(filename)"
+            , help    "File to write the network data to"
+            ]
+      toModifier x = OptionModifier (\c -> c { Ty._drawFilename = x })
 
 
 
