@@ -66,7 +66,7 @@ drawingServer :: DrawingConfig
 drawingServer config ioq ldc = do
       -- Server to graph worker
       stg <- spawn (P.Bounded (_maxChanSize (_nodeConfig config)))
-      forkIO (graphWorker stg)
+      forkIO (graphWorker ioq stg)
 
       let port = _serverPort (_nodeConfig config)
       N.listen (N.Host "127.0.0.1") (show port) $ \(socket, _addr) -> do
@@ -102,11 +102,12 @@ incomingLoop _ioq stg serverSock = forever $
 
 
 -- | Listen on the incoming "PChan" and merge new information into the graph.
-graphWorker :: PChan (To, Set To)
+graphWorker :: IOQueue
+            -> PChan (To, Set To)
             -> IO ()
-graphWorker stg = do
+graphWorker ioq stg = do
       t'graph <- newTVarIO (Graph Map.empty)
-      forkIO (graphDrawer t'graph)
+      forkIO (graphDrawer ioq t'graph)
       forever $ makeTimestamp >>= \t -> atomically $ do
             Just (node, neighbours) <- P.recv (_pInput stg) -- TODO: Error handling on Nothing
             modifyTVar t'graph (insertNode t node neighbours)
@@ -114,18 +115,19 @@ graphWorker stg = do
 
 
 -- | Read the graph and compiles it to .dot format
-graphDrawer :: TVar (Graph To) -> IO ()
-graphDrawer t'graph = forever $ do
+graphDrawer :: IOQueue -> TVar (Graph To) -> IO ()
+graphDrawer ioq t'graph = forever $ do
       threadDelay (10^7) -- TODO CONFIG: Configurable
       cleanup t'graph
       graph <- atomically (readTVar t'graph)
       let graphSize (Graph g) = Map.size g
           s = graphSize graph
-      printf "Drawing graph. Current network size: %d nodes\n" s -- TODO: Use IOQueue
-      writeFile "network_graph.dot" (graphToDot graph) -- TODO: Make filename configurable
+      (toIO' ioq . STDLOG) (printf "Drawing graph. Current network size: %d nodes\n" s)
+      writeFile "network_graph.dot" (graphToDot graph) -- TODO CONFIG: Make filename configurable
 
 
 
+-- | Remove edges that haven't been updated in some time.
 cleanup :: TVar (Graph To) -> IO ()
 cleanup t'graph = do
       t <- makeTimestamp
@@ -135,27 +137,17 @@ cleanup t'graph = do
 
 
 
--- | Filter a graph's edges by a predicate.
-filterEdges :: ((Timestamp, Set To) -> Bool) -> Graph To -> Graph To
-filterEdges p (Graph g) = Graph (Map.filter p g)
-
-
-
--- | Insert/replace node information in the graph.
-insertNode :: Timestamp -> To -> (Set To) -> Graph To -> Graph To
-insertNode t node neighbours (Graph g) = Graph (Map.insert node
-                                                           (t, neighbours)
-                                                           g)
-
-
-
 -- | Periodically send out flood messages to get the network data
-networkAsker :: Int -> To -> Chan NormalSignal -> IO ()
+networkAsker :: Int
+             -> To -- ^ Own address for reverse connection
+             -> Chan NormalSignal -- ^ LDC to the pool
+             -> IO ()
 networkAsker poolSize toSelf ldc = forever $ do
       threadDelay (10^6) -- TODO: Configurable
       t <- makeTimestamp
       let signal = Flood t (SendNeighbourList toSelf)
-      forM_ [1..poolSize] $ \_ -> writeChan ldc signal
+      forM_ [1..poolSize]
+            (const (writeChan ldc signal))
 
 
 
@@ -163,6 +155,12 @@ networkAsker poolSize toSelf ldc = forever $ do
 -- | Graph consisting of a set of nodes, each having a set of neighbours.
 data Graph a = Graph (Map a (Timestamp, Set a))
 
+
+
+
+-- #############################################################################
+-- ###  Dot-file generation  ###################################################
+-- #############################################################################
 
 
 -- | Dirty string-based hacks to convert a Graph to .dot
@@ -193,7 +191,31 @@ edgeToDot from to =
 dotBoilerplate :: String -> String
 dotBoilerplate str =
       "digraph G {\n\
-      \\tnode [shape = box, color = gray, fontname = \"Courier\"];\n\
-      \\tedge [fontname = \"Courier\", len = 6];\n\
-      \" ++ str ++ "\n\
+      \      node [shape = box, color = gray, fontname = \"Courier\"];\n\
+      \      edge [fontname = \"Courier\", len = 6];\n\
+      \      " ++ str ++ "\n\
       \}\n"
+
+
+
+
+-- #############################################################################
+-- ###  Graph modifying API  ###################################################
+-- #############################################################################
+
+
+-- | Filter a graph's edges by a predicate.
+filterEdges :: ((Timestamp, Set To) -> Bool) -> Graph To -> Graph To
+filterEdges p (Graph g) = Graph (Map.filter p g)
+
+
+
+-- | Insert/replace node information in the graph.
+insertNode :: Timestamp
+           -> To        -- ^ Node
+           -> (Set To)  -- ^ List of DSNs
+           -> Graph To
+           -> Graph To
+insertNode t node neighbours (Graph g) = Graph (Map.insert node
+                                                           (t, neighbours)
+                                                           g)
