@@ -10,8 +10,11 @@ maintain 5-10 incoming and outgoing connections. Initially, three independent
 clusters were created; the last 30 nodes knew of these clusters and joined them
 together over the course of a minute. Darker colours indicate a more central
 role of a node in the network ([betweenness centrality][wiki-betweenness]).
+Click for higher resolution.
 
-![(Picture missing, uh oh)](doc/network_example.png)
+[![(Picture missing, uh oh)](doc/network_example.png)][network-hires]
+
+[network-hires]: doc/network_example_hires_amoeba_n359_5-10-3cluster.png
 
 
 
