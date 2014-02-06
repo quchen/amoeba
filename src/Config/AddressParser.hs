@@ -3,6 +3,7 @@
 -- TODO: Allow arbitrary hostnames, in particular IPv6 and DNS
 
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE TupleSections #-}
 
 module Config.AddressParser where
 
@@ -11,7 +12,9 @@ import Text.Parsec.String
 import qualified Text.Parsec.Token as P
 import Text.Parsec.Language (haskellDef)
 import Control.Applicative
+import Control.Monad
 import Text.Printf
+import Data.Foldable (asum)
 
 import Types
 
@@ -36,12 +39,41 @@ portP = do p <- intP
 
 
 
+-- TODO: This function is entirely untested.
+ipv6P :: Parser ([Int], [Int])
+ipv6P = do
+      ip@(l,r) <- (asum . map try)
+            [ ([],) <$> connectedPart -- Full address without omitted zeros
+            , ([],) <$>                 (doubleColon *> connectedPart) -- ::1
+            , (,[]) <$> connectedPart <* doubleColon                   -- 1::
+            , (,)   <$> connectedPart <* doubleColon <*> connectedPart -- 1::2
+            ]
+      if length (l ++ r) > 8
+            then parserFail "IPv6 too long"
+            else return ip
+
+      where
+            connectedPart :: Parser [Int]
+            connectedPart = (:) <$> ipv6NumberP <*> many (colon *> ipv6NumberP)
+
+            doubleColon :: Parser ()
+            doubleColon = (void . try) (colon *> colon)
+
+
+
+ipv6NumberP :: Parser Int
+ipv6NumberP = do p <- intP
+                 if | p < 0      -> parserFail "IPv6 part < 0"
+                    | p > 0xffff -> parserFail "IPv6 part > 0xffff"
+                    | otherwise  -> return p
+
+
 -- | Parser for an IPv4 address.
 ipv4P :: Parser (Int, Int, Int, Int)
-ipv4P = (,,,) <$> ipv4PartP <* dot
-              <*> ipv4PartP <* dot
-              <*> ipv4PartP <* dot
-              <*> ipv4PartP
+ipv4P = (,,,) <$> ipv4NumberP <* dot
+              <*> ipv4NumberP <* dot
+              <*> ipv4NumberP <* dot
+              <*> ipv4NumberP
 
 
 
@@ -58,11 +90,11 @@ colon = char ':'
 
 
 -- | Parse an Int between 0 and 255 (inclusive).
-ipv4PartP :: Parser Int
-ipv4PartP = do p <- intP
-               if | p < 0     -> parserFail "IP part < 0"
-                  | p > 255   -> parserFail "IP part > 255"
-                  | otherwise -> return p
+ipv4NumberP :: Parser Int
+ipv4NumberP = do p <- intP
+                 if | p < 0     -> parserFail "IPv4 part < 0"
+                    | p > 255   -> parserFail "IPv4 part > 255"
+                    | otherwise -> return p
 
 
 -- | Parser for "To" data.
