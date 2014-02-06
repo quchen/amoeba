@@ -46,7 +46,7 @@ nodePool n config ldc output terminate =
             let port    = _serverPort config + fromIntegral portOffset
                 config' = config { _serverPort = port }
             forkIO (janitor config' ldc output terminate)
-            delay (_longTickRate config)
+            delay (_mediumTickRate config)
 
 
 
