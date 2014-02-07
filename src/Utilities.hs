@@ -7,6 +7,7 @@ module Utilities (
 
       -- * Various utilities
       , whenM
+      , ifM
       , whileM
       , pluralS
       , mergeLists
@@ -67,6 +68,12 @@ import Utilities.Databases as Reexport
 -- | Monadic version of 'when'.
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM mp m = mp >>= \p -> when p m
+
+
+
+-- | Monadic version of 'IfThenElse'.
+ifM :: Monad m => m Bool -> m a -> m a -> m a
+ifM mp x y = mp >>= \p -> if p then x else y
 
 
 

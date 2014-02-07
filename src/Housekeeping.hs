@@ -130,7 +130,7 @@ workerWatcher env from tid =
 
             isTimedOut (Timestamp now) =
                   let check (Just (Timestamp past)) = now - past > timeout
-                      check _ = True
+                      check _ = True -- Node not even present in DB
                   in  atomically (check . Map.lookup from <$> readTVar usnDB)
 
             watch = delay tickrate >> makeTimestamp >>= isTimedOut >>= \case
