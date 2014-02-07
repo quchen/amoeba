@@ -55,8 +55,10 @@ startHandshakeH env to = liftIO . void . forkIO $
             allowed <- atomically ((== IsUnrelated) <$> nodeRelationship env to)
             when allowed
                  (request socket (Special Handshake) >>= \case
-                       Just OK -> newClient env to socket
-                       x -> errorPrint env ("Handshake signal response: " ++ show x))
+                       Just OK -> do send socket OK
+                                     newClient env to socket
+                       x -> do send socket (Error "Bad handshake")
+                               errorPrint env ("Handshake signal response: " ++ show x))
 
 
 
