@@ -140,6 +140,12 @@ drawing {
       # Unit: Int of ms
       drawEvery = 10000000
 
+      # Time after which a node times out after not sending new data to the
+      # drawing server. Should be at least twice as large as the drawEvery
+      # setting.
+      # Unit: Int of seconds
+      drawTimeout = 33
+
       # Filename to save the network state under
       drawFilename = "network_graph.dot"
 

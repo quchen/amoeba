@@ -52,6 +52,7 @@ drawingConfig :: DrawingConfig
 drawingConfig = DrawingConfig {
         _drawEvery         = 10^7
       , _drawFilename      = "network_graph.dot"
+      , _drawTimeout       = 33 -- 33 seconds = 3 drawing attempts before timeout
       , _drawingNodeConfig = nodeConfig
       , _drawingPoolConfig = poolConfig
       }

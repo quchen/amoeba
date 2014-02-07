@@ -66,17 +66,15 @@ drawingServer :: DrawingConfig
 drawingServer config ioq ldc = do
       -- Server to graph worker
       stg <- spawn (P.Bounded (_maxChanSize (_nodeConfig config)))
-      let drawEvery = _drawEvery    config
-          filename  = _drawFilename config
-      forkIO (graphWorker ioq drawEvery filename stg)
+      forkIO (graphWorker config ioq stg)
 
       let port = _serverPort (_nodeConfig config)
       N.listen (N.Host "127.0.0.1") (show port) $ \(socket, _addr) -> do
             let selfTo = To (Node "127.0.0.1" port)
-            forkIO (networkAsker (_poolSize (_poolConfig config))
+            forkIO (networkAsker config
+                                 (_poolSize (_poolConfig config))
                                  selfTo
-                                 ldc
-                                 drawEvery)
+                                 ldc)
             incomingLoop ioq stg socket
 
 
@@ -107,14 +105,13 @@ incomingLoop _ioq stg serverSock = forever $
 
 
 -- | Listen on the incoming "PChan" and merge new information into the graph.
-graphWorker :: IOQueue
-            -> Int -- ^ Drawing interval in ms
-            -> FilePath -- ^ File to write graph data to
+graphWorker :: DrawingConfig
+            -> IOQueue
             -> PChan (To, Set To)
             -> IO ()
-graphWorker ioq drawEvery filename stg = do
+graphWorker config ioq stg = do
       t'graph <- newTVarIO (Graph Map.empty)
-      forkIO (graphDrawer ioq drawEvery filename t'graph)
+      forkIO (graphDrawer config ioq t'graph)
       forever $ makeTimestamp >>= \t -> atomically $ do
             Just (node, neighbours) <- P.recv (_pInput stg) -- TODO: Error handling on Nothing
             modifyTVar t'graph (insertNode t node neighbours)
@@ -122,40 +119,42 @@ graphWorker ioq drawEvery filename stg = do
 
 
 -- | Read the graph and compiles it to .dot format
-graphDrawer :: IOQueue
-            -> Int -- ^ Drawing interval in ms
-            -> FilePath -- ^ File to write graph data to
+graphDrawer :: DrawingConfig
+            -> IOQueue
             -> TVar (Graph To)
             -> IO ()
-graphDrawer ioq drawEvery filename t'graph = forever $ do
-      threadDelay drawEvery
-      cleanup t'graph
+graphDrawer config ioq t'graph = forever $ do
+      threadDelay (_drawEvery config)
+      cleanup config t'graph
       graph <- atomically (readTVar t'graph)
       let graphSize (Graph g) = Map.size g
           s = graphSize graph
       (toIO' ioq . STDLOG) (printf "Drawing graph. Current network size: %d nodes\n" s)
-      writeFile filename (graphToDot graph)
+      writeFile (_drawFilename config)
+                (graphToDot graph)
 
 
 
 -- | Remove edges that haven't been updated in some time.
-cleanup :: TVar (Graph To) -> IO ()
-cleanup t'graph = do
+cleanup :: DrawingConfig
+        -> TVar (Graph To)
+        -> IO ()
+cleanup config t'graph = do
       t <- makeTimestamp
       let timedOut (Timestamp now) (Timestamp lastInput, _) =
-                now - lastInput > 3 -- TODO CONFIG: read from config
+                now - lastInput > _drawTimeout config
       atomically (modifyTVar t'graph (filterEdges (not . timedOut t)))
 
 
 
 -- | Periodically send out flood messages to get the network data
-networkAsker :: Int
+networkAsker :: DrawingConfig
+             -> Int -- ^ Own node pool size
              -> To -- ^ Own address for reverse connection
              -> Chan NormalSignal -- ^ LDC to the pool
-             -> Int -- ^ Network query interval in ms
              -> IO ()
-networkAsker poolSize toSelf ldc queryEvery = forever $ do
-      threadDelay queryEvery
+networkAsker config poolSize toSelf ldc = forever $ do
+      threadDelay (_drawEvery config)
       t <- makeTimestamp
       let signal = Flood t (SendNeighbourList toSelf)
       forM_ [1..poolSize]

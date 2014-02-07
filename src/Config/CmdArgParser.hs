@@ -126,6 +126,7 @@ drawingModifier' = (fmap mconcat . T.sequenceA) mods where
              , liftPoolModifier <$> poolModifier'
              , drawingInterval
              , drawingFilename
+             , drawingTimeout
              ]
 
 
@@ -178,6 +179,20 @@ drawingInterval = value <|> defaultValue where
             , hidden
             ]
       toModifier x = OptionModifier (\c -> c { Ty._drawEvery = x })
+
+
+
+drawingTimeout :: Parser (OptionModifier Ty.DrawingConfig)
+drawingTimeout = value <|> defaultValue where
+      value = toModifier . fromIntegral <$> (nullOption . mconcat)
+            [ reader  positive
+            , long    "draw-timeout"
+            , metavar "[s]"
+            , help    "Timeout for removing nodes that haven't sent data to the\
+                      \ drawing server"
+            , hidden
+            ]
+      toModifier x = OptionModifier (\c -> c { Ty._drawTimeout = x })
 
 
 

@@ -117,6 +117,7 @@ drawingModifier' = (fmap mconcat . T.sequenceA) mods where
              , liftPoolModifier <$> poolModifier' noPrefix
              , drawEvery prefix
              , drawFilename prefix
+             , drawTimeout prefix
              , liftNodeModifier <$> nodeModifier' prefix
              , liftPoolModifier <$> poolModifier' prefix
              ]
@@ -374,4 +375,15 @@ drawFilename' prefixes = lookupC prefixes "drawFilename"
 drawFilename :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
 drawFilename _ = toModifier <$> drawFilename' ["drawing"] where
       toModifier (Just x) = OptionModifier (\c -> c { Ty._drawFilename = x })
+      toModifier Nothing  = mempty
+
+
+
+drawTimeout' :: Prefixes -> ReaderT C.Config IO (Maybe Double)
+drawTimeout' prefixes = (fmap . fmap) (fromIntegral :: Int -> Double)
+                                      (lookupC prefixes "drawTimeout")
+
+drawTimeout :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
+drawTimeout _ = toModifier <$> drawTimeout' ["drawing"] where
+      toModifier (Just x) = OptionModifier (\c -> c { Ty._drawTimeout = x })
       toModifier Nothing  = mempty

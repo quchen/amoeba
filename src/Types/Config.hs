@@ -189,6 +189,8 @@ data DrawingConfig = DrawingConfig {
 
       , _drawFilename      :: FilePath -- ^ Filename for the .dot file
 
+      , _drawTimeout       :: Double
+
       , _drawingNodeConfig :: NodeConfig
 
       , _drawingPoolConfig :: PoolConfig
