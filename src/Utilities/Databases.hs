@@ -33,6 +33,7 @@ module Utilities.Databases (
 
 import Control.Concurrent.STM
 import Control.Monad.Trans
+import Control.Monad
 import Control.Applicative
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -96,10 +97,30 @@ isUsn env from = Map.member from <$> readTVar (_upstream env)
 
 
 
--- | Add a USN to the DB.
-insertUsn :: Environment -> From -> Timestamp -> STM ()
-insertUsn env from t = modifyTVar (_upstream env)
-                                  (Map.insert from t)
+-- | Add a USN to the DB if there is space and it's not already in there.
+insertUsn :: Environment
+          -> From -- ^ New USN
+          -> Timestamp
+          -> STM Bool -- ^ True if an insertion was made, False if the node is
+                      --   already present or a connection is not allowed.
+insertUsn env from t = do
+      isRoom <- isRoomIn env _upstream
+
+      -- Check for previous membership, just in case this method is called
+      -- twice concurrently for some odd reason TODO: can this happen?
+      -- This is an STM block after all
+      alreadyKnown <- isUsn env from
+
+      let p = isRoom && not alreadyKnown
+
+      -- Reserve slot. Cleanup happens when the worker shuts down because
+      -- of a non-OK signal.
+      when p (modifyTVar (_upstream env)
+                         (Map.insert from t))
+
+      return p
+
+
 
 
 

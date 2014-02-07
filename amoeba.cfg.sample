@@ -73,7 +73,7 @@ longTickRate   = 1000000
 
 # Time after which an Amoeba network connection is regarded as timed out, and
 # its worker/client is terminated.
-# Unit: double of seconds.
+# Unit: Int of seconds.
 poolTimeout = 5
 
 
@@ -114,6 +114,7 @@ multi {
 
 # Bootstrap server
 bootstrap {
+
       serverPort = 20000
 
       # Restart a node in the node pool once every 5 bootstrap requests. This
@@ -125,11 +126,27 @@ bootstrap {
       # the entire pool if a lot of nodes connect all of a sudden.)
       # Unit: int of milliseconds
       restartMinimumPeriod = 1000000
+
 }
 
 
 
 # Drawing server
 drawing {
-      poolSize = 3
+
+      poolSize = 10
+
+      # Send out requests and draw the currently known network periodically
+      # Unit: Int of ms
+      drawEvery = 10000000
+
+      # Time after which a node times out after not sending new data to the
+      # drawing server. Should be at least twice as large as the drawEvery
+      # setting.
+      # Unit: Int of seconds
+      drawTimeout = 33
+
+      # Filename to save the network state under
+      drawFilename = "network_graph.dot"
+
 }

@@ -64,7 +64,7 @@ server env serverSocket = do
 
 
 
--- | Handles 'Signal's coming in from the network. and sends back the server's
+-- | Handles 'Signal's coming in from the network and sends back the server's
 --   response.
 worker :: Environment
        -> From        -- ^ Unique worker ID
@@ -510,24 +510,9 @@ incomingHandshakeH :: Environment
 incomingHandshakeH env from socket = do
       timestamp <- makeTimestamp
 
-      proceed <- atomically $ do
+      inserted <- atomically (insertUsn env from timestamp)
 
-            isRoom <- isRoomIn env _upstream
-
-            -- Check for previous membership, just in case this method is called
-            -- twice concurrently for some odd reason TODO: can this happen?
-            -- This is an STM block after all
-            alreadyKnown <- isUsn env from
-
-            let p = isRoom && not alreadyKnown
-
-            -- Reserve slot. Cleanup happens when the worker shuts down because
-            -- of a non-OK signal.
-            when p (insertUsn env from timestamp)
-
-            return p
-
-      if proceed
+      if inserted
             then send socket OK >> receive socket >>= \case
                   Just OK -> return OK
                   x -> (return . Error) (errMsg x)

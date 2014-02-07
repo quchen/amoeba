@@ -1,6 +1,9 @@
 -- | The drawing server asks willing nodes to send it a list of all neighbours.
 --   The collective information can then be used to analyze the large-scale
 --   structure of the entire network.
+--
+--   Local abbreviations:
+--       STG = Server to graph.
 
 {-# LANGUAGE LambdaCase #-}
 
@@ -30,6 +33,9 @@ import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
 main :: IO ()
 main = drawingServerMain
 
+
+
+-- | Main entry point of the drawing server.
 drawingServerMain :: IO ()
 drawingServerMain = do
 
@@ -51,80 +57,108 @@ drawingServerMain = do
       drawingServer config output ldc
 
 
+
+-- | Setup for the drawing server before it starts looping.
 drawingServer :: DrawingConfig
               -> IOQueue
-              -> Chan NormalSignal
+              -> Chan NormalSignal -- ^ Local direct connection to the node pool
               -> IO ()
 drawingServer config ioq ldc = do
       -- Server to graph worker
       stg <- spawn (P.Bounded (_maxChanSize (_nodeConfig config)))
-      forkIO (graphWorker stg)
+      forkIO (graphWorker config ioq stg)
 
       let port = _serverPort (_nodeConfig config)
       N.listen (N.Host "127.0.0.1") (show port) $ \(socket, _addr) -> do
             let selfTo = To (Node "127.0.0.1" port)
-            forkIO (networkAsker (_poolSize (_poolConfig config)) selfTo ldc)
+            forkIO (networkAsker config
+                                 (_poolSize (_poolConfig config))
+                                 selfTo
+                                 ldc)
             incomingLoop ioq stg socket
 
 
 
+-- | Drawing server loop; does the actual work after being set up by
+--   "drawingServer".
 incomingLoop :: IOQueue
-             -> PChan (To, Set To)
-             -> N.Socket
+             -> PChan (To, Set To) -- ^ (Node, DSNs of that node)
+             -> N.Socket -- ^ Socket for incoming connections (used by nodes to
+                         --   contact the drawing server upon request)
              -> IO ()
-incomingLoop _ioq stg serverSock = forever $ do
-      N.acceptFork serverSock $ \(clientSock, _clientAddr) -> do
+incomingLoop _ioq stg serverSock = forever $
+      N.acceptFork serverSock $ \(clientSock, _clientAddr) ->
             receive clientSock >>= \case
+
+                  -- Good answer
                   Just (NeighbourList node neighbours) -> do
                         -- toIO' ioq (putStrLn ("Received node data from" ++ show node))
-                        atomically (void (P.send (_pOutput stg) (node, neighbours)))
-                  Just _other_signal -> return () -- toIO' ioq (putStrLn "Invalid signal received")
-                  _no_signal -> return () -- toIO' ioq (putStrLn "No signal received")
+                        (atomically . void) (P.send (_pOutput stg)
+                                                    (node, neighbours))
+
+                  -- Invalid answer
+                  Just _ -> return () -- toIO' ioq (putStrLn "Invalid signal received")
+
+                  -- No answer
+                  _ -> return () -- toIO' ioq (putStrLn "No signal received")
 
 
 
-graphWorker :: PChan (To, Set To) -> IO ()
-graphWorker stg = do
+-- | Listen on the incoming "PChan" and merge new information into the graph.
+graphWorker :: DrawingConfig
+            -> IOQueue
+            -> PChan (To, Set To)
+            -> IO ()
+graphWorker config ioq stg = do
       t'graph <- newTVarIO (Graph Map.empty)
-      forkIO (graphDrawer t'graph)
+      forkIO (graphDrawer config ioq t'graph)
       forever $ makeTimestamp >>= \t -> atomically $ do
             Just (node, neighbours) <- P.recv (_pInput stg) -- TODO: Error handling on Nothing
-            modifyTVar t'graph
-                       (\(Graph g) -> Graph (Map.insert node (t, neighbours) g))
-            -- Listen for new neighbour lists, add them to graph
-            -- Plot graph
+            modifyTVar t'graph (insertNode t node neighbours)
+
 
 
 -- | Read the graph and compiles it to .dot format
-graphDrawer :: TVar (Graph To) -> IO ()
-graphDrawer t'graph = forever $ do
-      threadDelay (10^7) -- TODO: Configurable
-      cleanup t'graph
+graphDrawer :: DrawingConfig
+            -> IOQueue
+            -> TVar (Graph To)
+            -> IO ()
+graphDrawer config ioq t'graph = forever $ do
+      threadDelay (_drawEvery config)
+      cleanup config t'graph
       graph <- atomically (readTVar t'graph)
       let graphSize (Graph g) = Map.size g
           s = graphSize graph
-      printf "Drawing graph. Current network size: %d nodes\n" s -- TODO: Use IOQueue
-      writeFile "network_graph.dot" (graphToDot graph) -- TODO: Make filename configurable
+      (toIO' ioq . STDLOG) (printf "Drawing graph. Current network size: %d nodes\n" s)
+      writeFile (_drawFilename config)
+                (graphToDot graph)
 
 
 
-cleanup :: TVar (Graph To) -> IO ()
-cleanup t'graph = do
+-- | Remove edges that haven't been updated in some time.
+cleanup :: DrawingConfig
+        -> TVar (Graph To)
+        -> IO ()
+cleanup config t'graph = do
       t <- makeTimestamp
       let timedOut (Timestamp now) (Timestamp lastInput, _) =
-                now - lastInput > 3 -- TODO: read from config
-      atomically (modifyTVar t'graph
-                             (\(Graph g) -> Graph (Map.filter (not . timedOut t) g)))
+                now - lastInput > _drawTimeout config
+      atomically (modifyTVar t'graph (filterEdges (not . timedOut t)))
 
 
 
 -- | Periodically send out flood messages to get the network data
-networkAsker :: Int -> To -> Chan NormalSignal -> IO ()
-networkAsker poolSize toSelf ldc = forever $ do
-      threadDelay (10^6) -- TODO: Configurable
+networkAsker :: DrawingConfig
+             -> Int -- ^ Own node pool size
+             -> To -- ^ Own address for reverse connection
+             -> Chan NormalSignal -- ^ LDC to the pool
+             -> IO ()
+networkAsker config poolSize toSelf ldc = forever $ do
+      threadDelay (_drawEvery config)
       t <- makeTimestamp
       let signal = Flood t (SendNeighbourList toSelf)
-      forM_ [1..poolSize] $ \_ -> writeChan ldc signal
+      forM_ [1..poolSize]
+            (const (writeChan ldc signal))
 
 
 
@@ -132,6 +166,12 @@ networkAsker poolSize toSelf ldc = forever $ do
 -- | Graph consisting of a set of nodes, each having a set of neighbours.
 data Graph a = Graph (Map a (Timestamp, Set a))
 
+
+
+
+-- #############################################################################
+-- ###  Dot-file generation  ###################################################
+-- #############################################################################
 
 
 -- | Dirty string-based hacks to convert a Graph to .dot
@@ -162,7 +202,31 @@ edgeToDot from to =
 dotBoilerplate :: String -> String
 dotBoilerplate str =
       "digraph G {\n\
-      \\tnode [shape = box, color = gray, fontname = \"Courier\"];\n\
-      \\tedge [fontname = \"Courier\", len = 6];\n\
-      \" ++ str ++ "\n\
+      \      node [shape = box, color = gray, fontname = \"Courier\"];\n\
+      \      edge [fontname = \"Courier\", len = 6];\n\
+      \      " ++ str ++ "\n\
       \}\n"
+
+
+
+
+-- #############################################################################
+-- ###  Graph modifying API  ###################################################
+-- #############################################################################
+
+
+-- | Filter a graph's edges by a predicate.
+filterEdges :: ((Timestamp, Set To) -> Bool) -> Graph To -> Graph To
+filterEdges p (Graph g) = Graph (Map.filter p g)
+
+
+
+-- | Insert/replace node information in the graph.
+insertNode :: Timestamp
+           -> To        -- ^ Node
+           -> (Set To)  -- ^ List of DSNs
+           -> Graph To
+           -> Graph To
+insertNode t node neighbours (Graph g) = Graph (Map.insert node
+                                                           (t, neighbours)
+                                                           g)
