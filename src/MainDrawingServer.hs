@@ -52,7 +52,7 @@ drawingServerMain = do
                output
                terminate
 
-      printf "Starting drawing server with %d nodes"
+      printf "Starting drawing server with %d nodes\n"
              (_poolSize (_poolConfig config))
       drawingServer config output ldc
 
