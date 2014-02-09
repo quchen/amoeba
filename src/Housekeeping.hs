@@ -73,14 +73,17 @@ cleanupDsn env (Timestamp now) = do
 
 
 
--- | If the DSN pool is larger than the minimum amount of neighbours, ask a
---   random DSN whether the connection can be dropped.
+-- | If the DSN pool is larger than the minimum amount of neighbours, ask
+--   random DSNs whether the connection can be dropped.
+--
+--   (The amount of DSNs contacted is equivalent to the excess of connections.)
 prune :: Environment -> IO ()
 prune env = atomically $ do
       dbSize <- Map.size <$> readTVar (_upstream env)
-      when (dbSize > _minNeighbours (_config env))
-           (void (P.send (_pOutput (_st1c env))
-                         Prune))
+      let excess = dbSize - _minNeighbours (_config env)
+      forM_ [1..excess]
+            (\_i -> (void (P.send (_pOutput (_st1c env))
+                                  Prune)))
 
 
 

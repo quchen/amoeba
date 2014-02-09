@@ -281,6 +281,10 @@ shuttingDownH env from = atomically $ do
       -- NB: Cleanup of the USN DB happens when the worker shuts down
 
 
+
+-- | A USN wants to terminate the connection because it has too mans DSNs.
+--   Check whether this can be done without dropping the USN count below the
+--   minimum number of neighbours, and terminate the worker if this is the case.
 pruneH :: Environment
        -> IO ServerResponse
 pruneH env = atomically $ do
