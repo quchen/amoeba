@@ -33,11 +33,17 @@ maxNeighbours = 10
 verbosity = "debug" # Don't forget the quotes!
 
 
-# List of bootstrap servers to take into account.
+# Bootstrap servers to make an initial connection to the network.
+# Can be either a single entry or a list of entries, e.g.
+#
+# bootstrapServers = "127.0.0.1:20000"
+# bootstrapServers = [ "127.0.0.1:20000","127.0.0.2:12345" ]
+# (Quotes are important!)
 #
 # Note that this is overwritten (and not appended) when there are multiple
 # configuration files in multiple locations.
-bootstrapServers = []
+bootstrapServers = "127.0.0.1:20000"
+
 
 
 ## Rarely used settings
@@ -80,15 +86,6 @@ poolTimeout = 5
 # Number of past flood messages to store in order to avoid processing
 # duplicates.
 floodMessageCache = 1024
-
-
-# Bootstrap servers to make an initial connection to the network.
-# Can be either a single entry or a list of entries, e.g.
-#
-# bootstrapServers = "127.0.0.1:20000"
-# bootstrapServers = [ "127.0.0.1:20000","127.0.0.2:12345" ]
-# (Quotes are important!)
-bootstrapServers = "127.0.0.1:20000"
 
 
 

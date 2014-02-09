@@ -175,7 +175,8 @@ specialH env from socket signal = case signal of
 illegal :: Environment
         -> String
         -> IO ServerResponse
-illegal env msg = (atomically . toIO env Debug . STDLOG) msg >> return Illegal
+illegal env msg = do (atomically . toIO env Debug . STDLOG) msg
+                     return Illegal
 
 
 
@@ -230,10 +231,6 @@ floodSignalH env tfSignal@(timestamp, fSignal) = do
             (True, _)                      -> return OK
             (_, SendNeighbourList painter) -> neighbourListH env painter
             (_, TextMessage message)       -> textMessageH   env message
-
-
-
-
 
 
 
@@ -297,6 +294,7 @@ pruneH env = atomically $ do
             else
                   -- "OK" means "do not terminate the worker" here!
                   return OK
+
 
 
 -- | Bounce 'EdgeRequest's through the network in order to make new connections.
