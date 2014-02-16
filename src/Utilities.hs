@@ -42,7 +42,6 @@ import           Control.Concurrent.STM
 import           Control.Monad
 import           Control.Applicative
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as BSL
 import           System.IO
 import           System.Timeout
 
@@ -57,7 +56,6 @@ import qualified Lens.Family.State.Strict as L
 import Control.Monad.Catch (MonadCatch)
 
 import Data.Binary
-import qualified Data.Binary.Put as Put
 
 import Types
 import Utilities.Debug as Reexport
@@ -212,7 +210,8 @@ request s x = send s x >> receive s
 --
 --   (Sent a pull request to Pipes-Binary for adding this.)
 encodeMany :: (Monad m, Binary x) => Pipe x BS.ByteString m ServerResponse
-encodeMany = err <$ P.map (BSL.toStrict . Put.runPut . put)
+encodeMany = err <$ for cat P.encode
+      --P.map (BSL.toStrict . Put.runPut . put)
       where err = Error "Encoding failure, likely a bug"
             -- TODO: Remove this case somehow
 
