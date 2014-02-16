@@ -9,7 +9,6 @@ module ClientPool (
         , isRoomIn
 ) where
 
-import           Control.Applicative
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
 import qualified Data.Map as Map
@@ -40,24 +39,21 @@ clientPool env = withAsync hkeep $ \_ -> fillPool env
 -- | Watches the count of nodes in the database, and issues 'EdgeRequest's
 --   to fill the ranks if necessary.
 fillPool :: Environment -> IO ()
-fillPool env = yellAndRethrow 42 ("ClientPool: " ++) $
-
-      runEffect $ balanceEdges env
-              >-> P.map edgeRequest
-              >-> dispatch
+fillPool env = runEffect (balanceEdges env >-> P.map edgeRequest >-> dispatch)
 
       where
-            -- Send signal to the single worker channel
-            dispatch :: Consumer NormalSignal IO ()
-            dispatch = P.toOutput (_pOutput (_st1c env))
 
-            -- Create an EdgeRequest from a Direction
-            edgeRequest :: Direction
-                        -> NormalSignal
-            edgeRequest dir =
-                  EdgeRequest (_self env)
-                              (EdgeData dir
-                                        (HardBounce (_bounces (_config env))))
+      -- Send signal to the single worker channel
+      dispatch :: Consumer NormalSignal IO ()
+      dispatch = P.toOutput (_pOutput (_st1c env))
+
+      -- Create an EdgeRequest from a Direction
+      edgeRequest :: Direction
+                  -> NormalSignal
+      edgeRequest dir =
+            EdgeRequest (_self env)
+                        (EdgeData dir
+                                  (HardBounce (_bounces (_config env))))
 
 
 
@@ -69,32 +65,34 @@ balanceEdges env = forever $ do
 
       delay ((_mediumTickRate . _config) env)
 
-      (usnDeficit, dsnDeficit) <- liftIO $ atomically $ do
+      (usnDeficit, dsnDeficit) <- liftIO . atomically $ do
 
             usnCount <- dbSize env _upstream
             dsnCount <- dbSize env _downstream
 
-            dsn <- map (_port . getTo) . toList . Map.keysSet <$> readTVar (_downstream env)
+            dsnPorts <- fmap (map (_port . getTo) . toList . Map.keysSet)
+                             (readTVar (_downstream env))
 
             let coloredNumber :: Int -> Int -> String
                 coloredNumber m x = printf "\ESC[3%dm%d\ESC[0m" (x `rem` m + 1) x
-
+                -- Like List's Show instance, but won't recursively show
+                -- list elements (therefore avoiding "\ESC..." in the output).
+                showColoured = (++ "]") . ("[" ++) . intercalate ", "
                 m = 8 -- modulus for colouring
 
             -- Print status message: "Network connections: upstream 7/(5..10),
             -- downstream 5/(5..10)"to indicate there are 7 of a minimum of 5,
             -- and a maximum of 10, upstream connections (and similarly for
             -- downstream).
-            toIO env Debug $ printf -- DEBUG colours
-                  "[%s] Network connections:\
-                        \ upstream %*d/(%d..%d),\
-                        \ downstream %*d/(%d..%d)\
-                        \ %s\n"
-                  (coloredNumber m serverPort)
-                  maxNDigits usnCount minN maxN
-                  maxNDigits dsnCount minN maxN
-                  ((++ "]") . ("[" ++) . intercalate ", " $ map (coloredNumber m) dsn)
-                  -- ^ Some hardcore colored debugging stuff
+            (toIO env Debug . STDLOG)
+                  (printf "[%s] Network connections:\
+                                \ upstream %*d/(%d..%d),\
+                                \ downstream %*d/(%d..%d)\
+                                \ %s"
+                          (coloredNumber m serverPort)
+                          maxNDigits usnCount minN maxN
+                          maxNDigits dsnCount minN maxN
+                          (showColoured (map (coloredNumber m) dsnPorts)))
 
             return ( minN - usnCount
                    , minN - dsnCount
@@ -108,16 +106,3 @@ balanceEdges env = forever $ do
             maxN       = _maxNeighbours (_config env)
             maxNDigits = round (logBase 10 (fromIntegral maxN)) + 1 :: Int
             serverPort = _serverPort (_config env)
-
-
-
--- | Check whether there is room to add another node to the pool. The second
---   argument is supposed to be either
-isRoomIn :: Environment
-         -> (Environment -> TVar (Map.Map k a))
-            -- ^ Projector from 'Environment' to the database, i.e. either
-            -- "_upstream" or "_downstream".
-         -> STM Bool
-isRoomIn env db = (maxSize >) <$> dbSize env db
-      where maxSize = fromIntegral (_maxNeighbours (_config env))
-

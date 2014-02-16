@@ -20,8 +20,8 @@ serverPort = 21000
 # A client will attempt to get a minimum of neighbours on its own, accept more
 # neighbours after that to help other nodes, but reject new requests once it is
 # over the maximum threshold.
-minNeighbours = 10
-maxNeighbours = 15
+minNeighbours = 5
+maxNeighbours = 10
 
 
 # Amount of output generated. Possible settings:
@@ -42,7 +42,8 @@ verbosity = "debug" # Don't forget the quotes!
 #
 # Note that this is overwritten (and not appended) when there are multiple
 # configuration files in multiple locations.
-bootstrapServers = []
+bootstrapServers = "127.0.0.1:20000"
+
 
 
 ## Rarely used settings
@@ -51,7 +52,7 @@ bootstrapServers = []
 # Maximum number of elements in the internal communication channels. Provides
 # a buffer with an upper memory bound. On the order of neighbours^2 should be
 # plenty.
-maxChanSize = 1000
+maxChanSize = 100
 
 
 # Number of times an edge request is guaranteed to bounce throug the network
@@ -104,9 +105,6 @@ poolSize = 10
 
 # Multi-node client
 multi {
-
-      poolSize = 100
-
 }
 
 
@@ -115,8 +113,6 @@ multi {
 bootstrap {
 
       serverPort = 20000
-
-      poolSize = 10
 
       # Restart a node in the node pool once every 5 bootstrap requests. This
       # is supposed to break up high interconnectedness in the bootstrap pool.
@@ -149,10 +145,5 @@ drawing {
 
       # Filename to save the network state under
       drawFilename = "network_graph.dot"
-
-      bootstrapServers = [ "127.0.0.1:20000"
-                         , "127.0.0.1:20020"
-                         , "127.0.0.1:20040"
-                         ]
 
 }

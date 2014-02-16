@@ -3,21 +3,19 @@
 
 module Utilities (
 
+      module Reexport
+
       -- * Various utilities
-        whenM
+      , whenM
+      , ifM
       , whileM
       , pluralS
       , mergeLists
 
-      -- * Database-related functions
-      , makeTimestamp
-      , dbSize
-      , nodeRelationship
-
       -- * Concurrency
-      , asyncMany
       , toIO
       , toIO'
+      , prepareOutputBuffers
       , delay
 
       -- * Networking
@@ -31,25 +29,20 @@ module Utilities (
       , receive
       , request
 
-      -- * Debugging
-      , yell
-      , yellAndRethrow
-      , catchAll
-
       -- * Pipe-based communication channels
       , spawn
       , outputThread
+
 ) where
 
-import           Control.Concurrent (threadDelay)
+
+
+import           Control.Concurrent (threadDelay, ThreadId, forkIO)
 import           Control.Concurrent.STM
-import           Control.Concurrent.Async
 import           Control.Monad
 import           Control.Applicative
-import           Control.Exception
-import           Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteString as BS
-import qualified Data.Map as Map
+import           System.IO
 import           System.Timeout
 
 import           Pipes
@@ -58,26 +51,27 @@ import qualified Pipes.Concurrent as P
 import qualified Network.Simple.TCP as N
 import qualified Network.Socket.ByteString as NSB
 import qualified Pipes.Binary as P
+import qualified Pipes.Parse as P
+import qualified Lens.Family.State.Strict as L
 import Control.Monad.Catch (MonadCatch)
 
 import Data.Binary
 
 import Types
-
-
-
--- | Creates a timestamp, which is a Double representation of the Unix time.
-makeTimestamp :: (MonadIO m) => m Timestamp
-makeTimestamp = liftIO $ Timestamp . realToFrac <$> getPOSIXTime
---   Since Haskell's Time library is borderline retarded, this seems to be the
---   cleanest way to get something that is easily an instance of Binary and
---   comparable to seconds.
+import Utilities.Debug as Reexport
+import Utilities.Databases as Reexport
 
 
 
 -- | Monadic version of 'when'.
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM mp m = mp >>= \p -> when p m
+
+
+
+-- | Monadic version of 'IfThenElse'.
+ifM :: Monad m => m Bool -> m a -> m a -> m a
+ifM mp x y = mp >>= \p -> if p then x else y
 
 
 
@@ -143,11 +137,10 @@ toSocketTimeout :: (MonadIO io)
                 -> N.Socket
                 -> Consumer BS.ByteString io ServerResponse
 toSocketTimeout t socket = loop where
-      loop = do
-            bs <- await
-            liftIO (timeout t (NSB.sendAll socket bs)) >>= \case
-                  Just _  -> loop
-                  Nothing -> return Timeout
+      loop = do bs <- await
+                liftIO (timeout t (NSB.sendAll socket bs)) >>= \case
+                      Just _  -> loop
+                      Nothing -> return Timeout
 
 
 
@@ -157,14 +150,13 @@ toSocketTimeout t socket = loop where
 receiver :: (MonadIO io, Binary b)
          => N.Socket
          -> Producer b io ServerResponse
-receiver s = decoded >-> dataOnly
-      where dataOnly = P.map snd
-            input = fromSocketTimeout (3*10^6) s 4096 -- TODO: Don't hardcode timeout
+receiver s = decoded where
 
-            decoded = decodeError <$> P.decodeMany input
+      input = fromSocketTimeout (3*10^6) s 4096 -- TODO: Don't hardcode timeout
 
-            decodeError (Right r) = r
-            decodeError (Left _)  = DecodeError
+      decoded = P.evalStateT (L.zoom P.decoded P.draw) input >>= \case
+            Nothing -> return DecodeError
+            Just x  -> yield x >> decoded
 
 
 
@@ -191,7 +183,7 @@ fromSocketTimeout t socket nBytes = loop where
 receive :: (MonadIO io, Binary b)
         => N.Socket
         -> io (Maybe b)
-receive s = runEffect $ (P.head . void . receiver) s
+receive s = runEffect ((P.head . void . receiver) s)
 
 
 
@@ -200,7 +192,7 @@ send :: (MonadIO io, Binary b)
      => N.Socket
      -> b
      -> io ()
-send s x = runEffect $ yield x >-> void (sender s)
+send s x = runEffect (yield x >-> void (sender s))
 
 
 
@@ -217,41 +209,30 @@ request s x = send s x >> receive s
 --   downstream in "BS.ByteString" chunks.
 --
 --   (Sent a pull request to Pipes-Binary for adding this.)
-encodeMany :: (Monad m, Binary x) => Pipe x BS.ByteString m r
-encodeMany = for cat P.encode
+encodeMany :: (Monad m, Binary x) => Pipe x BS.ByteString m ServerResponse
+encodeMany = err <$ for cat P.encode
+      --P.map (BSL.toStrict . Put.runPut . put)
+      where err = Error "Encoding failure, likely a bug"
+            -- TODO: Remove this case somehow
 
 
 
--- | Send an IO action depending on the verbosity level.
+-- | Send a message depending on the verbosity level.
 toIO :: Environment
      -> Verbosity
-     -> IO ()
+     -> OutMsg
      -> STM ()
-toIO env verbosity io = when p (writeTBQueue (_getIOQueue (_io env)) io)
+toIO env verbosity msg = when p (writeTBQueue (_getIOQueue (_io env))
+                                              msg)
       where p = verbosity >= _verbosity (_config env)
 
 
 
--- | Send an "IO" action to an "IOQueue" directly
+-- | Send a message to an "IOQueue" directly (ignoring verbosity).
 toIO' :: IOQueue
+      -> OutMsg
       -> IO ()
-      -> IO ()
-toIO' ioq io = atomically (writeTBQueue (_getIOQueue ioq) io)
-
-
-
-
--- | Mandatory silly catchall function. Intended to be used as a safety net
---   only, not as a cpeap getaway :-)
-catchAll :: IO a -> IO ()
-catchAll x = void x `catch` handler
-      where handler :: SomeException -> IO ()
-            handler _ = return ()
-
--- | Easily print colored text for debugging
-yell :: MonadIO io => Int -> String -> io ()
-yell n text = liftIO . putStrLn $
-      "\ESC[" ++ show n ++ "m" ++ show n ++ " - " ++ text ++ "\ESC[0m"
+toIO' ioq msg = atomically (writeTBQueue (_getIOQueue ioq) msg)
 
 
 
@@ -263,39 +244,57 @@ spawn buffer = toPChan <$> P.spawn' buffer
 
 
 
--- | Concurrently run multiple IO actions, and wait for the first "Async" to
---   complete. If one of them returns or throws, all others are "cancel"ed.
-asyncMany :: [IO ()] -> IO ()
-asyncMany [] = return ()
-asyncMany (io:ios) = withAsync io $ \a -> do
-      void $ waitAnyCancel <$> mapM async ios
-      wait a
-
-
-
 -- | Set up the decicated IO thread. Forks said thread, and returns a "TBQueue"
---   to it, along with the "Async" of the thread (which may be useful for
---   cancelling it).
+--   to it, along with the "ThreadId" of the thread (which may be useful for
+--   killing it).
+--
+--   Sends messages tagged as STDOUT to stdout
+--                            STDERR to stderr
+--                            STDLOG to stderr
+--
+--   Note: This does not change the buffering behaviour of STDERR, which is
+--         unbuffered by default.
 outputThread :: Int           -- ^ Thread size
              -> IO ( IOQueue  -- Channel
-                   , Async () -- Async of the printer thread
+                   , ThreadId -- Thread ID of the spawned printer thread
                    )
 outputThread size = do
+      checkOutputBuffers
       q <- newTBQueueIO size
-      thread <- async $ (forever . join . atomically . readTBQueue) q
+      thread <- forkIO (dispatchSignals q)
       return (IOQueue q, thread)
 
+      where dispatchSignals q = forever $ atomically (readTBQueue q) >>= \case
+                  STDOUT s -> hPutStrLn stdout s
+                  STDERR s -> hPutStrLn stderr s
+                  STDLOG s -> hPutStrLn stderr s
 
 
--- | Catches all exceptions, "yell"s their contents, and rethrows them.
-yellAndRethrow :: (MonadIO io)
-               => Int
-               -> (String -> String) -- ^ Modify error message, e.g. (++ "foo")
-               -> IO ()
-               -> io ()
-yellAndRethrow n f = liftIO . handle handler
-      where handler :: SomeException -> IO ()
-            handler (SomeException e) = yell n (f (show e)) >> throw e
+
+-- | Prepares the output buffers for logging text by making them line-buffered.
+--
+-- (STDERR in particular is unbuffered by default.)
+prepareOutputBuffers :: IO ()
+prepareOutputBuffers = do hSetBuffering stdout LineBuffering
+                          hSetBuffering stderr LineBuffering
+
+
+
+checkOutputBuffers :: IO ()
+checkOutputBuffers = do
+
+      let err buffer = hPutStr stderr (buffer ++ " unbuffered! You may want to\
+                                       \ change it to buffered for performance\
+                                       \ reasons (e.g. using \
+                                       \ Utilities.prepareOutputBuffers).")
+
+      hGetBuffering stdout >>= \case
+            NoBuffering -> err "STDOUT"
+            _else       -> return ()
+
+      hGetBuffering stderr >>= \case
+            NoBuffering -> err "STDERR"
+            _else       -> return ()
 
 
 
@@ -305,44 +304,19 @@ delay = liftIO . threadDelay
 
 
 
--- | Determine the current size of a database
-dbSize :: Environment
-       -> (Environment -> TVar (Map.Map k a)) -- _upstream or _downstream
-       -> STM Int
-dbSize env db = Map.size <$> readTVar (db env)
-
-
-
--- | Add an \"s\" in print statements
+-- | To add an \"s\" in print statements if the first argument is 1.
+--
+--   >>> printf "%d minute%s remaining" n (pluralS n)
 pluralS :: (Eq a, Num a) => a -> String
 pluralS 1 = ""
 pluralS _ = "s"
 
 
 
--- | Merges two lists by alternatingly taking one element of each.
+-- | Merges two lists by alternatingly taking one element of each. Overflow is
+--   appended as bulk.
 --
 --   > mergeLists [a,b] [w,x,y,z]  ==  [a,w,b,x,y,z]
 mergeLists :: [a] -> [a] -> [a]
 mergeLists []     ys = ys
 mergeLists (x:xs) ys = x : mergeLists ys xs
-
-
-
-
--- | Check whether a connection to a certain node is allowed. A node must not
---   connect to itself or to known neighbours multiple times.
---
---   Due to the fact that an "EdgeRequest" does not contain the upstream address
---   of the connection to be established, it cannot be checked whether the node
---   is already an upstream neighbour directly; timeouts will have to take care
---   of that.
-nodeRelationship :: Environment
-                 -> To
-                 -> STM NodeRelationship
-nodeRelationship env node =
-      if node == _self env
-            then return IsSelf
-            else do isDS <- Map.member node <$> readTVar (_downstream env)
-                    return $ if isDS then IsDownstreamNeighbour
-                                     else IsUnrelated

@@ -5,9 +5,18 @@ Amœba is a program for setting up a decentralized network. The name comes from
 the hope that eventually, the network will be so robust that you can poke any of
 its parts without endangering its overall integrity.
 
-![(Picture missing, uh oh)](doc/network_example.png
-                            "81 nodes, 3-6 upstream/downstream neighbours each.
-                            Node colour according to betweenness centrality.")
+This is how a small network looks like. It consists of 359 nodes, each trying to
+maintain 5-10 incoming and outgoing connections. Initially, three independent
+clusters were created; the last 30 nodes knew of these clusters and joined them
+together over the course of a minute. Darker colours indicate a more central
+role of a node in the network ([betweenness centrality][wiki-betweenness]).
+Click for higher resolution.
+
+[![(Picture missing, uh oh)](doc/network_example.png)][network-hires]
+
+[network-hires]: doc/network_example_hires_amoeba_n359_5-10-3cluster.png
+
+
 
 The current development stage is Alpha.
 
@@ -17,7 +26,29 @@ stable  | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?bran
 master  | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=master)][travis]
 develop | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=develop)][travis]
 
+
+
 [travis]: https://travis-ci.org/quchen/amoeba
+[wiki-betweenness]: http://en.wikipedia.org/wiki/Betweenness_centrality
+
+
+
+
+
+Explanation in simple terms
+---------------------------
+
+(This section is for you if you're wondering what the fuzz about the above crumbled up piece of strings and dots is.)
+
+I was always superficially fascinated by complex systems and networks, most notably by what is called *emergence*: the appearance of complex behaviour in systems made up from simple rules. A single ant does not do anything complex, and neither do ten of them. Put a thousand together though and you will discover that, although each is still individually doing the same things as before, it will amount to something much bigger than what you would have expected from the individual: complex structures of air tunnels or [fungus farms][leafcutter]. Another example is any living organism: even if you understood how every cell worked exactly, you still would have no idea about whether (or why) putting them together in some way can make up the organism that I am right now, typing this paragraph.
+
+Networks also exhibit a lot of emergent properties, and contrary to living organisms they are much more suitable to being simulated and applied by computers. A network in this sense is simply a number of constituents with connections to other constituents. These networks can consist of people (where conncetions can be "who likes who" or "have met each other at some point"), computers ("connected over the internet", "contains parts made by the same manufacturer"), languages ("what words can be used after others") and many other things.
+
+Amœba is a program that creates a computer network. I came up with the idea around the time of the first Bitcoin boom in 2013; the Torrent network did also seem somewhat interesting to me. So I thought "why not implement a basic version of something like that yourself?" - generously estimating 500 lines of code to get the core done. Months and thousands of lines of code added/removed/edited later, a satisfying first version is still just barely on the horizon, but it's finished enough to be able to play around with it. The "crumbled up piece of strings and dots" above is a snapshot of an Amœba network, a few seconds before I terminated half of it to see whether it would survive that without clustering into many disconnected components. Research has begun! :-)
+
+[leafcutter]: https://en.wikipedia.org/wiki/Leaf_cutter_ant
+
+
 
 
 
@@ -306,13 +337,13 @@ inherently require unknown nodes to establish connections.
 
 These may help reading the source comments:
 
-- _x:   Accessor functions that don't do any computation otherwise
-- BS:   Bootstrap (Server), Bytestring
-- DSN:  Downstream node, i.e. a neighbouring node the current sends commands do.
-- LDC:  Local direct connection. Used by the node pool to send signals directly
-        to its nodes instead of taking a detour over the network.
-- ST1C: Server to one (unspecified/arbitrary) client channel
-- STC:  Server to client channel
-- STSC: Server to specific client channel
-- USN:  Upstream node, i.e. a neighbouring node the current gets commands sent
-        by.
+Abbreviation | Meaning
+-----------: | -----------------------------------------------------------------
+          _x | Accessor functions that don't do any computation otherwise
+         BSS | Bootstrap server
+         DSN | Downstream node, i.e. a neighbouring node the current sends commands do.
+         LDC | Local direct connection. Used by the node pool to send signals directly to its nodes instead of taking a detour over the network.
+        ST1C | Server to one (unspecified/arbitrary) client channel
+         STC | Server to client channel
+        STSC | Server to specific client channel
+         USN | Upstream node, i.e. a neighbouring node the current gets commands sent by.

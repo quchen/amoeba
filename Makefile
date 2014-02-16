@@ -67,6 +67,22 @@ fast :
 	$(GHC) $(FAST_FLAGS) -o $(MAIN_DRAW) $(SRC)/MainDrawingServer.hs
 
 
+
+# Typecheck and warn, but don't link
+NOLINK_FLAGS = $(WARN) -no-link
+.PHONY : nolink
+nolink :
+	@echo -e "\e[32mSingle client\e[0m"
+	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_NODE) $(SRC)/MainNode.hs
+	@echo -e "\e[32mMultiple clients\e[0m"
+	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_MULTI) $(SRC)/MainMulti.hs
+	@echo -e "\e[32mBootstrap server\e[0m"
+	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
+	@echo -e "\e[32mDrawing server\e[0m"
+	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_DRAW) $(SRC)/MainDrawingServer.hs
+
+
+
 # Documentation
 .PHONY : doc
 doc :

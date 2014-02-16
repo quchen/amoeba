@@ -18,8 +18,6 @@ import           Control.Monad
 import           Control.Applicative
 import           System.Random
 import           Text.Printf
-import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Data.Foldable as F
 
 import           Pipes
@@ -32,7 +30,6 @@ import Types
 import Utilities
 import Client
 import Housekeeping
-import ClientPool (isRoomIn)
 
 
 
@@ -52,22 +49,22 @@ server env serverSocket = do
                   return (From c)
 
             pid <- PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
-                  atomically . toIO env Debug $
-                        printf "New worker %s from %s\n"
-                               (show from)
-                               (show addr)
+                  (atomically . toIO env Debug . STDLOG)
+                        (printf "New worker %s from %s"
+                                (show from)
+                                (show addr))
                   terminationReason <- worker env from clientSocket
-                  atomically $ toIO env Debug $
-                        printf "Worker %s from %s terminated (%s)\n"
-                               (show from)
-                               (show addr)
-                               (show terminationReason)
+                  (atomically . toIO env Debug . STDLOG)
+                        (printf "Worker %s from %s terminated (%s)"
+                                (show from)
+                                (show addr)
+                                (show terminationReason))
 
             forkIO (workerWatcher env from pid)
 
 
 
--- | Handles 'Signal's coming in from the network. and sends back the server's
+-- | Handles 'Signal's coming in from the network and sends back the server's
 --   response.
 worker :: Environment
        -> From        -- ^ Unique worker ID
@@ -94,8 +91,7 @@ worker env from socket =
                         OK  -> terminator
                         err -> return err
 
-            release = atomically (modifyTVar (_upstream env)
-                                             (Map.delete from))
+            release = atomically (deleteUsn env from)
 
 
 -- | Handles "Signal"s coming in from the LDC (local direct connection).
@@ -146,32 +142,15 @@ normalH env from signal =
                         KeepAlive            -> keepAliveH    env from
                         ShuttingDown         -> shuttingDownH env from
                         Prune                -> pruneH        env
-                  when (result == OK) (updateTimestamp env from)
+                  when (result == OK)
+                       (do t <- makeTimestamp
+                           atomically (updateUsnTimestamp env from t))
                   return result
 
             deny = do
-                  atomically . toIO env Debug . putStrLn $
+                  atomically . toIO env Debug . STDLOG $
                         "Illegally contacted by " ++ show from ++ "; ignoring"
                   return Ignore
-
-
-
--- | Check whether the contacting node is a registered upstream node (USN)
-isUsn :: Environment
-      -> From
-      -> STM Bool
-isUsn env from = Map.member from <$> readTVar (_upstream env)
-
-
-
--- | Update the "last heard of" timestmap in the database
-updateTimestamp :: Environment
-                -> From
-                -> IO ()
-updateTimestamp env from = do
-      t <- makeTimestamp
-      atomically (modifyTVar (_upstream env)
-                             (Map.adjust (const t) from))
 
 
 
@@ -196,9 +175,8 @@ specialH env from socket signal = case signal of
 illegal :: Environment
         -> String
         -> IO ServerResponse
-illegal env msg = do
-      atomically . toIO env Debug $ putStrLn msg
-      return Illegal
+illegal env msg = do (atomically . toIO env Debug . STDLOG) msg
+                     return Illegal
 
 
 
@@ -223,9 +201,10 @@ keepAliveH :: Environment
            -> From
            -> IO ServerResponse
 keepAliveH env from = do
-      atomically . toIO env Chatty $ printf
-            "KeepAlive signal received from %s\n" (show from)
-            -- This is *very* chatty, probably too much so.
+      (atomically . toIO env Chatty . STDLOG )
+            (printf "KeepAlive signal received from %s"
+                    (show from))
+                  -- This is *very* chatty, probably too much so.
       return OK
 
 
@@ -235,13 +214,12 @@ keepAliveH env from = do
 floodSignalH :: Environment
              -> (Timestamp, FloodSignal)
              -> IO ServerResponse
-floodSignalH env tFSignal@(timestamp, fSignal) = do
+floodSignalH env tfSignal@(timestamp, fSignal) = do
 
       knownIO <- atomically $ do
-            knownSTM <- Set.member tFSignal <$> readTVar (_handledFloods env)
+            knownSTM <- knownFlood env tfSignal
             when (not knownSTM) $ do
-                  modifyTVar (_handledFloods env)
-                             (prune . Set.insert tFSignal)
+                  insertFlood env tfSignal
 
                   -- Broadcast message to all downstream neighbours
                   broadcast <- broadcastOutput env
@@ -253,15 +231,6 @@ floodSignalH env tFSignal@(timestamp, fSignal) = do
             (True, _)                      -> return OK
             (_, SendNeighbourList painter) -> neighbourListH env painter
             (_, TextMessage message)       -> textMessageH   env message
-
-
-
-      where -- Delete the oldest entry if the DB is full
-            prune :: Set.Set a -> Set.Set a
-            prune db | Set.size db > dbMaxSize = Set.deleteMin db
-                     | otherwise               = db
-
-            dbMaxSize = _floodMessageCache (_config env)
 
 
 
@@ -279,7 +248,7 @@ textMessageH :: Environment
              -> String
              -> IO ServerResponse
 textMessageH env msg = do
-      atomically (toIO env Quiet (putStrLn msg))
+      atomically (toIO env Quiet (STDOUT msg))
       return OK
 
 
@@ -290,9 +259,9 @@ neighbourListH :: Environment
                -> IO ServerResponse
 neighbourListH env painter = do
       connectToNode painter $ \(socket, _) -> do
-            atomically (toIO env Chatty (putStrLn "Processing painter request"))
+            atomically (toIO env Chatty (STDLOG "Processing painter request"))
             let self = _self env
-            dsns <- Map.keysSet <$> atomically (readTVar (_downstream env))
+            dsns <- atomically (dumpDsnDB env)
             send socket (NeighbourList self dsns)
       return OK
 
@@ -303,16 +272,20 @@ shuttingDownH :: Environment
               -> From
               -> IO ServerResponse
 shuttingDownH env from = atomically $ do
-      toIO env Debug . putStrLn $
+      toIO env Debug . STDLOG $
             "Shutdown notice from " ++ show from
       return ConnectionClosed
       -- NB: Cleanup of the USN DB happens when the worker shuts down
 
 
+
+-- | A USN wants to terminate the connection because it has too mans DSNs.
+--   Check whether this can be done without dropping the USN count below the
+--   minimum number of neighbours, and terminate the worker if this is the case.
 pruneH :: Environment
        -> IO ServerResponse
 pruneH env = atomically $ do
-      dbSize <- Map.size <$> readTVar (_upstream env)
+      dbSize <- dbSize env _upstream
       if dbSize > _minNeighbours (_config env)
             then
                   -- Send back a special "OK" signal that terminates the
@@ -321,6 +294,7 @@ pruneH env = atomically $ do
             else
                   -- "OK" means "do not terminate the worker" here!
                   return OK
+
 
 
 -- | Bounce 'EdgeRequest's through the network in order to make new connections.
@@ -373,7 +347,6 @@ edgeBounceH env origin (EdgeData dir (HardBounce n)) = do
 
       atomically $ do
 
-            -- FIXME: The TQueue is now a PQueue.
             P.send (_pOutput (_st1c env))
                    (buildSignal (HardBounce (min (n - 1) nMax)))
                                           -- ^ Cap the number of hard
@@ -381,10 +354,11 @@ edgeBounceH env origin (EdgeData dir (HardBounce n)) = do
                                           -- | node's configuration to
                                           -- | prevent "maxBound bounces
                                           -- | left" attacks
-            toIO env Chatty $ printf "Hardbounced %s request from %s (%d left)\n"
-                                     (show dir)
-                                     (show origin)
-                                     n
+            (toIO env Chatty . STDLOG)
+                  (printf "Hardbounced %s request from %s (%d left)"
+                          (show dir)
+                          (show origin)
+                          n)
 
             return OK
 
@@ -417,7 +391,7 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
 
             -- Don't connect to self
             (IsSelf, _) -> atomically $ do
-                  toIO env Chatty . putStrLn $
+                  toIO env Chatty . STDLOG $
                         "Edge to self requested, bouncing"
                   bounceReset
 
@@ -427,9 +401,9 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
                   -- directions in that pattern (Incoming+Downstream): The
                   -- direction is from the viewpoint of the requestee, while the
                   -- relationship to that node is seen from the current node.
-                  toIO env Chatty $ printf
-                        "Edge to %s already exists, bouncing\n"
-                        (show origin)
+                  (toIO env Chatty . STDLOG)
+                        (printf "Edge to %s already exists, bouncing"
+                                (show origin))
                   bounceOn -- TODO: bounceReset here to avoid clustering?
 
             -- No room
@@ -439,29 +413,29 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
                       -- produce an incoming connection for example.
                       relativeDir Outgoing = "incoming"
                       relativeDir Incoming = "outgoing"
-                  toIO env Chatty $ printf
-                        "No room for another %s connection to handle the %s\
-                        \ request"
-                        (relativeDir dir)
-                        (show dir)
+                  (toIO env Chatty . STDLOG)
+                        (printf "No room for another %s connection to handle\
+                                      \ the %s request"
+                                (relativeDir dir)
+                                (show dir))
                   bounceOn
 
             -- Request randomly denied
             _ | not acceptEdge -> atomically $ do
-                  toIO env Chatty . putStrLn $
+                  toIO env Chatty . STDLOG $
                         "Random bounce (accept: p = " ++ show p ++ ")"
                   bounceOn
 
             -- Try accepting an Outgoing request
             (_, Outgoing) -> do
-                  atomically . toIO env Chatty . putStrLn $
+                  atomically . toIO env Chatty . STDLOG $
                         "Outgoing edge request accepted, sending handshake\
                         \ request" ++ show dir
                   sendHandshakeRequest env origin
 
             -- Try accepting an Incoming request
             (_, Incoming) -> do
-                  atomically . toIO env Chatty . putStrLn $
+                  atomically . toIO env Chatty . STDLOG $
                         "Incoming edge request accepted, starting handshake"
                   void $ Client.startHandshakeH env origin
                   -- TODO: Bounce on if failed, otherwise an almost saturated
@@ -477,7 +451,7 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
 
             -- Build "bounce on" action to relay signal if necessary
             bounceOn | n >= _maxSoftBounces (_config env) =
-                             toIO env Chatty . putStrLn $
+                             toIO env Chatty . STDLOG $
                                    "Too many bounces, swallowing"
                      | otherwise =
                            let p' = max p (_acceptP (_config env))
@@ -538,24 +512,9 @@ incomingHandshakeH :: Environment
 incomingHandshakeH env from socket = do
       timestamp <- makeTimestamp
 
-      proceed <- atomically $ do
+      inserted <- atomically (insertUsn env from timestamp)
 
-            isRoom <- isRoomIn env _upstream
-
-            -- Check for previous membership, just in case this method is called
-            -- twice concurrently for some odd reason TODO: can this happen?
-            -- This is an STM block after all
-            alreadyKnown <- Map.member from <$> readTVar (_upstream env)
-
-            let p = isRoom && not alreadyKnown
-
-            -- Reserve slot. Cleanup happens when the worker shuts down because
-            -- of a non-OK signal.
-            when p (modifyTVar (_upstream env)
-                               (Map.insert from timestamp))
-            return p
-
-      if proceed
+      if inserted
             then send socket OK >> receive socket >>= \case
                   Just OK -> return OK
                   x -> (return . Error) (errMsg x)

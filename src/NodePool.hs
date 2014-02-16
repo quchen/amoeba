@@ -41,11 +41,12 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
                     --   node (due to fairness) is killed and restarted,
                     --   see 'janitor'.
          -> IO ()
-nodePool n config ldc output terminate = void . forkIO $ forM_ [1..n] $ \portOffset ->
-      let port = _serverPort config + fromIntegral portOffset
-          config' = config { _serverPort = port }
-      in do forkIO (janitor config' ldc output terminate)
-            delay (_longTickRate config)
+nodePool n config ldc output terminate =
+      void . forkIO . forM_ [1..n] $ \portOffset -> do
+            let port    = _serverPort config + fromIntegral portOffset
+                config' = config { _serverPort = port }
+            forkIO (janitor config' ldc output terminate)
+            delay (_mediumTickRate config)
 
 
 
@@ -63,28 +64,27 @@ janitor :: NodeConfig
                              --   terminated (and replaced by a new one by the
                              --   janitor). Also see 'terminationWatch'.
         -> IO ()
-janitor config fromPool output terminate = handle (\(SomeException e) -> yell 41 ("Janitor crashed! Exception: " ++ show e)) $
-  forever $ do
-      toNode <- spawn (P.Bounded $ _maxChanSize config)
-      let handlers = [ Handler $ \ThreadKilled -> return ()
-                     ]
+janitor config fromPool output terminate = yellCatchall . forever $ do
+      toNode <- spawn (P.Bounded (_maxChanSize config))
       (`catches` handlers) $
             withAsync (startNode (Just toNode) output config) $ \node ->
-             withAsync (fromPool `pipeTo` toNode) $ \_ ->
-              withAsync (terminationWatch terminate node) $ \_ ->
+             withAsync (fromPool `pipeTo` toNode)             $ \_chanPipe ->
+              withAsync (terminationWatch terminate node)     $ \_terminator ->
                wait node
+
+      where handlers = [ Handler (\ThreadKilled -> return ()) ]
+            yellCatchall = handle (\(SomeException e) ->
+                             yell 41 ("Janitor crashed! Exception: " ++ show e))
 
 
 
 -- | Send everything from one channel to the other
-pipeTo :: Chan NormalSignal -> PChan NormalSignal -> IO ()
-pipeTo input output =
-
-      runEffect $ fromChan input >-> P.toOutput (_pOutput output)
-
-      where fromChan chan = forever $ do
-                  signal <- liftIO $ readChan chan
-                  yield signal
+pipeTo :: Chan  NormalSignal -- ^ From
+       -> PChan NormalSignal -- ^ To
+       -> IO ()
+pipeTo input output = runEffect (fromChan input >-> P.toOutput toChan) where
+      fromChan chan = forever (liftIO (readChan chan) >>= yield)
+      toChan        = _pOutput output
 
 
 

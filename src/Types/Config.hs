@@ -155,7 +155,7 @@ data PoolConfig = PoolConfig {
 -- ^ Configuration of the bootstrap server
 data BootstrapConfig = BootstrapConfig {
 
-        _restartEvery :: Int -- ^ Every n connected nodes, one client is
+        _restartEvery :: Int -- ^ Every n bootstrap requests one client is
                              --   restarted at random
 
       , _restartMinimumPeriod :: Int -- ^ Limit the maximal frequency at which
@@ -183,7 +183,15 @@ data MultiConfig = MultiConfig {
 -- | Drawing server config
 data DrawingConfig = DrawingConfig {
 
-        _drawingNodeConfig :: NodeConfig
+        _drawEvery         :: Int -- ^ Interval for sending out neighbour list
+                                  --   requests and drawing the currently known
+                                  --   state of the network
+
+      , _drawFilename      :: FilePath -- ^ Filename for the .dot file
+
+      , _drawTimeout       :: Double
+
+      , _drawingNodeConfig :: NodeConfig
 
       , _drawingPoolConfig :: PoolConfig
 

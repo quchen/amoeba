@@ -13,5 +13,6 @@ main = do
 
       config <- Config.node
 
+      prepareOutputBuffers
       (output, _) <- outputThread (_maxChanSize config)
       startNode Nothing output config
