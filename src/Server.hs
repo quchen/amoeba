@@ -100,7 +100,10 @@ workerLdc :: Environment
           -> IO ()
 workerLdc env@(_ldc -> Just pChan) =
 
-      runEffect (input >-> dispatch >-> discard)
+      runEffect (input >-> dispatch >-> P.drain)
+                                        -- ^ Since there is no USN to send the
+                                        --   ServerResponse back to, discard
+                                        --   the answers to LDC signals.
 
       where input :: Producer NormalSignal IO ()
             input = P.fromInput (_pInput pChan)
@@ -110,16 +113,6 @@ workerLdc env@(_ldc -> Just pChan) =
                   EdgeRequest to edge  -> edgeBounceH env to edge
                   Flood tStamp fSignal -> floodSignalH env (tStamp, fSignal)
                   _else                -> return (Error "Bad LDC signal")
-
-            -- Eat up all incoming signals; this is the equivalent to the
-            -- 'respond' consumer in the ordinary worker, but in the LDC case
-            -- the communication is one-way.
-            --
-            -- This is a bit of a hack of course. The dispatch pipe above is
-            -- built from Producers, so their re-emitted server responses have
-            -- to be destroyed.
-            discard :: (Monad m) => Consumer a m r
-            discard = forever await
 
 workerLdc _ = return ()
 
