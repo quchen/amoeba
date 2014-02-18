@@ -4,7 +4,7 @@
 --   Amoeba executables, which then only depend on Base and the Amoeba library,
 --   while the latter contains all the transitive dependencies.
 
-module Main.BootstrapExecutable (main) where
+module Main (main) where
 
 import qualified Main.Bootstrap as M
 

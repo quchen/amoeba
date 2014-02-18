@@ -1,7 +1,7 @@
 -- | Main entry point for the message client, which allows sending text messages
 --   over the Amoeba network.
 
-module Main.MessageClient (main) where
+module Main (main) where
 
 
 import Control.Monad
