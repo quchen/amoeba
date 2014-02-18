@@ -1,4 +1,6 @@
--- | The drawing server asks willing nodes to send it a list of all neighbours.
+-- | Main entry point for the drawing server.
+--
+--   The drawing server asks willing nodes to send it a list of all neighbours.
 --   The collective information can then be used to analyze the large-scale
 --   structure of the entire network.
 --
@@ -7,7 +9,7 @@
 
 {-# LANGUAGE LambdaCase #-}
 
-module Main (main) where
+module Main.Drawing (main) where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM

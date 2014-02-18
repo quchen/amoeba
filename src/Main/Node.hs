@@ -1,13 +1,13 @@
--- | Main module for an ordinary node.
+-- | Main entry module point for an ordinary node.
 
-module Main (main) where
+module Main.Node (main) where
 
 import qualified Config.Getter as Config
 import Node
 import Types
 import Utilities
 
--- | Starts a single node.
+-- | Start a single node.
 main :: IO ()
 main = do
 

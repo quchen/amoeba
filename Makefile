@@ -4,6 +4,7 @@ MAIN_MULTI = amoeba_multi
 MAIN_BS    = bootstrap
 MAIN_DRAW  = drawing
 SRC = src
+MAIN=$(SRC)/Main
 DOC = doc
 
 
@@ -30,13 +31,13 @@ RELEASE_FLAGS = $(OPTIMIZE) $(WARN)
 .PHONY : release
 release :
 	@echo -e "\e[32mSingle client\e[0m"
-	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_NODE) $(SRC)/MainNode.hs
+	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_NODE) $(MAIN)/NodeExecutable.hs
 	@echo -e "\e[32mMultiple clients\e[0m"
-	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_MULTI) $(SRC)/MainMulti.hs
+	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_MULTI) $(MAIN)/MultiExecutable.hs
 	@echo -e "\e[32mBootstrap server\e[0m"
-	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
+	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_BS)   $(MAIN)/BootstrapExecutable.hs
 	@echo -e "\e[32mDrawing server\e[0m"
-	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_DRAW) $(SRC)/MainDrawingServer.hs
+	$(GHC) $(RELEASE_FLAGS) -o $(MAIN_DRAW) $(MAIN)/DrawingExecutable.hs
 
 
 # Fully optimize with profiling support
@@ -44,13 +45,13 @@ PROF_FLAGS = $(OPTIMIZE) $(PROF)
 .PHONY : prof
 prof :
 	@echo -e "\e[32mSingle client\e[0m"
-	$(GHC) $(PROF_FLAGS) -o $(MAIN_NODE) $(SRC)/MainNode.hs
+	$(GHC) $(PROF_FLAGS) -o $(MAIN_NODE) $(MAIN)/NodeExecutable.hs
 	@echo -e "\e[32mMultiple clients\e[0m"
-	$(GHC) $(PROF_FLAGS) -o $(MAIN_MULTI) $(SRC)/MainMulti.hs
+	$(GHC) $(PROF_FLAGS) -o $(MAIN_MULTI) $(MAIN)/MultiExecutable.hs
 	@echo -e "\e[32mBootstrap server\e[0m"
-	$(GHC) $(PROF_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
+	$(GHC) $(PROF_FLAGS) -o $(MAIN_BS)   $(MAIN)/BootstrapExecutable.hs
 	@echo -e "\e[32mDrawing server\e[0m"
-	$(GHC) $(PROF_FLAGS) -o $(MAIN_DRAW) $(SRC)/MainDrawingServer.hs
+	$(GHC) $(PROF_FLAGS) -o $(MAIN_DRAW) $(MAIN)/DrawingExecutable.hs
 
 
 # Minimize compilation time
@@ -58,13 +59,13 @@ FAST_FLAGS =
 .PHONY : fast
 fast :
 	@echo -e "\e[32mSingle client\e[0m"
-	$(GHC) $(FAST_FLAGS) -o $(MAIN_NODE) $(SRC)/MainNode.hs
+	$(GHC) $(FAST_FLAGS) -o $(MAIN_NODE) $(MAIN)/NodeExecutable.hs
 	@echo -e "\e[32mMultiple clients\e[0m"
-	$(GHC) $(FAST_FLAGS) -o $(MAIN_MULTI) $(SRC)/MainMulti.hs
+	$(GHC) $(FAST_FLAGS) -o $(MAIN_MULTI) $(MAIN)/MultiExecutable.hs
 	@echo -e "\e[32mBootstrap server\e[0m"
-	$(GHC) $(FAST_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
+	$(GHC) $(FAST_FLAGS) -o $(MAIN_BS)   $(MAIN)/BootstrapExecutable.hs
 	@echo -e "\e[32mDrawing server\e[0m"
-	$(GHC) $(FAST_FLAGS) -o $(MAIN_DRAW) $(SRC)/MainDrawingServer.hs
+	$(GHC) $(FAST_FLAGS) -o $(MAIN_DRAW) $(MAIN)/DrawingExecutable.hs
 
 
 
@@ -73,13 +74,13 @@ NOLINK_FLAGS = $(WARN) -no-link
 .PHONY : nolink
 nolink :
 	@echo -e "\e[32mSingle client\e[0m"
-	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_NODE) $(SRC)/MainNode.hs
+	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_NODE) $(MAIN)/NodeExecutable.hs
 	@echo -e "\e[32mMultiple clients\e[0m"
-	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_MULTI) $(SRC)/MainMulti.hs
+	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_MULTI) $(MAIN)/MultiExecutable.hs
 	@echo -e "\e[32mBootstrap server\e[0m"
-	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_BS)   $(SRC)/MainBootstrapServer.hs
+	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_BS)   $(MAIN)/BootstrapExecutable.hs
 	@echo -e "\e[32mDrawing server\e[0m"
-	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_DRAW) $(SRC)/MainDrawingServer.hs
+	$(GHC) $(NOLINK_FLAGS) -o $(MAIN_DRAW) $(MAIN)/DrawingExecutable.hs
 
 
 

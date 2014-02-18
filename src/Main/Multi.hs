@@ -1,7 +1,9 @@
--- | Launches a node pool without further services. In other words, it's like
---   a bootstrap server without the bootstrapping part.
+-- | Main entry point for the multi-node client.
+--
+--   Launches a node pool without further services. In other words, it's like a
+--   bootstrap server without the bootstrapping part.
 
-module Main (main) where
+module Main.Multi (main) where
 
 import           Control.Monad
 import           Control.Concurrent
