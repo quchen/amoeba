@@ -1,4 +1,6 @@
--- | Starts a bootstrap server, which is the entry point for new nodes into the
+-- | Main entry point for the bootstrap server.
+--
+--   Starts a bootstrap server, which is the entry point for new nodes into the
 --   network.
 --
 --   The configuration is set like an ordinary node. The server port is what
@@ -8,7 +10,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE BangPatterns #-}
 
-module Main where
+module Main.Bootstrap (main) where
 
 import Control.Concurrent.Async
 import Control.Concurrent hiding (yield)
