@@ -16,7 +16,7 @@ before_script:
 
 
 script:
-      - cabal build
+      - make fast
 
 
 after_success:
