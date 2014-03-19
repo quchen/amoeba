@@ -5,30 +5,20 @@ ghc: 7.6
 
 before_install:
       - true "before_install"
-
-
 install:
-      - cabal install --only-dependencies
-                      --disable-optimization
-                      --ghc-options=-w
-
-
+      - make cabal-init
 before_script:
       - true "before_script"
-
-
 script:
-      - cabal configure --disable-optimization
-      - cabal build
-
-
+      - make fast
 after_success:
       - true "after_success"
-
-
 after_failure:
       - true "after_failure"
-
-
 after_script:
       - true "after_script"
+
+
+
+notifications:
+      email: false
