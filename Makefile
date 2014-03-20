@@ -15,7 +15,7 @@ PACKAGE-D = $(shell find .cabal-sandbox/ -name "*packages.conf.d")
 # GHC Flags
 OPTIMIZE  = -O2 -threaded
 PROF      = -prof -auto-all -caf-all -threaded
-WARN      = -W
+WARN      = -Wall -fno-warn-type-defaults -fno-warn-unused-do-bind -fwarn-tabs
 PACKAGEDB = -no-user-package-db -package-db $(PACKAGE-D)
 
 
