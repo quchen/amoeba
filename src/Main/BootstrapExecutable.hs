@@ -8,4 +8,5 @@ module Main (main) where
 
 import qualified Main.Bootstrap as M
 
+main :: IO ()
 main = M.main

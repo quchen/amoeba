@@ -278,8 +278,9 @@ shuttingDownH env from = atomically $ do
 pruneH :: Environment
        -> IO ServerResponse
 pruneH env = atomically $ do
-      dbSize <- dbSize env _upstream
-      if dbSize > _minNeighbours (_config env)
+      usnSize <- dbSize env _upstream
+      let minN = _minNeighbours (_config env)
+      if usnSize > minN
             then
                   -- Send back a special "OK" signal that terminates the
                   -- connection
@@ -457,9 +458,9 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
 
             -- Build "bounce again from the beginning" signal. This is invoked
             -- if an EdgeRequest reaches the issuing node again.
-            bounceReset = let n = _bounces (_config env)
+            bounceReset = let b = _bounces (_config env)
                           in  void (P.send (_pOutput (_st1c env))
-                                           (buildSignal (HardBounce n)))
+                                           (buildSignal (HardBounce b)))
             -- TODO: Maybe swallowing the request in this case makes more sense.
             --       The node is spamming the network with requests anyway after
             --       all.

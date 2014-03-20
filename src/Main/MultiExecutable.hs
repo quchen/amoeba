@@ -8,4 +8,5 @@ module Main (main) where
 
 import qualified Main.Multi as M
 
+main :: IO ()
 main = M.main

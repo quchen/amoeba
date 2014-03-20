@@ -5,7 +5,7 @@
 module Housekeeping (dsnHousekeeping, workerWatcher) where
 
 import Control.Concurrent
-import Control.Concurrent.STM
+import Control.Concurrent.STM hiding (check)
 import Control.Concurrent.Async
 import qualified Data.Foldable as F
 import qualified Data.Traversable as T
@@ -79,11 +79,12 @@ cleanupDsn env (Timestamp now) = do
 --   (The amount of DSNs contacted is equivalent to the excess of connections.)
 prune :: Environment -> IO ()
 prune env = atomically $ do
-      dbSize <- Map.size <$> readTVar (_upstream env)
-      let excess = dbSize - _minNeighbours (_config env)
+      usnSize <- dbSize env _upstream
+      let minN = _minNeighbours (_config env)
+          excess = usnSize - minN
       forM_ [1..excess]
-            (\_i -> (void (P.send (_pOutput (_st1c env))
-                                  Prune)))
+            (\_i -> (P.send (_pOutput (_st1c env))
+                            Prune))
 
 
 

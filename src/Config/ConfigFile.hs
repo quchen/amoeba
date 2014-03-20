@@ -30,6 +30,7 @@ import qualified Config.AddressParser as AP
 
 -- | Files to read the config from. The later in the list, the higher the
 --   precedence of the contained settings.
+configFiles :: [C.Worth FilePath]
 configFiles = [ C.Optional "$(HOME)/.local/share/amoeba/amoeba.cfg"
               , C.Optional "$(HOME)/.amoeba.cfg"
               , C.Optional "amoeba.cfg"
