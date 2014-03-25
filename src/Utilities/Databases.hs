@@ -153,8 +153,11 @@ dumpDsnDB env = Map.keysSet <$> readTVar (_downstream env)
 
 
 -- | Is the USN in the DB?
+--
+--   (Defined in terms of "nodeRelationship", mainly to provide an analogon for
+--   "isUsn".)
 isDsn :: Environment -> To -> STM Bool
-isDsn env to = Map.member to <$> readTVar (_downstream env)
+isDsn env to = (== IsDownstreamNeighbour) <$> nodeRelationship env to
 
 
 
@@ -194,9 +197,9 @@ updateDsnTimestamp env to t = modifyTVar (_downstream env)
 nodeRelationship :: Environment
                  -> To
                  -> STM NodeRelationship
-nodeRelationship env node
-      | node == _self env = return IsSelf
-      | otherwise = do isDS <- Map.member node <$> readTVar (_downstream env)
+nodeRelationship env to
+      | to == _self env = return IsSelf
+      | otherwise = do isDS <- Map.member to <$> readTVar (_downstream env)
                        return (if isDS then IsDownstreamNeighbour
                                        else IsUnrelated)
 

@@ -7,6 +7,7 @@ module Utilities (
 
       -- * Various utilities
       , whenM
+      , ifM
       , whileM
       , pluralS
       , mergeLists
@@ -41,7 +42,6 @@ import           Control.Concurrent.STM
 import           Control.Monad
 import           Control.Applicative
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as BSL
 import           System.IO
 import           System.Timeout
 
@@ -56,7 +56,6 @@ import qualified Lens.Family.State.Strict as L
 import Control.Monad.Catch (MonadCatch)
 
 import Data.Binary
-import qualified Data.Binary.Put as Put
 
 import Types
 import Utilities.Debug as Reexport
@@ -67,6 +66,12 @@ import Utilities.Databases as Reexport
 -- | Monadic version of 'when'.
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM mp m = mp >>= \p -> when p m
+
+
+
+-- | Monadic version of 'IfThenElse'.
+ifM :: Monad m => m Bool -> m a -> m a -> m a
+ifM mp x y = mp >>= \p -> if p then x else y
 
 
 
@@ -205,7 +210,8 @@ request s x = send s x >> receive s
 --
 --   (Sent a pull request to Pipes-Binary for adding this.)
 encodeMany :: (Monad m, Binary x) => Pipe x BS.ByteString m ServerResponse
-encodeMany = err <$ P.map (BSL.toStrict . Put.runPut . put)
+encodeMany = err <$ for cat P.encode
+      --P.map (BSL.toStrict . Put.runPut . put)
       where err = Error "Encoding failure, likely a bug"
             -- TODO: Remove this case somehow
 

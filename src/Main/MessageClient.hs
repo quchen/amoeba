@@ -1,3 +1,6 @@
+-- | Main entry point for the message client, which allows sending text messages
+--   over the Amoeba network.
+
 module Main (main) where
 
 

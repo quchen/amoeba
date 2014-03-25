@@ -30,43 +30,43 @@ runArgParser :: Parser a -- ^ Parser
              -> String   -- ^ Short help description
              -> String   -- ^ Long help description
              -> IO a
-runArgParser parser short long = execParser parser' where
+runArgParser parser shortDescr longDescr = execParser parser' where
       parser' = info (helper <*> parser) infoMod
       infoMod = mconcat
             [ fullDesc
-            , progDesc short
-            , header long
+            , progDesc shortDescr
+            , header longDescr
             ]
 
 
 
 nodeModifier :: IO (OptionModifier Ty.NodeConfig)
-nodeModifier = runArgParser nodeModifier' short long where
-      short = "Amoeba client"
-      long  = "Launch a single node in an Amoeba network"
+nodeModifier = runArgParser nodeModifier' s l where
+      s = "Amoeba client"
+      l = "Launch a single node in an Amoeba network"
 
 
 
 multiModifier :: IO (OptionModifier Ty.MultiConfig)
-multiModifier = runArgParser multiModifier' short long where
-      short = "Amoeba multi-node client"
-      long  = "Launch multiple independent Amoeba nodes"
+multiModifier = runArgParser multiModifier' s l where
+      s = "Amoeba multi-node client"
+      l = "Launch multiple independent Amoeba nodes"
 
 
 
 bootstrapModifier :: IO (OptionModifier Ty.BootstrapConfig)
-bootstrapModifier = runArgParser bootstrapModifier' short long where
-      short = "Amoeba bootstrap server"
-      long  = "Start a bootstrap server to allow new nodes to\
-                    \ connect to an existing network"
+bootstrapModifier = runArgParser bootstrapModifier' s l where
+      s = "Amoeba bootstrap server"
+      l = "Start a bootstrap server to allow new nodes to\
+                \ connect to an existing network"
 
 
 
 drawingModifier :: IO (OptionModifier Ty.DrawingConfig)
-drawingModifier = runArgParser drawingModifier' short long where
-      short = "Amoeba bootstrap server"
-      long  = "Start a bootstrap server to allow new nodes to connect to an\
-              \ existing network"
+drawingModifier = runArgParser drawingModifier' s l where
+      s = "Amoeba bootstrap server"
+      l = "Start a bootstrap server to allow new nodes to connect to an\
+                \ existing network"
 
 
 
@@ -143,8 +143,8 @@ defaultValue = pure mempty
 
 
 port :: Parser (OptionModifier Ty.NodeConfig)
-port = value <|> defaultValue where
-      value = toModifier <$> (option . mconcat)
+port = v <|> defaultValue where
+      v = toModifier <$> (option . mconcat)
             [ long    "port"
             , short   'p'
             , metavar "PORT"
@@ -155,8 +155,8 @@ port = value <|> defaultValue where
 
 
 restartEvery :: Parser (OptionModifier Ty.BootstrapConfig)
-restartEvery = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+restartEvery = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "restart-every"
             , metavar "(Int > 0)"
@@ -169,8 +169,8 @@ restartEvery = value <|> defaultValue where
 
 
 drawingInterval :: Parser (OptionModifier Ty.DrawingConfig)
-drawingInterval = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+drawingInterval = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "draw-every"
             , metavar "[ms]"
@@ -183,8 +183,8 @@ drawingInterval = value <|> defaultValue where
 
 
 drawingTimeout :: Parser (OptionModifier Ty.DrawingConfig)
-drawingTimeout = value <|> defaultValue where
-      value = toModifier . fromIntegral <$> (nullOption . mconcat)
+drawingTimeout = v <|> defaultValue where
+      v = toModifier . fromIntegral <$> (nullOption . mconcat)
             [ reader  positive
             , long    "draw-timeout"
             , metavar "[s]"
@@ -197,8 +197,8 @@ drawingTimeout = value <|> defaultValue where
 
 
 drawingFilename :: Parser (OptionModifier Ty.DrawingConfig)
-drawingFilename = value <|> defaultValue where
-      value = toModifier <$> (strOption . mconcat)
+drawingFilename = v <|> defaultValue where
+      v = toModifier <$> (strOption . mconcat)
             [ long    "drawing-filename"
             , metavar "(filename)"
             , help    "File to write the network data to"
@@ -208,8 +208,8 @@ drawingFilename = value <|> defaultValue where
 
 
 restartMinimumPeriod :: Parser (OptionModifier Ty.BootstrapConfig)
-restartMinimumPeriod = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+restartMinimumPeriod = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "restart-minperiod"
             , metavar "[ms]"
@@ -223,8 +223,8 @@ restartMinimumPeriod = value <|> defaultValue where
 
 
 poolSize :: Parser (OptionModifier Ty.PoolConfig)
-poolSize = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+poolSize = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "poolsize"
             , short   'n'
@@ -236,8 +236,8 @@ poolSize = value <|> defaultValue where
 
 
 minNeighbours :: Parser (OptionModifier Ty.NodeConfig)
-minNeighbours = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+minNeighbours = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "minn"
             , metavar "(Int > 0)"
@@ -249,8 +249,8 @@ minNeighbours = value <|> defaultValue where
 
 
 maxNeighbours :: Parser (OptionModifier Ty.NodeConfig)
-maxNeighbours = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+maxNeighbours = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "maxn"
             , metavar "(Int > 0)"
@@ -261,8 +261,8 @@ maxNeighbours = value <|> defaultValue where
 
 
 maxChanSize :: Parser (OptionModifier Ty.NodeConfig)
-maxChanSize = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+maxChanSize = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "chansize"
             , metavar "(Int > 0)"
@@ -273,8 +273,8 @@ maxChanSize = value <|> defaultValue where
 
 
 floodCacheSize :: Parser (OptionModifier Ty.NodeConfig)
-floodCacheSize = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+floodCacheSize = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  nonnegative
             , long    "floodcache"
             , metavar "(Int >= 0)"
@@ -285,8 +285,8 @@ floodCacheSize = value <|> defaultValue where
 
 
 bounces :: Parser (OptionModifier Ty.NodeConfig)
-bounces = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+bounces = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  nonnegative
             , long    "bounces"
             , metavar "(Int >= 0)"
@@ -297,8 +297,8 @@ bounces = value <|> defaultValue where
 
 
 maxSoftBounces :: Parser (OptionModifier Ty.NodeConfig)
-maxSoftBounces = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+maxSoftBounces = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "hbounce"
             , metavar "(Int > 0)"
@@ -309,8 +309,8 @@ maxSoftBounces = value <|> defaultValue where
 
 
 acceptP :: Parser (OptionModifier Ty.NodeConfig)
-acceptP = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+acceptP = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  probability
             , long    "acceptp"
             , metavar "(0 < p <= 1)"
@@ -321,8 +321,8 @@ acceptP = value <|> defaultValue where
 
 
 shortTickRate :: Parser (OptionModifier Ty.NodeConfig)
-shortTickRate = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+shortTickRate = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "stick"
             , metavar "[ms]"
@@ -333,8 +333,8 @@ shortTickRate = value <|> defaultValue where
 
 
 mediumTickRate :: Parser (OptionModifier Ty.NodeConfig)
-mediumTickRate = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+mediumTickRate = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "mtick"
             , metavar "[ms]"
@@ -345,8 +345,8 @@ mediumTickRate = value <|> defaultValue where
 
 
 longTickRate :: Parser (OptionModifier Ty.NodeConfig)
-longTickRate = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+longTickRate = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "ltick"
             , metavar "[ms]"
@@ -357,8 +357,8 @@ longTickRate = value <|> defaultValue where
 
 
 poolTimeout :: Parser (OptionModifier Ty.NodeConfig)
-poolTimeout = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+poolTimeout = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  positive
             , long    "timeout"
             , metavar "[s]"
@@ -369,8 +369,8 @@ poolTimeout = value <|> defaultValue where
 
 
 verbosity :: Parser (OptionModifier Ty.NodeConfig)
-verbosity = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+verbosity = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  readVerbosity
             , long    "verbosity"
             , metavar "(mute|quiet|default|debug|chatty)"
@@ -381,8 +381,8 @@ verbosity = value <|> defaultValue where
 
 
 bootstrapServer :: Parser (OptionModifier Ty.NodeConfig)
-bootstrapServer = value <|> defaultValue where
-      value = toModifier <$> (nullOption . mconcat)
+bootstrapServer = v <|> defaultValue where
+      v = toModifier <$> (nullOption . mconcat)
             [ reader  readAddress
             , long    "bootstrap"
             , metavar "(hostname)"
@@ -442,6 +442,6 @@ readVerbosity x = case map toLower x of
 
 
 readAddress :: String -> ReadM (Set.Set Ty.To)
-readAddress str = case AddressParser.parseAddress str of
+readAddress s = case AddressParser.parseAddress s of
       Left e     -> readerError ("Bad address: " ++ show e)
       Right addr -> pure (Set.singleton addr)

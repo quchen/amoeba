@@ -13,6 +13,7 @@ import qualified Text.Parsec.Token as P
 import Text.Parsec.Language (haskellDef)
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Identity
 import Text.Printf
 import Data.Foldable (asum)
 
@@ -21,6 +22,7 @@ import Types
 
 
 -- | Haskell grammar based lexer.
+lexer :: P.GenTokenParser String u Identity
 lexer = P.makeTokenParser haskellDef
 
 

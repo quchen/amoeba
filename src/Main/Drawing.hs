@@ -1,4 +1,6 @@
--- | The drawing server asks willing nodes to send it a list of all neighbours.
+-- | Main entry point for the drawing server.
+--
+--   The drawing server asks willing nodes to send it a list of all neighbours.
 --   The collective information can then be used to analyze the large-scale
 --   structure of the entire network.
 --
@@ -7,7 +9,7 @@
 
 {-# LANGUAGE LambdaCase #-}
 
-module Main (main) where
+module Main.Drawing (main) where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM
@@ -52,7 +54,7 @@ drawingServerMain = do
                output
                terminate
 
-      printf "Starting drawing server with %d nodes"
+      printf "Starting drawing server with %d nodes\n"
              (_poolSize (_poolConfig config))
       drawingServer config output ldc
 
@@ -123,8 +125,8 @@ graphDrawer :: DrawingConfig
             -> IOQueue
             -> TVar (Graph To)
             -> IO ()
-graphDrawer config ioq t'graph = forever $ do
-      threadDelay (_drawEvery config)
+graphDrawer config ioq t'graph = (initialDelay >>) . forever $ do
+      delay (_drawEvery config)
       cleanup config t'graph
       graph <- atomically (readTVar t'graph)
       let graphSize (Graph g) = Map.size g
@@ -132,6 +134,13 @@ graphDrawer config ioq t'graph = forever $ do
       (toIO' ioq . STDLOG) (printf "Drawing graph. Current network size: %d nodes\n" s)
       writeFile (_drawFilename config)
                 (graphToDot graph)
+
+      where
+            -- Delay the drawer a bit initially, so the 'networkAsker' can do
+            -- its job first. If this isn't done, the drawer might draw the old
+            -- state, while pretty much at the same time the new network
+            -- answers come in.
+            initialDelay = delay (_longTickRate (_nodeConfig config))
 
 
 
@@ -154,7 +163,7 @@ networkAsker :: DrawingConfig
              -> Chan NormalSignal -- ^ LDC to the pool
              -> IO ()
 networkAsker config poolSize toSelf ldc = forever $ do
-      threadDelay (_drawEvery config)
+      delay (_drawEvery config)
       t <- makeTimestamp
       let signal = Flood t (SendNeighbourList toSelf)
       forM_ [1..poolSize]

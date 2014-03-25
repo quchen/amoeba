@@ -5,7 +5,7 @@
 module Housekeeping (dsnHousekeeping, workerWatcher) where
 
 import Control.Concurrent
-import Control.Concurrent.STM
+import Control.Concurrent.STM hiding (check)
 import Control.Concurrent.Async
 import qualified Data.Foldable as F
 import qualified Data.Traversable as T
@@ -73,14 +73,18 @@ cleanupDsn env (Timestamp now) = do
 
 
 
--- | If the DSN pool is full, ask a random DSN whether the connection can be
---   dropped.
+-- | If the DSN pool is larger than the minimum amount of neighbours, ask
+--   random DSNs whether the connection can be dropped.
+--
+--   (The amount of DSNs contacted is equivalent to the excess of connections.)
 prune :: Environment -> IO ()
 prune env = atomically $ do
-      dbSize <- Map.size <$> readTVar (_upstream env)
-      when (dbSize > _minNeighbours (_config env))
-           (void (P.send (_pOutput (_st1c env))
-                         Prune))
+      usnSize <- dbSize env _upstream
+      let minN = _minNeighbours (_config env)
+          excess = usnSize - minN
+      forM_ [1..excess]
+            (\_i -> (P.send (_pOutput (_st1c env))
+                            Prune))
 
 
 
@@ -130,7 +134,7 @@ workerWatcher env from tid =
 
             isTimedOut (Timestamp now) =
                   let check (Just (Timestamp past)) = now - past > timeout
-                      check _ = True
+                      check _ = True -- Node not even present in DB
                   in  atomically (check . Map.lookup from <$> readTVar usnDB)
 
             watch = delay tickrate >> makeTimestamp >>= isTimedOut >>= \case

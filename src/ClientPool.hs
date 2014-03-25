@@ -73,12 +73,11 @@ balanceEdges env = forever $ do
             dsnPorts <- fmap (map (_port . getTo) . toList . Map.keysSet)
                              (readTVar (_downstream env))
 
-            let coloredNumber :: Int -> Int -> String
-                coloredNumber m x = printf "\ESC[3%dm%d\ESC[0m" (x `rem` m + 1) x
+            let colouredNumber :: Int -> String
+                colouredNumber n = printf "\ESC[3%dm%d\ESC[0m" (n `rem` 8 + 1) n
                 -- Like List's Show instance, but won't recursively show
                 -- list elements (therefore avoiding "\ESC..." in the output).
                 showColoured = (++ "]") . ("[" ++) . intercalate ", "
-                m = 8 -- modulus for colouring
 
             -- Print status message: "Network connections: upstream 7/(5..10),
             -- downstream 5/(5..10)"to indicate there are 7 of a minimum of 5,
@@ -89,10 +88,10 @@ balanceEdges env = forever $ do
                                 \ upstream %*d/(%d..%d),\
                                 \ downstream %*d/(%d..%d)\
                                 \ %s"
-                          (coloredNumber m serverPort)
+                          (colouredNumber serverPort)
                           maxNDigits usnCount minN maxN
                           maxNDigits dsnCount minN maxN
-                          (showColoured (map (coloredNumber m) dsnPorts)))
+                          (showColoured (map colouredNumber dsnPorts)))
 
             return ( minN - usnCount
                    , minN - dsnCount

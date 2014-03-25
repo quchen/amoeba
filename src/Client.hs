@@ -17,6 +17,7 @@ import           Data.Monoid
 import           System.Timeout
 import           Control.Monad
 import           Control.Exception
+import           Text.Printf
 import           Control.Applicative
 
 import           Pipes
@@ -51,14 +52,14 @@ startHandshakeH :: MonadIO io
                 -> To -- ^ Node to add
                 -> io ()
 startHandshakeH env to = liftIO . void . forkIO $
-      connectToNode to $ \(socket, _addr) -> do
-            allowed <- atomically ((== IsUnrelated) <$> nodeRelationship env to)
-            when allowed
-                 (request socket (Special Handshake) >>= \case
-                       Just OK -> do send socket OK
-                                     newClient env to socket
-                       x -> do send socket (Error "Bad handshake")
-                               errorPrint env ("Handshake signal response: " ++ show x))
+      connectToNode to $ \(socket, _addr) ->
+            (request socket (Special Handshake) >>= \case
+                  Just OK -> newClient env to socket -- OK will be sent back by
+                                                     -- newClient after checking
+                                                     -- for permission
+                  x -> do send socket (Error "Bad handshake")
+                          errorPrint env (printf "Handshake signal response: %s"
+                                         (show x)))
 
 
 
@@ -68,38 +69,48 @@ newClient :: Environment
           -> To     -- ^ Target address (for bookkeeping)
           -> Socket -- ^ Connection
           -> IO ()
-newClient env to socket = whenM allowed . (`finally` cleanup) $ do
-      time <- makeTimestamp
-      stsc <- (spawn . P.Bounded . _maxChanSize . _config) env
-      withAsync (clientLoop env socket to stsc) $ \thread -> do
-            -- (Client waits until its entry is in the DB
-            -- before it starts working.)
-            let client = Client time thread stsc
-            proceed <- atomically $ do
-                  isNew <- not <$> isDsn env to
-                  when isNew (insertDsn env to client)
-                  return isNew
-            when proceed (wait thread)
+newClient env to socket = ifM allowed
+                              (send socket OK >> goClient)
+                              (send socket Ignore)
 
       where
 
-            allowed = atomically $ nodeRelationship env to >>= \case
-                  IsSelf -> do
-                        toIO env Debug (STDERR "Tried to launch client to self")
-                        return False
-                  IsDownstreamNeighbour -> do
-                        toIO env Debug (STDERR "Tried to launch client to already known node")
-                        return False
-                  IsUnrelated -> do
-                        isRoom <- isRoomIn env _downstream
-                        if not isRoom
-                              then do toIO env Debug (STDERR "No room for new client")
-                                      return False
-                              else return True
+      goClient = (`finally` cleanup) $ do
+            time <- makeTimestamp
+            stsc <- (spawn . P.Bounded . _maxChanSize . _config) env
+            withAsync (clientLoop env socket to stsc) $ \thread -> do
+                  -- (Client waits until its entry is in the DB
+                  -- before it starts working.)
+                  let client = Client time thread stsc
+                  proceed <- atomically $ do
+                        -- Double check whether the DSN is already known. Since
+                        -- this is in an STM block, it is *guaranteed* that
+                        -- nothing is overwritten.
+                        isNew <- not <$> isDsn env to
+                        when isNew (insertDsn env to client)
+                        return isNew
+                  when proceed (wait thread)
 
-            cleanup = do atomically (deleteDsn env to)
-                         timeout (_mediumTickRate (_config env))
-                                 (send socket (Normal ShuttingDown))
+      -- Check whether the client is allowed, and log the event accordingly
+      allowed = atomically $ nodeRelationship env to >>= \case
+            IsSelf -> do
+                  toIO env Debug (STDERR "Tried to launch client to self")
+                  return False
+            IsDownstreamNeighbour -> do
+                  toIO env Debug (STDERR "Tried to launch client to already known node")
+                  return False
+            IsUnrelated -> do
+                  isRoom <- isRoomIn env _downstream
+                  if not isRoom
+                        then do toIO env Debug (STDERR "No room for new client")
+                                return False
+                        else return True
+
+      -- Remove the DSN from the DB, and notify it of the event before
+      -- terminating the connection
+      cleanup = do atomically (deleteDsn env to)
+                   timeout (_mediumTickRate (_config env))
+                           (send socket (Normal ShuttingDown))
 
 
 
@@ -113,7 +124,7 @@ clientLoop :: Environment
            -> IO ()
 clientLoop env socket to stsc = do
       waitForDBEntry >>= \case
-            Nothing -> return ()
+            Nothing -> return () -- Timeout before DB entry appears
             Just () -> runEffect (P.fromInput input >-> signalH env socket to)
 
       where input = mconcat [ _pInput (_st1c env)
@@ -141,18 +152,17 @@ signalH :: (MonadIO io)
         -> Consumer NormalSignal io ()
 signalH env socket to = go where
       terminate = return ()
-      go = do signal <- await
-              request socket (Normal signal) >>= \case
-                    Just OK              -> ok           env to >> go
-                    Just PruneOK         -> pruneOK      env    >> terminate
-                    Just (Error e)       -> genericError env e  >> terminate
-                    Just Ignore          -> ignore       env    >> terminate
-                    Just Denied          -> denied       env    >> terminate
-                    Just Illegal         -> illegal      env    >> terminate
-                    Just DecodeError     -> decodeError  env    >> terminate
-                    Just Timeout         -> timeoutError env    >> terminate
-                    Just ConnectionClosed -> cClosed     env    >> terminate
-                    Nothing              -> noResponse   env    >> terminate
+      go = await >>= request socket . Normal >>= \case
+            Just OK              -> ok           env to >> go
+            Just PruneOK         -> pruneOK      env    >> terminate
+            Just (Error e)       -> genericError env e  >> terminate
+            Just Ignore          -> ignore       env    >> terminate
+            Just Denied          -> denied       env    >> terminate
+            Just Illegal         -> illegal      env    >> terminate
+            Just DecodeError     -> decodeError  env    >> terminate
+            Just Timeout         -> timeoutError env    >> terminate
+            Just ConnectionClosed -> cClosed     env    >> terminate
+            Nothing              -> noResponse   env    >> terminate
 
 
 

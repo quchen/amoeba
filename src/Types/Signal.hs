@@ -104,7 +104,7 @@ data ServerResponse =
       | PruneOK
 
         -- | Sent to node that tries to connect without being a registered
-        --   upstream neighbour
+        --   upstream neighbour.
       | Ignore
 
         -- | Signal OK, but can't be accepted for some reason. This is the

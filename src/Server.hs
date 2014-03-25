@@ -100,7 +100,10 @@ workerLdc :: Environment
           -> IO ()
 workerLdc env@(_ldc -> Just pChan) =
 
-      runEffect (input >-> dispatch >-> discard)
+      runEffect (input >-> dispatch >-> P.drain)
+                                        -- ^ Since there is no USN to send the
+                                        --   ServerResponse back to, discard
+                                        --   the answers to LDC signals.
 
       where input :: Producer NormalSignal IO ()
             input = P.fromInput (_pInput pChan)
@@ -110,16 +113,6 @@ workerLdc env@(_ldc -> Just pChan) =
                   EdgeRequest to edge  -> edgeBounceH env to edge
                   Flood tStamp fSignal -> floodSignalH env (tStamp, fSignal)
                   _else                -> return (Error "Bad LDC signal")
-
-            -- Eat up all incoming signals; this is the equivalent to the
-            -- 'respond' consumer in the ordinary worker, but in the LDC case
-            -- the communication is one-way.
-            --
-            -- This is a bit of a hack of course. The dispatch pipe above is
-            -- built from Producers, so their re-emitted server responses have
-            -- to be destroyed.
-            discard :: (Monad m) => Consumer a m r
-            discard = forever await
 
 workerLdc _ = return ()
 
@@ -175,7 +168,8 @@ specialH env from socket signal = case signal of
 illegal :: Environment
         -> String
         -> IO ServerResponse
-illegal env msg = (atomically . toIO env Debug . STDLOG) msg >> return Illegal
+illegal env msg = do (atomically . toIO env Debug . STDLOG) msg
+                     return Illegal
 
 
 
@@ -233,10 +227,6 @@ floodSignalH env tfSignal@(timestamp, fSignal) = do
 
 
 
-
-
-
-
 -- | Retrieve all STSC (server-to-single-client) "P.Output"s and concatenate
 --   them to a single broadcast channel.
 broadcastOutput :: Environment
@@ -281,11 +271,16 @@ shuttingDownH env from = atomically $ do
       -- NB: Cleanup of the USN DB happens when the worker shuts down
 
 
+
+-- | A USN wants to terminate the connection because it has too mans DSNs.
+--   Check whether this can be done without dropping the USN count below the
+--   minimum number of neighbours, and terminate the worker if this is the case.
 pruneH :: Environment
        -> IO ServerResponse
 pruneH env = atomically $ do
-      dbSize <- dbSize env _upstream
-      if dbSize > _minNeighbours (_config env)
+      usnSize <- dbSize env _upstream
+      let minN = _minNeighbours (_config env)
+      if usnSize > minN
             then
                   -- Send back a special "OK" signal that terminates the
                   -- connection
@@ -293,6 +288,7 @@ pruneH env = atomically $ do
             else
                   -- "OK" means "do not terminate the worker" here!
                   return OK
+
 
 
 -- | Bounce 'EdgeRequest's through the network in order to make new connections.
@@ -462,9 +458,9 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
 
             -- Build "bounce again from the beginning" signal. This is invoked
             -- if an EdgeRequest reaches the issuing node again.
-            bounceReset = let n = _bounces (_config env)
+            bounceReset = let b = _bounces (_config env)
                           in  void (P.send (_pOutput (_st1c env))
-                                           (buildSignal (HardBounce n)))
+                                           (buildSignal (HardBounce b)))
             -- TODO: Maybe swallowing the request in this case makes more sense.
             --       The node is spamming the network with requests anyway after
             --       all.
