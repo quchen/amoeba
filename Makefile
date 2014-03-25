@@ -7,15 +7,15 @@ MAIN_DRAW  = drawing
 
 # Directories
 SRC-D     = src
-MAIN-D    =$(SRC-D)/Main
+MAIN-D    = $(SRC-D)/Main
 DOC-D     = doc
 PACKAGE-D = $(shell find .cabal-sandbox/ -name "*packages.conf.d")
 
 
 # GHC Flags
 OPTIMIZE  = -O2 -threaded
-PROF      = -prof -auto-all -caf-all -threaded
-WARN      = -Wall -fno-warn-type-defaults -fno-warn-unused-do-bind -fwarn-tabs
+PROF      = -prof -auto-all -caf-all
+WARN      = -Wall -fno-warn-type-defaults -fno-warn-unused-do-bind -fwarn-tabs -fwarn-incomplete-uni-patterns
 PACKAGEDB = -no-user-package-db -package-db $(PACKAGE-D)
 
 
@@ -31,6 +31,7 @@ noop:
 	@echo "No target specified. Possible choices:"
 
 	@ # Taken from http://stackoverflow.com/a/9524878/1106679
+	@ # Display all build targets in this makefile
 	@make -qp | awk -F':' '/^[a-zA-Z0-9][^$$#\/\t=]*:([^=]|$$)/ {split($$1,A,/ /);for(i in A)print A[i]}'
 
 
@@ -115,7 +116,7 @@ doc :
 # HLint
 .PHONY : hlint
 hlint :
-	find $(SRC-D) -name "*.hs" | xargs $(HLINT) | $(PAGER)
+	find $(SRC-D) -name "*.hs" -print0 | xargs -0 $(HLINT) | $(PAGER)
 
 
 .PHONY : clean
