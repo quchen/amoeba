@@ -22,7 +22,6 @@ The current development stage is Alpha.
 
 Branch  | Status
 :-----: | :-----:
-stable  | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=stable)][travis]
 master  | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=master)][travis]
 develop | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=develop)][travis]
 
