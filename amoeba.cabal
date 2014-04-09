@@ -1,5 +1,5 @@
 name:                amoeba
-version:             0.0.0.201402221
+version:             0.0.0.201404091
 synopsis:            Decentralized network clsrc/ient and utilities to set it up and
                      investigate its behaviour
 description:         Amœba is a program for setting up a decentralized network.
