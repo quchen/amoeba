@@ -22,17 +22,18 @@ PACKAGE-D=$(shell find .cabal-sandbox/ -name "*packages.conf.d")
 
 # GHC flags
 PARALLEL_GHC=-j$(NUM_CORES)
-OPTIMIZE=-O2 -threaded $(PARALLEL_GHC)
+OPTIMIZE=-O2
 PROF=-prof -auto-all -caf-all
 WARN=-Wall -fno-warn-type-defaults -fno-warn-unused-do-bind -fwarn-tabs -fwarn-incomplete-uni-patterns
 PACKAGEDB=-no-user-package-db -package-db $(PACKAGE-D)
+THREADED=-threaded
 
 # Cabal flags
 PARALLEL_CABAL=-j$(NUM_CORES)
 
 # Executables
 CABAL=cabal
-GHC=ghc -i$(SRC-D) $(WARN) $(PACKAGEDB)
+GHC=ghc $(THREADED) $(PARALLEL_GHC) -i$(SRC-D) $(WARN) $(PACKAGEDB)
 HLINT=hlint --colour
 PAGER=less -R
 SHELL=bash
