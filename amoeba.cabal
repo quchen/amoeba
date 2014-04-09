@@ -46,7 +46,7 @@ library
                    ,   configurator          == 0.2.*
                    ,   containers            == 0.5.*
                    ,   exceptions            == 0.3.*
-                   ,   lens-family-core      == 1.0.*
+                   ,   lens                  == 4.1.*
                    ,   mtl                   == 2.1.*
                    ,   network               == 2.4.*
                    ,   network-simple        == 0.3.*
