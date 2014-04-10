@@ -72,7 +72,11 @@ janitor config fromPool output terminate = yellCatchall . forever $ do
               withAsync (terminationWatch terminate node)     $ \_terminator ->
                wait node
 
-      where handlers = [ Handler (\ThreadKilled -> return ()) ]
+      where
+            handlers = [ Handler asyncException ]
+            asyncException ThreadKilled = return ()
+            asyncException e = throwIO e
+
             yellCatchall = handle (\(SomeException e) ->
                              yell 41 ("Janitor crashed! Exception: " ++ show e))
 
