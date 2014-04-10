@@ -52,7 +52,7 @@ import qualified Network.Simple.TCP as N
 import qualified Network.Socket.ByteString as NSB
 import qualified Pipes.Binary as P
 import qualified Pipes.Parse as P
-import qualified Lens.Family.State.Strict as L
+import qualified Control.Lens.Zoom as L
 import Control.Monad.Catch (MonadCatch)
 
 import Data.Binary
