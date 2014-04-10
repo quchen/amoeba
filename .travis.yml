@@ -3,20 +3,20 @@ ghc: 7.6
 
 
 
-before_install:
-      - true "before_install"
+# before_install:
+#       - true "before_install"
 install:
       - make cabal-init
-before_script:
-      - true "before_script"
+# before_script:
+#       - true "before_script"
 script:
       - make fast
-after_success:
-      - true "after_success"
-after_failure:
-      - true "after_failure"
-after_script:
-      - true "after_script"
+# after_success:
+#       - true "after_success"
+# after_failure:
+#       - true "after_failure"
+# after_script:
+#       - true "after_script"
 
 
 

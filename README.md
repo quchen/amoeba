@@ -22,7 +22,6 @@ The current development stage is Alpha.
 
 Branch  | Status
 :-----: | :-----:
-stable  | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=stable)][travis]
 master  | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=master)][travis]
 develop | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?branch=develop)][travis]
 
@@ -337,13 +336,19 @@ inherently require unknown nodes to establish connections.
 
 These may help reading the source comments:
 
-Abbreviation | Meaning
+        Name | Meaning
 -----------: | -----------------------------------------------------------------
-          _x | Accessor functions that don't do any computation otherwise
+          _* | Accessor functions that don't do any computation otherwise.
+          *H | Handler. Signals or commands are delegated to these for processing.
          BSS | Bootstrap server
-         DSN | Downstream node, i.e. a neighbouring node the current sends commands do.
+         DSN | Downstream node, i.e. a neighbouring node the current sends commands do. (S, T, U in the picture above.)
          LDC | Local direct connection. Used by the node pool to send signals directly to its nodes instead of taking a detour over the network.
         ST1C | Server to one (unspecified/arbitrary) client channel
          STC | Server to client channel
         STSC | Server to specific client channel
-         USN | Upstream node, i.e. a neighbouring node the current gets commands sent by.
+         USN | Upstream node, i.e. a neighbouring node the current gets commands sent by. (A, B, C in the picture above.)
+
+Sometimes, I like to use capital letters at the end of identifiers to tag
+functions with a purpose. This is usually local to a single module. If you see
+suspiciously looking names like `fooX` or `barL`, have a look at the module's
+head comment.
