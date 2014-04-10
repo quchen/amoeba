@@ -68,7 +68,7 @@ cabal-init:
 
 
 # Release quality build
-RELEASE_FLAGS = $(OPTIMIZE)
+RELEASE_FLAGS=$(OPTIMIZE)
 .PHONY : release
 release :
 	@echo -e "\e[32mSingle client\e[0m"
@@ -82,7 +82,7 @@ release :
 
 
 # Fully optimize with profiling support
-PROF_FLAGS = $(OPTIMIZE) $(PROF)
+PROF_FLAGS=$(OPTIMIZE) $(PROF)
 .PHONY : prof
 prof :
 	@echo -e "\e[32mSingle client\e[0m"
@@ -96,7 +96,7 @@ prof :
 
 
 # Minimize compilation time
-FAST_FLAGS =
+FAST_FLAGS=
 .PHONY : fast
 fast :
 	@echo -e "\e[32mSingle client\e[0m"
@@ -111,7 +111,7 @@ fast :
 
 
 # Typecheck and warn, but don't link
-NOLINK_FLAGS = -no-link
+NOLINK_FLAGS=-no-link
 .PHONY : nolink
 nolink :
 	@echo -e "\e[32mSingle client\e[0m"
