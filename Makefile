@@ -59,8 +59,19 @@ noop:
 
 # Set cabal/sandbox up
 .PHONY : cabal-init
-cabal-init:
+cabal-init : cabal-update cabal-noupdate
+
+
+
+# Done automatically by Travis, provided for manual calls to cabal-init
+.PHONY : cabal-update
+cabal-update :
 	$(CABAL) update
+
+
+
+.PHONY : cabal-noupdate
+cabal-noupdate :
 	$(CABAL) sandbox init
 	$(CABAL) install $(PARALLEL_CABAL) --only-dependencies --ghc-options=-w
 	$(CABAL) configure
