@@ -1,29 +1,49 @@
+################################################################################
+###  CONFIGURATION  ############################################################
+################################################################################
+
+
+
+# Environment
+NUM_CORES=$(shell grep -c ^processor /proc/cpuinfo)
+
 # Executable filenames
-MAIN_NODE  = amoeba
-MAIN_MULTI = amoeba_multi
-MAIN_BS    = bootstrap
-MAIN_DRAW  = drawing
+MAIN_NODE=amoeba
+MAIN_MULTI=amoeba_multi
+MAIN_BS=bootstrap
+MAIN_DRAW=drawing
 
 
 # Directories
-SRC-D     = src
-MAIN-D    = $(SRC-D)/Main
-DOC-D     = doc
-PACKAGE-D = $(shell find .cabal-sandbox/ -name "*packages.conf.d")
+SRC-D=src
+MAIN-D=$(SRC-D)/Main
+DOC-D=doc
+PACKAGE-D=$(shell find .cabal-sandbox/ -name "*packages.conf.d")
 
+# GHC flags
+PARALLEL_GHC=-j$(NUM_CORES)
+OPTIMIZE=-O2
+PROF=-prof -auto-all -caf-all
+WARN=-Wall -fno-warn-type-defaults -fno-warn-unused-do-bind -fwarn-tabs -fwarn-incomplete-uni-patterns
+PACKAGEDB=-no-user-package-db -package-db $(PACKAGE-D)
+THREADED=-threaded
 
-# GHC Flags
-OPTIMIZE  = -O2 -threaded
-PROF      = -prof -auto-all -caf-all
-WARN      = -Wall -fno-warn-type-defaults -fno-warn-unused-do-bind -fwarn-tabs -fwarn-incomplete-uni-patterns
-PACKAGEDB = -no-user-package-db -package-db $(PACKAGE-D)
-
+# Cabal flags
+PARALLEL_CABAL=-j$(NUM_CORES)
 
 # Executables
-GHC   = ghc -i$(SRC-D) $(WARN) $(PACKAGEDB)
-HLINT = hlint --colour
-PAGER = less -R
-SHELL = bash
+CABAL=cabal
+GHC=ghc $(THREADED) $(PARALLEL_GHC) -i$(SRC-D) $(WARN) $(PACKAGEDB)
+HLINT=hlint --colour
+PAGER=less -R
+SHELL=bash
+
+
+
+################################################################################
+### SCRIPT - here be dragons  ##################################################
+################################################################################
+
 
 
 .PHONY : noop
@@ -38,18 +58,28 @@ noop:
 
 
 # Set cabal/sandbox up
-NUM_CORES=$(shell grep -c ^processor /proc/cpuinfo)
 .PHONY : cabal-init
-cabal-init:
-	cabal update
-	cabal sandbox init
-	cabal install -j$(NUM_CORES) --only-dependencies --ghc-options=-w
-	cabal configure
+cabal-init : cabal-update cabal-noupdate
+
+
+
+# Done automatically by Travis, provided for manual calls to cabal-init
+.PHONY : cabal-update
+cabal-update :
+	$(CABAL) update
+
+
+
+.PHONY : cabal-noupdate
+cabal-noupdate :
+	$(CABAL) sandbox init
+	$(CABAL) install $(PARALLEL_CABAL) --only-dependencies --ghc-options=-w
+	$(CABAL) configure
 
 
 
 # Release quality build
-RELEASE_FLAGS = $(OPTIMIZE)
+RELEASE_FLAGS=$(OPTIMIZE)
 .PHONY : release
 release :
 	@echo -e "\e[32mSingle client\e[0m"
@@ -63,7 +93,7 @@ release :
 
 
 # Fully optimize with profiling support
-PROF_FLAGS = $(OPTIMIZE) $(PROF)
+PROF_FLAGS=$(OPTIMIZE) $(PROF)
 .PHONY : prof
 prof :
 	@echo -e "\e[32mSingle client\e[0m"
@@ -77,7 +107,7 @@ prof :
 
 
 # Minimize compilation time
-FAST_FLAGS =
+FAST_FLAGS=
 .PHONY : fast
 fast :
 	@echo -e "\e[32mSingle client\e[0m"
@@ -92,7 +122,7 @@ fast :
 
 
 # Typecheck and warn, but don't link
-NOLINK_FLAGS = -no-link
+NOLINK_FLAGS=-no-link
 .PHONY : nolink
 nolink :
 	@echo -e "\e[32mSingle client\e[0m"

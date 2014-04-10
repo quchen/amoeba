@@ -2,6 +2,11 @@
 --   module is intended to be used qualified, e.g. as \"Default\" to make nice
 --   names such as \"Default.nodeConfig\".
 
+{-# LANGUAGE NumDecimals #-} -- Added in GHC 7.8: Specify integer literals using
+                             -- exponential notation, e.g.
+                             -- >>> 1e3 :: Int
+                             -- >   1000
+
 module Config.Default where
 
 
@@ -21,9 +26,9 @@ nodeConfig = NodeConfig {
       , _bounces           = 2
       , _acceptP           = 0.5
       , _maxSoftBounces    = 10
-      , _shortTickRate     = 1 * 10^5
-      , _mediumTickRate    = 3 * 10^5
-      , _longTickRate      = 10^6
+      , _shortTickRate     = 1e5
+      , _mediumTickRate    = 3e5
+      , _longTickRate      = 1e6
       , _poolTimeout       = 5
       , _verbosity         = Default
       , _bootstrapServers  = Set.empty
@@ -50,7 +55,7 @@ multiConfig = MultiConfig {
 
 drawingConfig :: DrawingConfig
 drawingConfig = DrawingConfig {
-        _drawEvery         = 10^7
+        _drawEvery         = 1e7
       , _drawFilename      = "network_graph.dot"
       , _drawTimeout       = 33 -- 33 seconds = 3 drawing attempts before timeout
       , _drawingNodeConfig = nodeConfig
@@ -63,7 +68,7 @@ drawingConfig = DrawingConfig {
 bootstrapConfig :: BootstrapConfig
 bootstrapConfig = BootstrapConfig {
         _restartEvery         = 5
-      , _restartMinimumPeriod = 10^6
+      , _restartMinimumPeriod = 1e6
       , _bootstrapNodeConfig  = nodeConfig
       , _bootstrapPoolConfig  = poolConfig
       }

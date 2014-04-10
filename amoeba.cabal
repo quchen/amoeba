@@ -1,5 +1,5 @@
 name:                amoeba
-version:             0.0.0.201402221
+version:             0.0.0.201404091
 synopsis:            Decentralized network clsrc/ient and utilities to set it up and
                      investigate its behaviour
 description:         Amœba is a program for setting up a decentralized network.
@@ -16,7 +16,7 @@ category:            Cloud, Distributed Computing, Network
 build-type:          Simple
 cabal-version:       >=1.10
 Stability:           alpha
-Tested-With:         GHC == 7.6.3
+Tested-With:         GHC == 7.8.1
 extra-source-files:  BRANCHING.md
                      DIFFICULTIES.md
                      LICENCE.md
@@ -40,7 +40,7 @@ library
       default-language: Haskell2010
 
       build-depends:   async                 == 2.0.*
-                   ,   base                  == 4.6.*
+                   ,   base                  == 4.7.*
                    ,   binary                == 0.7.*
                    ,   bytestring            == 0.10.*
                    ,   configurator          == 0.2.*
