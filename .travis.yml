@@ -1,22 +1,13 @@
 language: haskell
-ghc: 7.6
+ghc: 7.8
 
 
 
-# before_install:
-#       - true "before_install"
 install:
-      - make cabal-init
-# before_script:
-#       - true "before_script"
+      # Travis automatically calls cabal update
+      - make cabal-noupcate
 script:
       - make fast
-# after_success:
-#       - true "after_success"
-# after_failure:
-#       - true "after_failure"
-# after_script:
-#       - true "after_script"
 
 
 
