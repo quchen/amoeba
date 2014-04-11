@@ -140,31 +140,17 @@ drawingModifier' = (fmap mconcat . T.sequenceA) mods where
 
 
 
--- | Converts a field and a value to an 'OptionModifier' to set that field to
+defaultValue :: Monoid m => Parser m
+defaultValue = pure mempty
+
+
+
+-- | Convert a field and a value to an 'OptionModifier' to set that field to
 --   that value.
 toSetter :: ASetter a a c b  -- ^ Lens to a field
          -> b                -- ^ New value of the field
          -> OptionModifier a -- ^ 'OptionModifier' to apply the lens
 toSetter l x = OptionModifier (l .~ x)
-
-
-
--- | Like 'toSetter', but uses a custom operator instead of '.~'. Used for
---   'bootstrapServer' for example.
---
---   > toSetter ≡ toModifier (.~)
-toModifier :: (op -> b -> a -> a) -- ^ Lens to be used
-           -> op                  -- ^ Operator to be used instead of '.~',
-                                  --   e.g. '<>~' for appending instead of
-                                  --   setting
-           -> b                   -- ^ Second operand
-           -> OptionModifier a
-toModifier operator l x = OptionModifier (l `operator` x)
-
-
-
-defaultValue :: Monoid m => Parser m
-defaultValue = pure mempty
 
 
 
@@ -390,12 +376,13 @@ verbosity = v <|> defaultValue where
 -- | Append arg parsed BSS address to config
 bootstrapServer :: Parser (OptionModifier Ty.NodeConfig)
 bootstrapServer = v <|> defaultValue where
-      v = toModifier (<>~) L.bootstrapServers <$> (nullOption . mconcat)
+      v = appendBSS <$> (nullOption . mconcat)
             [ reader  readAddress
             , long    "bootstrap"
             , metavar "(hostname)"
             , help    "Bootstrap server address"
             ]
+      appendBSS x = OptionModifier (L.bootstrapServers <>~ x)
 
 
 
