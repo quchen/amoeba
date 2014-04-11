@@ -139,9 +139,13 @@ nolink :
 
 # Documentation
 .PHONY : doc
-doc :
+doc : haddock
 	cat $(DOC-D)/information_flow.dot | cpp | dot -Tpng > $(DOC-D)/information_flow.png
 	cat $(DOC-D)/network.dot | cpp | neato -Tpng > $(DOC-D)/network.png
+
+.PHONY : haddock
+haddock :
+	cabal haddock --internal --hyperlink-source
 
 
 # HLint
