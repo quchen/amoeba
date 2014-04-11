@@ -5,6 +5,7 @@
 --   make nice names such as \"Verify.nodeArgs\".
 
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 module Config.Verify (
@@ -20,8 +21,10 @@ import Control.Exception
 import Data.Typeable
 import Control.Monad
 
+import qualified Control.Lens as L
+import qualified Types.Lens as L
+
 import Types.Config
-import Config.OptionModifier
 
 
 
@@ -37,6 +40,7 @@ instance Exception ConfigError
 
 
 
+-- | Verify integrity of a 'NodeConfig'.
 node :: NodeConfig -> IO ()
 node config = sequence_ [portRange, tickRates, poolTimeout, poolSize]
 
@@ -67,15 +71,26 @@ node config = sequence_ [portRange, tickRates, poolTimeout, poolSize]
 
 
 
+-- | Verify integrity of a configuration that contains a 'NodeConfig'.
+containedNode :: L.HasNodeConfig nodeConfig NodeConfig
+              => nodeConfig
+              -> IO ()
+containedNode = node . L.view L.nodeConfig
+
+
+
+-- | Verify integrity of a 'MultiConfig'.
 multi :: MultiConfig -> IO ()
-multi config = node (_nodeConfig config)
+multi = containedNode
 
 
 
+-- | Verify integrity of a 'BootstrapConfig'.
 bootstrap :: BootstrapConfig -> IO ()
-bootstrap config = node (_nodeConfig config)
+bootstrap = containedNode
 
 
 
+-- | Verify integrity of a 'DrawingConfig'.
 drawing :: DrawingConfig -> IO ()
-drawing config = node (_nodeConfig config)
+drawing = containedNode

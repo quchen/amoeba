@@ -25,7 +25,10 @@ import NodePool
 import Utilities
 import Types
 import qualified Config.Getter as Config
-import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
+
+import qualified Types.Lens as L
+import Control.Lens.Operators
+import qualified Control.Lens as L
 
 
 
@@ -39,20 +42,22 @@ bootstrapServerMain = do
 
       config <- Config.bootstrap
 
-      prepareOutputBuffers
-      (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
 
+      prepareOutputBuffers
+      (output, _) <- outputThread (config ^. L.nodeConfig . L.maxChanSize)
+
+      let poolSize = config ^. L.poolConfig . L.poolSize
       ldc <- newChan
       terminate <- newEmptyMVar
-      nodePool (_poolSize (_poolConfig config))
-               (_nodeConfig config)
+      nodePool poolSize
+               (config ^. L.nodeConfig)
                ldc
                output
                terminate
 
       toIO' output (STDLOG (printf "Starting bootstrap server with %d nodes"
-                                   (_poolSize (_poolConfig config))))
-      (_rthread, restart) <- restarter (_restartMinimumPeriod config)
+                                   poolSize))
+      (_rthread, restart) <- restarter (config ^. L.restartMinimumPeriod)
                                        terminate
       bootstrapServer config output ldc restart
 
@@ -92,7 +97,7 @@ bootstrapServer :: BootstrapConfig
                 -> IO ()
 bootstrapServer config ioq ldc restart =
       PN.listen (PN.Host "127.0.0.1")
-                (show (_serverPort (_nodeConfig config)))
+                (config ^. L.nodeConfig ^. L.serverPort . L.to show)
                 (\(sock, addr) -> do
                       toIO' ioq (STDLOG (printf "Bootstrap server listening on %s"
                                                 (show addr)))
@@ -112,20 +117,22 @@ bssLoop
       -> IO r
 bssLoop config ioq counter' serverSock ldc restartTrigger = go counter' where
 
+
+      -- Number of times this loop runs with simplified settings
+      -- to help the node pool buildup.
+      preRestart = (*) (config ^. L.poolConfig . L.poolSize)
+                       (config ^. L.nodeConfig . L.maxNeighbours)
+
       go !counter = do
 
             let
-                -- Number of times this loop runs with simplified settings
-                -- to help the node pool buildup.
-                preRestart = _poolSize (_poolConfig config)
-                             *
-                             _maxNeighbours (_nodeConfig config)
 
                 -- The first couple of new nodes should not bounce, as there are
                 -- not enough nodes to relay the requests (hence the queues fill
                 -- up and the nodes block indefinitely.
-                nodeConfig | counter <= preRestart = (_nodeConfig config) { _bounces = 0 }
-                           | otherwise             = _nodeConfig config
+                nodeConfig = config ^. L.nodeConfig & if counter <= preRestart
+                                                            then L.bounces .~ 0
+                                                            else id
 
                 -- If nodes are restarted when the server goes up there are
                 -- multi-connections to non-existing nodes, and the network dies off

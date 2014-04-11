@@ -29,7 +29,11 @@ import Utilities
 import Types
 import NodePool
 import qualified Config.Getter as Config
-import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
+
+
+import qualified Types.Lens as L
+import Control.Lens.Operators
+import qualified Control.Lens as L
 
 
 
@@ -45,18 +49,18 @@ drawingServerMain = do
       config <- Config.drawing
 
       prepareOutputBuffers
-      (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
+      (output, _) <- outputThread (config ^. L.nodeConfig . L.maxChanSize)
 
+      let poolSize = config ^. L.poolConfig . L.poolSize
       ldc <- newChan
       terminate <- newEmptyMVar -- TODO: Never actually used. Refactor node pool?
-      nodePool (_poolSize (_poolConfig config))
-               (_nodeConfig config)
+      nodePool poolSize
+               (config ^. L.nodeConfig)
                ldc
                output
                terminate
 
-      printf "Starting drawing server with %d nodes\n"
-             (_poolSize (_poolConfig config))
+      printf "Starting drawing server with %d nodes\n"poolSize
       drawingServer config output ldc
 
 
@@ -68,14 +72,14 @@ drawingServer :: DrawingConfig
               -> IO ()
 drawingServer config ioq ldc = do
       -- Server to graph worker
-      stg <- spawn (P.Bounded (_maxChanSize (_nodeConfig config)))
+      stg <- spawn (config ^. L.nodeConfig . L.maxChanSize . L.to P.Bounded)
       forkIO (graphWorker config ioq stg)
 
-      let port = _serverPort (_nodeConfig config)
+      let port = config ^. L.nodeConfig . L.serverPort
       N.listen (N.Host "127.0.0.1") (show port) $ \(socket, _addr) -> do
             let selfTo = To (Node "127.0.0.1" port)
             forkIO (networkAsker config
-                                 (_poolSize (_poolConfig config))
+                                 (config ^. L.poolConfig . L.poolSize)
                                  selfTo
                                  ldc)
             incomingLoop ioq stg socket
@@ -141,7 +145,7 @@ graphDrawer config ioq t'graph = (initialDelay >>) . forever $ do
             -- its job first. If this isn't done, the drawer might draw the old
             -- state, while pretty much at the same time the new network
             -- answers come in.
-            initialDelay = delay (_longTickRate (_nodeConfig config))
+            initialDelay = delay (config ^. L.nodeConfig . L.longTickRate)
 
 
 

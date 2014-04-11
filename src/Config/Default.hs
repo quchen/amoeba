@@ -38,6 +38,7 @@ nodeConfig = NodeConfig {
 
 
 
+-- | Default node pool configuration
 poolConfig :: PoolConfig
 poolConfig = PoolConfig {
 
@@ -46,21 +47,24 @@ poolConfig = PoolConfig {
       }
 
 
+
+-- | Default multi-node client configuration
 multiConfig :: MultiConfig
 multiConfig = MultiConfig {
-        _multiNodeConfig = nodeConfig
-      , _multiPoolConfig = poolConfig
+        _multiconfigNodeConfig = nodeConfig
+      , _multiconfigPoolConfig = poolConfig
       }
 
 
 
+-- | Default drawing server configuration
 drawingConfig :: DrawingConfig
 drawingConfig = DrawingConfig {
         _drawEvery         = 1e7
       , _drawFilename      = "network_graph.dot"
       , _drawTimeout       = 33 -- 33 seconds = 3 drawing attempts before timeout
-      , _drawingNodeConfig = nodeConfig
-      , _drawingPoolConfig = poolConfig
+      , _drawingconfigNodeConfig = nodeConfig
+      , _drawingconfigPoolConfig = poolConfig
       }
 
 
@@ -70,6 +74,6 @@ bootstrapConfig :: BootstrapConfig
 bootstrapConfig = BootstrapConfig {
         _restartEvery         = 5
       , _restartMinimumPeriod = 1e6
-      , _bootstrapNodeConfig  = nodeConfig
-      , _bootstrapPoolConfig  = poolConfig
+      , _bootstrapconfigNodeConfig  = nodeConfig
+      , _bootstrapconfigPoolConfig  = poolConfig
       }

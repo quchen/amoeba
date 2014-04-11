@@ -143,7 +143,7 @@ data NodeConfig = NodeConfig {
 
 
 
--- ^ Node pool configuration
+-- | Node pool configuration
 data PoolConfig = PoolConfig {
 
         _poolSize :: Int     -- ^ Number of nodes in the server's pool
@@ -152,18 +152,21 @@ data PoolConfig = PoolConfig {
 
 
 
--- ^ Configuration of the bootstrap server
+-- | Configuration of the bootstrap server
 data BootstrapConfig = BootstrapConfig {
 
-        _restartEvery :: Int -- ^ Every n bootstrap requests one client is
+        _bootstrapconfigNodeConfig :: NodeConfig
+        -- Lens will create 'nodeConfig' out of this, stripped of the lowercase
+        -- prefix.
+
+      , _bootstrapconfigPoolConfig :: PoolConfig
+        -- dito
+
+      , _restartEvery :: Int -- ^ Every n bootstrap requests one client is
                              --   restarted at random
 
       , _restartMinimumPeriod :: Int -- ^ Limit the maximal frequency at which
                                      --   restarts can happen
-
-      , _bootstrapNodeConfig :: NodeConfig
-
-      , _bootstrapPoolConfig :: PoolConfig
 
       } deriving (Show)
 
@@ -172,9 +175,12 @@ data BootstrapConfig = BootstrapConfig {
 -- | Multi client config
 data MultiConfig = MultiConfig {
 
-        _multiNodeConfig :: NodeConfig
+        _multiconfigNodeConfig :: NodeConfig
+        -- Lens will create 'nodeConfig' out of this, stripped of the lowercase
+        -- prefix.
 
-      , _multiPoolConfig :: PoolConfig
+      , _multiconfigPoolConfig :: PoolConfig
+        -- dito
 
       } deriving (Show)
 
@@ -183,16 +189,19 @@ data MultiConfig = MultiConfig {
 -- | Drawing server config
 data DrawingConfig = DrawingConfig {
 
-        _drawEvery         :: Int -- ^ Interval for sending out neighbour list
-                                  --   requests and drawing the currently known
-                                  --   state of the network
+        _drawingconfigNodeConfig :: NodeConfig
+        -- Lens will create 'nodeConfig' out of this, stripped of the lowercase
+        -- prefix.
 
-      , _drawFilename      :: FilePath -- ^ Filename for the .dot file
+      , _drawingconfigPoolConfig :: PoolConfig
+        -- dito
 
-      , _drawTimeout       :: Double
+      , _drawEvery :: Int -- ^ Interval for sending out neighbour list
+                          --   requests and drawing the currently known
+                          --   state of the network
 
-      , _drawingNodeConfig :: NodeConfig
+      , _drawFilename :: FilePath -- ^ Filename for the .dot file
 
-      , _drawingPoolConfig :: PoolConfig
+      , _drawTimeout :: Double
 
       } deriving (Show)
