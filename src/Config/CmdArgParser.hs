@@ -20,7 +20,10 @@ import qualified Data.Traversable as T
 import Data.Char (toLower)
 import Text.Read (readEither)
 
+import Control.Lens
+
 import qualified Types as Ty
+import qualified Types.Lens as L
 import Config.OptionModifier
 import qualified Config.AddressParser as AddressParser
 
@@ -150,7 +153,7 @@ port = v <|> defaultValue where
             , metavar "PORT"
             , help    "Server port"
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._serverPort = x })
+      toModifier x = OptionModifier (L.serverPort .~ x)
 
 
 
@@ -163,7 +166,7 @@ restartEvery = v <|> defaultValue where
             , help    "Restart a random pool node every n new nodes."
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._restartEvery = x })
+      toModifier x = OptionModifier (L.restartEvery .~ x)
 
 
 
@@ -178,7 +181,7 @@ drawingInterval = v <|> defaultValue where
                       \ and sending out neighbour information requests."
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._drawEvery = x })
+      toModifier x = OptionModifier (L.drawEvery .~ x)
 
 
 
@@ -192,7 +195,7 @@ drawingTimeout = v <|> defaultValue where
                       \ drawing server"
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._drawTimeout = x })
+      toModifier x = OptionModifier (L.drawTimeout .~ x)
 
 
 
@@ -203,7 +206,7 @@ drawingFilename = v <|> defaultValue where
             , metavar "(filename)"
             , help    "File to write the network data to"
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._drawFilename = x })
+      toModifier x = OptionModifier (L.drawFilename .~ x)
 
 
 
@@ -218,7 +221,7 @@ restartMinimumPeriod = v <|> defaultValue where
                       \ already.)"
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._restartMinimumPeriod = x })
+      toModifier x = OptionModifier (L.restartMinimumPeriod .~ x)
 
 
 
@@ -231,7 +234,7 @@ poolSize = v <|> defaultValue where
             , metavar "(Int > 0)"
             , help    "Number of nodes in the pool"
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._poolSize = x })
+      toModifier x = OptionModifier (L.poolSize .~ x)
 
 
 
@@ -244,7 +247,7 @@ minNeighbours = v <|> defaultValue where
             , help    "Minimum amount of neighbours (up-/downstream\
                       \ separate)"
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._minNeighbours = x })
+      toModifier x = OptionModifier (L.minNeighbours .~ x)
 
 
 
@@ -257,7 +260,7 @@ maxNeighbours = v <|> defaultValue where
             , help    "Maximum amount of neighbours (up-/downstream\
                       \ separate)"
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._maxNeighbours = x })
+      toModifier x = OptionModifier (L.maxNeighbours .~ x)
 
 
 maxChanSize :: Parser (OptionModifier Ty.NodeConfig)
@@ -269,7 +272,7 @@ maxChanSize = v <|> defaultValue where
             , help    "Maximum communication channel size"
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._maxChanSize = x })
+      toModifier x = OptionModifier (L.maxChanSize .~ x)
 
 
 floodCacheSize :: Parser (OptionModifier Ty.NodeConfig)
@@ -281,7 +284,7 @@ floodCacheSize = v <|> defaultValue where
             , help    "Number of past flood messages to cache"
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._floodMessageCache = x })
+      toModifier x = OptionModifier (L.floodMessageCache .~ x)
 
 
 bounces :: Parser (OptionModifier Ty.NodeConfig)
@@ -293,7 +296,7 @@ bounces = v <|> defaultValue where
             , help    "Minimum edge search hard bounces"
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._bounces = x })
+      toModifier x = OptionModifier (L.bounces .~ x)
 
 
 maxSoftBounces :: Parser (OptionModifier Ty.NodeConfig)
@@ -305,7 +308,7 @@ maxSoftBounces = v <|> defaultValue where
             , help    "Maximum edge search soft bounces"
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._maxSoftBounces = x })
+      toModifier x = OptionModifier (L.maxSoftBounces .~ x)
 
 
 acceptP :: Parser (OptionModifier Ty.NodeConfig)
@@ -317,7 +320,7 @@ acceptP = v <|> defaultValue where
             , help    "Edge request soft bounce acceptance probability"
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._acceptP = x })
+      toModifier x = OptionModifier (L.acceptP .~ x)
 
 
 shortTickRate :: Parser (OptionModifier Ty.NodeConfig)
@@ -329,7 +332,7 @@ shortTickRate = v <|> defaultValue where
             , help    "Tick rate of short loops"
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._shortTickRate = x })
+      toModifier x = OptionModifier (L.shortTickRate .~ x)
 
 
 mediumTickRate :: Parser (OptionModifier Ty.NodeConfig)
@@ -341,7 +344,7 @@ mediumTickRate = v <|> defaultValue where
             , help    "Tick rate of medium loops"
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._mediumTickRate = x })
+      toModifier x = OptionModifier (L.mediumTickRate .~ x)
 
 
 longTickRate :: Parser (OptionModifier Ty.NodeConfig)
@@ -353,7 +356,7 @@ longTickRate = v <|> defaultValue where
             , help    "Tick rate of long loops"
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._longTickRate = x })
+      toModifier x = OptionModifier (L.longTickRate .~ x)
 
 
 poolTimeout :: Parser (OptionModifier Ty.NodeConfig)
@@ -365,7 +368,7 @@ poolTimeout = v <|> defaultValue where
             , help    "Timeout for removal of nodes from the USN/DSN pool"
             , hidden
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._poolTimeout = x })
+      toModifier x = OptionModifier (L.poolTimeout .~ x)
 
 
 verbosity :: Parser (OptionModifier Ty.NodeConfig)
@@ -376,7 +379,7 @@ verbosity = v <|> defaultValue where
             , metavar "(mute|quiet|default|debug|chatty)"
             , help    "Verbosity level, increasing from left to right"
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._verbosity = x })
+      toModifier x = OptionModifier (L.verbosity .~ x)
 
 
 
@@ -388,10 +391,7 @@ bootstrapServer = v <|> defaultValue where
             , metavar "(hostname)"
             , help    "Bootstrap server address"
             ]
-      toModifier x = OptionModifier (\c -> c { Ty._bootstrapServers = x <> Ty._bootstrapServers c })
-
-      -- Lens version is a lot prettier:
-      -- toModifier x = OptionModifier (bootstrapServers <>~ x)
+      toModifier x = OptionModifier (L.bootstrapServers <>~ x)
 
 
 
