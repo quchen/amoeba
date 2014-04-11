@@ -140,6 +140,29 @@ drawingModifier' = (fmap mconcat . T.sequenceA) mods where
 
 
 
+-- | Converts a field and a value to an 'OptionModifier' to set that field to
+--   that value.
+toSetter :: ASetter a a c b  -- ^ Lens to a field
+         -> b                -- ^ New value of the field
+         -> OptionModifier a -- ^ 'OptionModifier' to apply the lens
+toSetter l x = OptionModifier (l .~ x)
+
+
+
+-- | Like 'toSetter', but uses a custom operator instead of '.~'. Used for
+--   'bootstrapServer' for example.
+--
+--   > toSetter ≡ toModifier (.~)
+toModifier :: (op -> b -> a -> a) -- ^ Lens to be used
+           -> op                  -- ^ Operator to be used instead of '.~',
+                                  --   e.g. '<>~' for appending instead of
+                                  --   setting
+           -> b                   -- ^ Second operand
+           -> OptionModifier a
+toModifier operator l x = OptionModifier (l `operator` x)
+
+
+
 defaultValue :: Monoid m => Parser m
 defaultValue = pure mempty
 
@@ -147,33 +170,31 @@ defaultValue = pure mempty
 
 port :: Parser (OptionModifier Ty.NodeConfig)
 port = v <|> defaultValue where
-      v = toModifier <$> (option . mconcat)
+      v = toSetter L.serverPort <$> (option . mconcat)
             [ long    "port"
             , short   'p'
             , metavar "PORT"
             , help    "Server port"
             ]
-      toModifier x = OptionModifier (L.serverPort .~ x)
 
 
 
 restartEvery :: Parser (OptionModifier Ty.BootstrapConfig)
 restartEvery = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.restartEvery <$> (nullOption . mconcat)
             [ reader  positive
             , long    "restart-every"
             , metavar "(Int > 0)"
             , help    "Restart a random pool node every n new nodes."
             , hidden
             ]
-      toModifier x = OptionModifier (L.restartEvery .~ x)
 
 
 
 
 drawingInterval :: Parser (OptionModifier Ty.DrawingConfig)
 drawingInterval = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.drawEvery <$> (nullOption . mconcat)
             [ reader  positive
             , long    "draw-every"
             , metavar "[ms]"
@@ -181,13 +202,12 @@ drawingInterval = v <|> defaultValue where
                       \ and sending out neighbour information requests."
             , hidden
             ]
-      toModifier x = OptionModifier (L.drawEvery .~ x)
 
 
 
 drawingTimeout :: Parser (OptionModifier Ty.DrawingConfig)
 drawingTimeout = v <|> defaultValue where
-      v = toModifier . fromIntegral <$> (nullOption . mconcat)
+      v = toSetter L.drawTimeout . fromIntegral <$> (nullOption . mconcat)
             [ reader  positive
             , long    "draw-timeout"
             , metavar "[s]"
@@ -195,24 +215,22 @@ drawingTimeout = v <|> defaultValue where
                       \ drawing server"
             , hidden
             ]
-      toModifier x = OptionModifier (L.drawTimeout .~ x)
 
 
 
 drawingFilename :: Parser (OptionModifier Ty.DrawingConfig)
 drawingFilename = v <|> defaultValue where
-      v = toModifier <$> (strOption . mconcat)
+      v = toSetter L.drawFilename <$> (strOption . mconcat)
             [ long    "drawing-filename"
             , metavar "(filename)"
             , help    "File to write the network data to"
             ]
-      toModifier x = OptionModifier (L.drawFilename .~ x)
 
 
 
 restartMinimumPeriod :: Parser (OptionModifier Ty.BootstrapConfig)
 restartMinimumPeriod = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.restartMinimumPeriod <$> (nullOption . mconcat)
             [ reader  positive
             , long    "restart-minperiod"
             , metavar "[ms]"
@@ -221,177 +239,163 @@ restartMinimumPeriod = v <|> defaultValue where
                       \ already.)"
             , hidden
             ]
-      toModifier x = OptionModifier (L.restartMinimumPeriod .~ x)
 
 
 
 poolSize :: Parser (OptionModifier Ty.PoolConfig)
 poolSize = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.poolSize <$> (nullOption . mconcat)
             [ reader  positive
             , long    "poolsize"
             , short   'n'
             , metavar "(Int > 0)"
             , help    "Number of nodes in the pool"
             ]
-      toModifier x = OptionModifier (L.poolSize .~ x)
 
 
 
 minNeighbours :: Parser (OptionModifier Ty.NodeConfig)
 minNeighbours = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.minNeighbours <$> (nullOption . mconcat)
             [ reader  positive
             , long    "minn"
             , metavar "(Int > 0)"
             , help    "Minimum amount of neighbours (up-/downstream\
                       \ separate)"
             ]
-      toModifier x = OptionModifier (L.minNeighbours .~ x)
 
 
 
 maxNeighbours :: Parser (OptionModifier Ty.NodeConfig)
 maxNeighbours = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.maxNeighbours <$> (nullOption . mconcat)
             [ reader  positive
             , long    "maxn"
             , metavar "(Int > 0)"
             , help    "Maximum amount of neighbours (up-/downstream\
                       \ separate)"
             ]
-      toModifier x = OptionModifier (L.maxNeighbours .~ x)
 
 
 maxChanSize :: Parser (OptionModifier Ty.NodeConfig)
 maxChanSize = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.maxChanSize <$> (nullOption . mconcat)
             [ reader  positive
             , long    "chansize"
             , metavar "(Int > 0)"
             , help    "Maximum communication channel size"
             , hidden
             ]
-      toModifier x = OptionModifier (L.maxChanSize .~ x)
 
 
 floodCacheSize :: Parser (OptionModifier Ty.NodeConfig)
 floodCacheSize = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.floodMessageCache <$> (nullOption . mconcat)
             [ reader  nonnegative
             , long    "floodcache"
             , metavar "(Int >= 0)"
             , help    "Number of past flood messages to cache"
             , hidden
             ]
-      toModifier x = OptionModifier (L.floodMessageCache .~ x)
 
 
 bounces :: Parser (OptionModifier Ty.NodeConfig)
 bounces = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.bounces <$> (nullOption . mconcat)
             [ reader  nonnegative
             , long    "bounces"
             , metavar "(Int >= 0)"
             , help    "Minimum edge search hard bounces"
             , hidden
             ]
-      toModifier x = OptionModifier (L.bounces .~ x)
 
 
 maxSoftBounces :: Parser (OptionModifier Ty.NodeConfig)
 maxSoftBounces = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.maxSoftBounces <$> (nullOption . mconcat)
             [ reader  positive
             , long    "hbounce"
             , metavar "(Int > 0)"
             , help    "Maximum edge search soft bounces"
             , hidden
             ]
-      toModifier x = OptionModifier (L.maxSoftBounces .~ x)
 
 
 acceptP :: Parser (OptionModifier Ty.NodeConfig)
 acceptP = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.acceptP <$> (nullOption . mconcat)
             [ reader  probability
             , long    "acceptp"
             , metavar "(0 < p <= 1)"
             , help    "Edge request soft bounce acceptance probability"
             , hidden
             ]
-      toModifier x = OptionModifier (L.acceptP .~ x)
 
 
 shortTickRate :: Parser (OptionModifier Ty.NodeConfig)
 shortTickRate = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.shortTickRate <$> (nullOption . mconcat)
             [ reader  positive
             , long    "stick"
             , metavar "[ms]"
             , help    "Tick rate of short loops"
             , hidden
             ]
-      toModifier x = OptionModifier (L.shortTickRate .~ x)
 
 
 mediumTickRate :: Parser (OptionModifier Ty.NodeConfig)
 mediumTickRate = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.mediumTickRate <$> (nullOption . mconcat)
             [ reader  positive
             , long    "mtick"
             , metavar "[ms]"
             , help    "Tick rate of medium loops"
             , hidden
             ]
-      toModifier x = OptionModifier (L.mediumTickRate .~ x)
 
 
 longTickRate :: Parser (OptionModifier Ty.NodeConfig)
 longTickRate = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.longTickRate <$> (nullOption . mconcat)
             [ reader  positive
             , long    "ltick"
             , metavar "[ms]"
             , help    "Tick rate of long loops"
             , hidden
             ]
-      toModifier x = OptionModifier (L.longTickRate .~ x)
 
 
 poolTimeout :: Parser (OptionModifier Ty.NodeConfig)
 poolTimeout = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.poolTimeout <$> (nullOption . mconcat)
             [ reader  positive
             , long    "timeout"
             , metavar "[s]"
             , help    "Timeout for removal of nodes from the USN/DSN pool"
             , hidden
             ]
-      toModifier x = OptionModifier (L.poolTimeout .~ x)
 
 
 verbosity :: Parser (OptionModifier Ty.NodeConfig)
 verbosity = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toSetter L.verbosity <$> (nullOption . mconcat)
             [ reader  readVerbosity
             , long    "verbosity"
             , metavar "(mute|quiet|default|debug|chatty)"
             , help    "Verbosity level, increasing from left to right"
             ]
-      toModifier x = OptionModifier (L.verbosity .~ x)
 
 
 
+-- | Append arg parsed BSS address to config
 bootstrapServer :: Parser (OptionModifier Ty.NodeConfig)
 bootstrapServer = v <|> defaultValue where
-      v = toModifier <$> (nullOption . mconcat)
+      v = toModifier (<>~) L.bootstrapServers <$> (nullOption . mconcat)
             [ reader  readAddress
             , long    "bootstrap"
             , metavar "(hostname)"
             , help    "Bootstrap server address"
             ]
-      toModifier x = OptionModifier (L.bootstrapServers <>~ x)
 
 
 
