@@ -5,6 +5,7 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 
 -- | Defines optics (lens library) for various Amoeba types. Intended to be
