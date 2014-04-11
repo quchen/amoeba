@@ -60,7 +60,7 @@ maxChanSize = 100
 #
 # Ideally, this, combined with the expected travel length given by acceptP
 # below, should be around the expected network diameter.
-bounces = 3
+hardBounces = 3
 
 
 # Chance an edge request is accepted, given that it is in probabilistic

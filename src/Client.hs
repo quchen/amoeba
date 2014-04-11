@@ -25,7 +25,7 @@ import           Pipes
 import qualified Pipes.Concurrent as P
 import           Pipes.Network.TCP (Socket)
 
-
+import qualified Types.Lens as L
 
 import           Types
 import           ClientPool
@@ -101,7 +101,7 @@ newClient env to socket = ifM allowed
                   toIO env Debug (STDERR "Tried to launch client to already known node")
                   return False
             IsUnrelated -> do
-                  isRoom <- isRoomIn env _downstream
+                  isRoom <- isRoomIn env L.downstream
                   if not isRoom
                         then do toIO env Debug (STDERR "No room for new client")
                                 return False

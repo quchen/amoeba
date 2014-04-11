@@ -131,7 +131,7 @@ bssLoop config ioq counter' serverSock ldc restartTrigger = go counter' where
                 -- not enough nodes to relay the requests (hence the queues fill
                 -- up and the nodes block indefinitely.
                 nodeConfig = config ^. L.nodeConfig & if counter <= preRestart
-                                                            then L.bounces .~ 0
+                                                            then L.hardBounces .~ 0
                                                             else id
 
                 -- If nodes are restarted when the server goes up there are
@@ -139,7 +139,7 @@ bssLoop config ioq counter' serverSock ldc restartTrigger = go counter' where
                 -- after a couple of cycles for some reason. Disable restarting for
                 -- the first couple of nodes.
                 restartMaybe _ | counter <= preRestart = return ()
-                restartMaybe c = when (c `rem` _restartEvery config == 0)
+                restartMaybe c = when (0 == c `rem` (config ^. L.restartEvery))
                                       restartTrigger
 
                 bootstrapRequestH socket node = do
@@ -185,4 +185,4 @@ edgeRequest :: NodeConfig
             -> NormalSignal
 edgeRequest config to dir = EdgeRequest to edgeData
       where edgeData      = EdgeData dir bounceParam
-            bounceParam   = HardBounce (_bounces config)
+            bounceParam   = HardBounce (config ^. L.hardBounces)

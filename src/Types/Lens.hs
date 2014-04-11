@@ -16,18 +16,25 @@ import Control.Lens
 import Types
 
 
-makeLenses ''Environment
-makeLenses ''NodeConfig
-makeLenses ''PoolConfig
+-- Various types
 makeLenses ''BootstrapConfig
-makeLenses ''MultiConfig
-makeLenses ''DrawingConfig
 makeLenses ''Client
+makeLenses ''DrawingConfig
+makeLenses ''Environment
+makeLenses ''MultiConfig
+makeLenses ''Node
+makeLenses ''NodeConfig
 makeLenses ''PChan
+makeLenses ''PoolConfig
 
 
-makeFields ''NodeConfig
+-- Types with overloaded fields, e.g. "has node config subfield"
 makeFields ''BootstrapConfig
 makeFields ''DrawingConfig
 makeFields ''MultiConfig
--- makeFields ''PoolConfig -- Only holds a single field that nobody else has
+
+-- Isomorphisms (newtypes)
+timestamp :: Iso' Double Timestamp
+timestamp = iso f b where
+      f t = Timestamp t
+      b (Timestamp t) = t

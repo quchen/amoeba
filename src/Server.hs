@@ -27,6 +27,10 @@ import qualified Pipes.Concurrent as P
 import           Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
 
+import qualified Types.Lens as L
+import Control.Lens.Operators
+import qualified Control.Lens as L
+
 import Types
 import Utilities
 import Client
@@ -107,7 +111,7 @@ workerLdc env@(_ldc -> Just pChan) =
                                         -- the answers to LDC signals.
 
       where input :: Producer NormalSignal IO ()
-            input = P.fromInput (_pInput pChan)
+            input = P.fromInput (pChan ^. L.pInput)
 
             dispatch :: Pipe NormalSignal ServerResponse IO r
             dispatch = P.mapM $ \case
@@ -233,7 +237,7 @@ floodSignalH env tfSignal@(timestamp, fSignal) = do
 broadcastOutput :: Environment
                 -> STM (P.Output NormalSignal)
 broadcastOutput env =
-      F.foldMap (_pOutput . _stsc) <$> readTVar (_downstream env)
+      F.foldMap (^. L.stsc . L.pOutput) <$> (env ^. L.downstream . L.to readTVar)
 
 
 
@@ -254,7 +258,7 @@ neighbourListH :: Environment
 neighbourListH env painter = do
       connectToNode painter $ \(socket, _) -> do
             atomically (toIO env Chatty (STDLOG "Processing painter request"))
-            let self = _self env
+            let self = env ^. L.self
             dsns <- atomically (dumpDsnDB env)
             send socket (NeighbourList self dsns)
       return OK
@@ -279,8 +283,8 @@ shuttingDownH env from = atomically $ do
 pruneH :: Environment
        -> IO ServerResponse
 pruneH env = atomically $ do
-      usnSize <- dbSize env _upstream
-      let minN = _minNeighbours (_config env)
+      usnSize <- dbSize env L.upstream
+      let minN = env ^. L.config . L.minNeighbours
       if usnSize > minN
             then
                   -- Send back a special "OK" signal that terminates the
@@ -332,17 +336,17 @@ edgeBounceH env origin (EdgeData dir (HardBounce 0)) =
                   origin
                   (EdgeData dir
                             (SoftBounce 0
-                                        ((_acceptP . _config) env)))
+                                        (env ^. L.config . L.acceptP)))
 
 -- Phase 1: Hard bounce, bounce on.
 edgeBounceH env origin (EdgeData dir (HardBounce n)) = do
 
       let buildSignal = EdgeRequest origin . EdgeData dir
-          nMax = _bounces (_config env)
+          nMax = env ^. L.config . L.hardBounces
 
       atomically $ do
 
-            P.send (_pOutput (_st1c env))
+            P.send (env ^. L.st1c . L.pOutput)
                    (buildSignal (HardBounce (min (n - 1) nMax)))
                                           -- Cap the number of hard
                                           -- bounces with the current
@@ -373,8 +377,8 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
             -- an Incoming request will construct a downstream neighbour from
             -- this node, so the database lookups are flipped.
             room <- case dir of
-                  Incoming -> isRoomIn env _downstream
-                  Outgoing -> isRoomIn env _upstream
+                  Incoming -> isRoomIn env L.downstream
+                  Outgoing -> isRoomIn env L.upstream
 
             return (room, rel)
 
@@ -445,22 +449,22 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
 
 
             -- Build "bounce on" action to relay signal if necessary
-            bounceOn | n >= _maxSoftBounces (_config env) =
+            bounceOn | n >= env ^. L.config . L.maxSoftBounces =
                              toIO env Chatty . STDLOG $
                                    "Too many bounces, swallowing"
                      | otherwise =
-                           let p' = max p (_acceptP (_config env))
+                           let p' = max p (env ^. L.config . L.acceptP)
                                -- ^ The relayed acceptance probability is at
                                --   least as high as the one the relaying node
                                --   uses. This prevents "small p" attacks that
                                --   bounce indefinitely.
-                           in  void (P.send (_pOutput (_st1c env))
+                           in  void (P.send (env ^. L.st1c . L.pOutput)
                                             (buildSignal (SoftBounce (n+1) p')))
 
             -- Build "bounce again from the beginning" signal. This is invoked
             -- if an EdgeRequest reaches the issuing node again.
-            bounceReset = let b = _bounces (_config env)
-                          in  void (P.send (_pOutput (_st1c env))
+            bounceReset = let b = env ^. L.config . L.hardBounces
+                          in  void (P.send (env ^. L.st1c . L.pOutput)
                                            (buildSignal (HardBounce b)))
             -- TODO: Maybe swallowing the request in this case makes more sense.
             --       The node is spamming the network with requests anyway after
@@ -481,7 +485,7 @@ sendHandshakeRequest env to =
                   -- Nothing to do here, the handshake is a one-way command,
                   -- waiting for response is just a courtesy
 
-      where signal = (Special . HandshakeRequest) (_self env)
+      where signal = env ^. L.self . L.to (Special . HandshakeRequest)
 
 
 

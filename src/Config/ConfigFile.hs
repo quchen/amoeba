@@ -76,7 +76,7 @@ nodeModifier' prefixes = (fmap mconcat . T.sequenceA) mods where
                   , minNeighbours
                   , maxNeighbours
                   , maxChanSize
-                  , bounces
+                  , hardBounces
                   , acceptP
                   , maxSoftBounces
                   , shortTickRate
@@ -229,11 +229,11 @@ maxChanSize prefixes = toSetter L.maxChanSize <$> maxChanSize' prefixes where
 
 
 
-bounces' :: Prefixes -> ReaderT C.Config IO (Maybe Word)
-bounces' prefixes = lookupC prefixes "bounces"
+hardBounces' :: Prefixes -> ReaderT C.Config IO (Maybe Word)
+hardBounces' prefixes = lookupC prefixes "hardBounces"
 
-bounces :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-bounces prefixes = toSetter L.bounces <$> bounces' prefixes where
+hardBounces :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
+hardBounces prefixes = toSetter L.hardBounces <$> hardBounces' prefixes where
 
 
 

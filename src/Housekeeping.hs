@@ -18,6 +18,10 @@ import Data.Monoid
 
 import qualified Pipes.Concurrent as P
 
+import qualified Types.Lens as L
+import Control.Lens.Operators
+import qualified Control.Lens as L
+
 import Types
 import Utilities
 
@@ -32,7 +36,7 @@ dsnHousekeeping env = forever $ do
       cleanupDsn    env t
       prune         env
       sendKeepAlive env t
-      delay (_mediumTickRate (_config env))
+      delay (env ^. L.config . L.mediumTickRate)
 
 
 
@@ -42,9 +46,9 @@ cleanupDsn env (Timestamp now) = do
       -- Nodes to kill because of timeout
       (notTimedOut, killTimeout) <- atomically $ do
             let notTimedOut (Client { _clientTimestamp = Timestamp t }) =
-                      now - t < (_poolTimeout._config) env
-                ds = _downstream env
-            (keep, kill) <- Map.partition notTimedOut <$> readTVar ds
+                      (now - t) < (env ^. L.config . L.poolTimeout)
+            (keep, kill) <- fmap (Map.partition notTimedOut)
+                                 (env ^. L.downstream . L.to readTVar)
 
             when (not (Map.null kill)) $ toIO env Debug $
                        STDLOG "Downstream neighbour housekilled. This is\
@@ -55,11 +59,11 @@ cleanupDsn env (Timestamp now) = do
             return (keep, kill)
 
       -- Cancel timed out client threads
-      void (T.traverse (cancel . _clientAsync) killTimeout)
+      void (T.traverse (cancel . L.view L.clientAsync) killTimeout)
 
 
       -- Gather otherwise terminated nodes
-      polledClients <- T.traverse (poll . _clientAsync) notTimedOut
+      polledClients <- T.traverse (poll . L.view L.clientAsync) notTimedOut
       let deadNodes = Map.filter isJust polledClients
       when (not (Map.null deadNodes)) $
             atomically . toIO env Debug $
@@ -69,7 +73,7 @@ cleanupDsn env (Timestamp now) = do
 
       -- Remove timed out or otherwise terminated nodes
       let toKill = Map.keysSet killTimeout <> Map.keysSet deadNodes
-      atomically $ modifyTVar (_downstream env) $ \knownDsn ->
+      atomically $ modifyTVar (env ^. L.downstream) $ \knownDsn ->
             F.foldr Map.delete knownDsn toKill
 
 
@@ -80,11 +84,11 @@ cleanupDsn env (Timestamp now) = do
 --   (The amount of DSNs contacted is equivalent to the excess of connections.)
 prune :: Environment -> IO ()
 prune env = atomically $ do
-      usnSize <- dbSize env _upstream
-      let minN = _minNeighbours (_config env)
+      usnSize <- dbSize env L.upstream
+      let minN = env ^. L.config . L.minNeighbours
           excess = usnSize - minN
       forM_ [1..excess]
-            (\_i -> (P.send (_pOutput (_st1c env))
+            (\_i -> (P.send (env ^. L.st1c . L.pOutput)
                             Prune))
 
 
@@ -95,16 +99,17 @@ sendKeepAlive :: Environment -> Timestamp -> IO ()
 sendKeepAlive env (Timestamp now) = do
 
       -- Get a map of all registered downstream clients
-      clients <- atomically (readTVar (_downstream env))
+      clients <- env ^. L.downstream . L.to (atomically . readTVar)
 
       -- Find out which ones haven't been contacted in a while
-      let lastHeard client = let Timestamp t = _clientTimestamp client
+      let lastHeard client = let Timestamp t = client ^. L.clientTimestamp
                              in  now - t
-          threshold = (_poolTimeout._config) env / 5 -- TODO: make the factor an option
+          threshold = env ^. L.config . L.poolTimeout . L.to (/5) -- TODO: make the factor an option
           needsRefreshing client = lastHeard client >= threshold
           needKeepAlive = Map.filter needsRefreshing clients
           sendSignal node = atomically $ do
-                P.send (_pOutput (_stsc node)) KeepAlive
+                P.send (node ^. L.stsc . L.pOutput)
+                       KeepAlive
 
       void (T.traverse sendSignal needKeepAlive)
 
@@ -127,11 +132,11 @@ workerWatcher env from tid =
                   known <- fmap (Map.member from) (readTVar usnDB)
                   when (not known) retry
 
-            tickrate = _longTickRate (_config env)
+            tickrate = env ^. L.config . L.longTickRate
 
-            timeout = _poolTimeout (_config env)
+            timeout = env ^. L.config . L.poolTimeout
 
-            usnDB = _upstream env
+            usnDB = env ^. L.upstream
 
             isTimedOut (Timestamp now) =
                   let check (Just (Timestamp past)) = now - past > timeout

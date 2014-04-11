@@ -15,12 +15,16 @@ import           Control.Concurrent.Async
 import qualified Data.Map as Map
 import           Control.Monad
 import           Text.Printf
-import Data.Set (toList)
-import Data.List (intercalate)
+import           Data.Set as Set (toList)
+import           Data.List (intercalate)
 
 import Pipes
 import qualified Pipes.Prelude as P
 import qualified Pipes.Concurrent as P
+
+import qualified Types.Lens as L
+import qualified Control.Lens as L
+import Control.Lens.Operators
 
 
 import Types
@@ -46,15 +50,15 @@ fillPool env = runEffect (balanceEdges env >-> P.map edgeRequest >-> dispatch)
 
       -- Send signal to the single worker channel
       dispatch :: Consumer NormalSignal IO ()
-      dispatch = P.toOutput (_pOutput (_st1c env))
+      dispatch = P.toOutput (env ^. L.st1c . L.pOutput)
 
       -- Create an EdgeRequest from a Direction
       edgeRequest :: Direction
                   -> NormalSignal
       edgeRequest dir =
-            EdgeRequest (_self env)
+            EdgeRequest (env ^. L.self)
                         (EdgeData dir
-                                  (HardBounce (_bounces (_config env))))
+                                  (HardBounce (env ^. L.config . L.hardBounces)))
 
 
 
@@ -64,15 +68,16 @@ fillPool env = runEffect (balanceEdges env >-> P.map edgeRequest >-> dispatch)
 balanceEdges :: Environment -> Producer Direction IO r
 balanceEdges env = forever $ do
 
-      delay ((_mediumTickRate . _config) env)
+      delay (env ^. L.config . L.mediumTickRate)
 
       (usnDeficit, dsnDeficit) <- liftIO . atomically $ do
 
-            usnCount <- dbSize env _upstream
-            dsnCount <- dbSize env _downstream
+            usnCount <- dbSize env L.upstream
+            dsnCount <- dbSize env L.downstream
 
-            dsnPorts <- fmap (map (_port . getTo) . toList . Map.keysSet)
-                             (readTVar (_downstream env))
+            -- Gather all DSN node ports
+            dsnPorts <- fmap (map (L.view L.port . getTo) . Set.toList . Map.keysSet)
+                             (env ^. L.downstream . L.to readTVar)
 
             let colouredNumber :: Int -> String
                 colouredNumber n = printf "\ESC[3%dm%d\ESC[0m" (n `rem` 8 + 1) n
@@ -102,7 +107,8 @@ balanceEdges env = forever $ do
                        (replicate usnDeficit Incoming))
 
 
-      where minN       = _minNeighbours (_config env)
-            maxN       = _maxNeighbours (_config env)
+      where config     = env ^. L.config
+            minN       = config ^. L.minNeighbours
+            maxN       = config ^. L.maxNeighbours
             maxNDigits = round (logBase 10 (fromIntegral maxN)) + 1 :: Int
-            serverPort = _serverPort (_config env)
+            serverPort = config ^. L.serverPort

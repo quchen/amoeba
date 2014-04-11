@@ -105,7 +105,7 @@ data NodeConfig = NodeConfig {
       , _maxChanSize    :: Int        -- ^ How many entries the bounded
                                       --   communication channels can hold
 
-      , _bounces        :: Word       -- ^ Number of initial bounces
+      , _hardBounces    :: Word       -- ^ Number of initial bounces
 
             -- TODO: Rename nounces to hardBounces
 

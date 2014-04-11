@@ -287,9 +287,9 @@ floodCacheSize = v <|> defaultValue where
 
 bounces :: Parser (OptionModifier Ty.NodeConfig)
 bounces = v <|> defaultValue where
-      v = toSetter L.bounces <$> (nullOption . mconcat)
+      v = toSetter L.hardBounces <$> (nullOption . mconcat)
             [ reader  nonnegative
-            , long    "bounces"
+            , long    "hardbounces"
             , metavar "(Int >= 0)"
             , help    "Minimum edge search hard bounces"
             , hidden
