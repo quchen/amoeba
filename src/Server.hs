@@ -7,6 +7,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Server (server) where
 
@@ -101,9 +102,9 @@ workerLdc :: Environment
 workerLdc env@(_ldc -> Just pChan) =
 
       runEffect (input >-> dispatch >-> P.drain)
-                                        -- ^ Since there is no USN to send the
-                                        --   ServerResponse back to, discard
-                                        --   the answers to LDC signals.
+                                        -- Since there is no USN to send the
+                                        -- ServerResponse back to, discard
+                                        -- the answers to LDC signals.
 
       where input :: Producer NormalSignal IO ()
             input = P.fromInput (_pInput pChan)
@@ -158,7 +159,7 @@ specialH env from socket signal = case signal of
       NeighbourList {}    -> illegalNeighbourListSignalH env
       Handshake           -> incomingHandshakeH      env from socket
       HandshakeRequest to -> Client.startHandshakeH  env to >> return OK
-                                                               -- ^ Sender doesn't handle
+                                                               -- Sender doesn't handle
                                                                -- this response anyway,
                                                                -- see sendHandshakeRequest
 
@@ -343,11 +344,11 @@ edgeBounceH env origin (EdgeData dir (HardBounce n)) = do
 
             P.send (_pOutput (_st1c env))
                    (buildSignal (HardBounce (min (n - 1) nMax)))
-                                          -- ^ Cap the number of hard
-                                          -- | bounces with the current
-                                          -- | node's configuration to
-                                          -- | prevent "maxBound bounces
-                                          -- | left" attacks
+                                          -- Cap the number of hard
+                                          -- bounces with the current
+                                          -- node's configuration to
+                                          -- prevent "maxBound bounces
+                                          -- left" attacks
             (toIO env Chatty . STDLOG)
                   (printf "Hardbounced %s request from %s (%d left)"
                           (show dir)

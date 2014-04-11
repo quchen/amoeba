@@ -1,6 +1,7 @@
 -- | Signal types, i.e. the protocol used.
 
 {-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Types.Signal where
 

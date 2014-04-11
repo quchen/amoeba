@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Utilities (
 

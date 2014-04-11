@@ -1,6 +1,7 @@
 -- | A client represents one connection to a downstream node.
 
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 
 module Client  (

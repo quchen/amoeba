@@ -4,6 +4,7 @@
 
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE TupleSections #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Config.AddressParser where
 

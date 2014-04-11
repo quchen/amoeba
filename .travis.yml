@@ -5,9 +5,12 @@ ghc: 7.8
 
 install:
       # Travis automatically calls cabal update
-      - make cabal-noupcate
+      - make cabal-noupdate
 script:
       - make fast
+after_success:
+      - make haddock
+      # run tests
 
 
 

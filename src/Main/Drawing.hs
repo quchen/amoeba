@@ -8,6 +8,7 @@
 --       STG = Server to graph.
 
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Main.Drawing (main) where
 

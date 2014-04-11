@@ -27,13 +27,14 @@ PROF=-prof -auto-all -caf-all
 WARN=-Wall -fno-warn-type-defaults -fno-warn-unused-do-bind -fwarn-tabs -fwarn-incomplete-uni-patterns
 PACKAGEDB=-no-user-package-db -package-db $(PACKAGE-D)
 THREADED=-threaded
+DYNAMIC=-dynamic
 
 # Cabal flags
 PARALLEL_CABAL=-j$(NUM_CORES)
 
 # Executables
 CABAL=cabal
-GHC=ghc $(THREADED) $(PARALLEL_GHC) -i$(SRC-D) $(WARN) $(PACKAGEDB)
+GHC=ghc $(THREADED) $(PARALLEL_GHC) -i$(SRC-D) $(WARN) $(DYNAMIC) $(PACKAGEDB)
 HLINT=hlint --colour
 PAGER=less -R
 SHELL=bash
@@ -138,9 +139,13 @@ nolink :
 
 # Documentation
 .PHONY : doc
-doc :
+doc : haddock
 	cat $(DOC-D)/information_flow.dot | cpp | dot -Tpng > $(DOC-D)/information_flow.png
 	cat $(DOC-D)/network.dot | cpp | neato -Tpng > $(DOC-D)/network.png
+
+.PHONY : haddock
+haddock :
+	cabal haddock --internal --hyperlink-source
 
 
 # HLint
@@ -151,8 +156,12 @@ hlint :
 
 .PHONY : clean
 clean :
-	find $(SRC-D) -name "*.hi" -delete
-	find $(SRC-D) -name "*.o" -delete
+	find $(SRC-D) -name "*.hi"     -delete
+	find $(SRC-D) -name "*.o"      -delete
+	find $(SRC-D) -name "*.p_hi"   -delete
+	find $(SRC-D) -name "*.p_o"    -delete
+	find $(SRC-D) -name "*.dyn_hi" -delete
+	find $(SRC-D) -name "*.dyn_o"  -delete
 	rm -f $(MAIN_NODE)
 	rm -f $(MAIN_MULTI)
 	rm -f $(MAIN_BS)

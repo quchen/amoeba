@@ -3,6 +3,7 @@
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Bootstrap (bootstrap) where
 

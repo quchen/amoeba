@@ -5,6 +5,7 @@
 --   make nice names such as \"Verify.nodeArgs\".
 
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Config.Verify (
         node

@@ -6,6 +6,7 @@
                              -- exponential notation, e.g.
                              -- >>> 1e3 :: Int
                              -- >   1000
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Config.Default where
 
