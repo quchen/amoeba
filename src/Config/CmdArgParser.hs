@@ -109,24 +109,24 @@ bootstrapModifier' :: Parser (OptionModifier Ty.BootstrapConfig)
 bootstrapModifier' = (fmap mconcat . T.sequenceA) mods where
       mods = [ restartEvery
              , restartMinimumPeriod
-             , liftNodeModifier <$> nodeModifier'
-             , liftPoolModifier <$> poolModifier'
+             , liftModifier L.nodeConfig <$> nodeModifier'
+             , liftModifier L.poolConfig <$> poolModifier'
              ]
 
 
 
 multiModifier' :: Parser (OptionModifier Ty.MultiConfig)
 multiModifier' = (fmap mconcat . T.sequenceA)  mods where
-      mods = [ liftNodeModifier <$> nodeModifier'
-             , liftPoolModifier <$> poolModifier'
+      mods = [ liftModifier L.nodeConfig <$> nodeModifier'
+             , liftModifier L.poolConfig <$> poolModifier'
              ]
 
 
 
 drawingModifier' :: Parser (OptionModifier Ty.DrawingConfig)
 drawingModifier' = (fmap mconcat . T.sequenceA) mods where
-      mods = [ liftNodeModifier <$> nodeModifier'
-             , liftPoolModifier <$> poolModifier'
+      mods = [ liftModifier L.nodeConfig <$> nodeModifier'
+             , liftModifier L.poolConfig <$> poolModifier'
              , drawingInterval
              , drawingFilename
              , drawingTimeout

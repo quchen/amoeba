@@ -97,19 +97,23 @@ poolModifier' prefixes = (fmap mconcat . T.sequenceA) mods where
 
 
 
+noPrefix :: [a]
+noPrefix = []
+
+
+
 -- | Read the general config, before overwriting it with values with the
 --   @bootstrap@ prefix, i.e. for the @foo@ setting first looks for @foo@ and
 --   then for @bootstrap.foo@.
 bootstrapModifier' :: ReaderT C.Config IO (OptionModifier Ty.BootstrapConfig)
 bootstrapModifier' = (fmap mconcat . T.sequenceA) mods where
-      mods = [ liftNodeModifier <$> nodeModifier' noPrefix
-             , liftPoolModifier <$> poolModifier' noPrefix
+      mods = [ liftModifier L.nodeConfig <$> nodeModifier' noPrefix
+             , liftModifier L.poolConfig <$> poolModifier' noPrefix
              , restartEvery prefix
              , restartMinimumPeriod prefix
-             , liftNodeModifier <$> nodeModifier' prefix
-             , liftPoolModifier <$> poolModifier' prefix
+             , liftModifier L.nodeConfig <$> nodeModifier' prefix
+             , liftModifier L.poolConfig <$> poolModifier' prefix
              ]
-      noPrefix = []
       prefix = ["bootstrap"]
 
 
@@ -118,15 +122,14 @@ bootstrapModifier' = (fmap mconcat . T.sequenceA) mods where
 --   @drawing@ prefix).
 drawingModifier' :: ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
 drawingModifier' = (fmap mconcat . T.sequenceA) mods where
-      mods = [ liftNodeModifier <$> nodeModifier' noPrefix
-             , liftPoolModifier <$> poolModifier' noPrefix
+      mods = [ liftModifier L.nodeConfig <$> nodeModifier' noPrefix
+             , liftModifier L.poolConfig <$> poolModifier' noPrefix
              , drawEvery prefix
              , drawFilename prefix
              , drawTimeout prefix
-             , liftNodeModifier <$> nodeModifier' prefix
-             , liftPoolModifier <$> poolModifier' prefix
+             , liftModifier L.nodeConfig <$> nodeModifier' prefix
+             , liftModifier L.poolConfig <$> poolModifier' prefix
              ]
-      noPrefix = []
       prefix = ["drawing"]
 
 
@@ -135,12 +138,11 @@ drawingModifier' = (fmap mconcat . T.sequenceA) mods where
 --   @multi@ prefix).
 multiModifier' :: ReaderT C.Config IO (OptionModifier Ty.MultiConfig)
 multiModifier' = (fmap mconcat . T.sequenceA) mods where
-      mods = [ liftNodeModifier <$> nodeModifier' noPrefix
-             , liftPoolModifier <$> poolModifier' noPrefix
-             , liftNodeModifier <$> nodeModifier' prefix
-             , liftPoolModifier <$> poolModifier' prefix
+      mods = [ liftModifier L.nodeConfig <$> nodeModifier' noPrefix
+             , liftModifier L.poolConfig <$> poolModifier' noPrefix
+             , liftModifier L.nodeConfig <$> nodeModifier' prefix
+             , liftModifier L.poolConfig <$> poolModifier' prefix
              ]
-      noPrefix = []
       prefix = ["multi"]
 
 

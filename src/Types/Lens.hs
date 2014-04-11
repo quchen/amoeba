@@ -15,15 +15,17 @@ module Types.Lens where
 import Control.Lens
 import Types
 
-$(makeLenses ''Environment    )
-$(makeLenses ''NodeConfig     )
-$(makeLenses ''PoolConfig     )
-$(makeLenses ''BootstrapConfig)
-$(makeLenses ''MultiConfig    )
-$(makeLenses ''DrawingConfig  )
+
+makeLenses ''Environment
+makeLenses ''NodeConfig
+makeLenses ''PoolConfig
+makeLenses ''BootstrapConfig
+makeLenses ''MultiConfig
+makeLenses ''DrawingConfig
 
 
-$(makeFields ''PoolConfig     )
-$(makeFields ''BootstrapConfig)
-$(makeFields ''MultiConfig    )
-$(makeFields ''DrawingConfig  )
+makeFields ''NodeConfig
+makeFields ''BootstrapConfig
+makeFields ''DrawingConfig
+makeFields ''MultiConfig
+makeFields ''PoolConfig
