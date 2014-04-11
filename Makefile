@@ -27,13 +27,14 @@ PROF=-prof -auto-all -caf-all
 WARN=-Wall -fno-warn-type-defaults -fno-warn-unused-do-bind -fwarn-tabs -fwarn-incomplete-uni-patterns
 PACKAGEDB=-no-user-package-db -package-db $(PACKAGE-D)
 THREADED=-threaded
+DYNAMIC=-dynamic
 
 # Cabal flags
 PARALLEL_CABAL=-j$(NUM_CORES)
 
 # Executables
 CABAL=cabal
-GHC=ghc $(THREADED) $(PARALLEL_GHC) -i$(SRC-D) $(WARN) $(PACKAGEDB)
+GHC=ghc $(THREADED) $(PARALLEL_GHC) -i$(SRC-D) $(WARN) $(DYNAMIC) $(PACKAGEDB)
 HLINT=hlint --colour
 PAGER=less -R
 SHELL=bash
