@@ -152,8 +152,12 @@ hlint :
 
 .PHONY : clean
 clean :
-	find $(SRC-D) -name "*.hi" -delete
-	find $(SRC-D) -name "*.o" -delete
+	find $(SRC-D) -name "*.hi"     -delete
+	find $(SRC-D) -name "*.o"      -delete
+	find $(SRC-D) -name "*.p_hi"   -delete
+	find $(SRC-D) -name "*.p_o"    -delete
+	find $(SRC-D) -name "*.dyn_hi" -delete
+	find $(SRC-D) -name "*.dyn_o"  -delete
 	rm -f $(MAIN_NODE)
 	rm -f $(MAIN_MULTI)
 	rm -f $(MAIN_BS)
