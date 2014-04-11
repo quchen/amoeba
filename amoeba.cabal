@@ -83,6 +83,7 @@ library
                    ,   Server
                    ,   Types
                    ,   Types.Config
+                   ,   Types.Lens
                    ,   Types.Misc
                    ,   Types.Signal
                    ,   Utilities
