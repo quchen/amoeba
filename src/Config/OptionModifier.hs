@@ -5,8 +5,6 @@ module Config.OptionModifier where
 import Data.Monoid
 import Control.Lens
 
-import Types.Lens
-
 
 -- | Represents a modification of a configuration type.
 newtype OptionModifier a = OptionModifier { applyOptionModifier :: a -> a }

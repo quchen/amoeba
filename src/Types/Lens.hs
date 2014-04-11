@@ -22,6 +22,8 @@ makeLenses ''PoolConfig
 makeLenses ''BootstrapConfig
 makeLenses ''MultiConfig
 makeLenses ''DrawingConfig
+makeLenses ''Client
+makeLenses ''PChan
 
 
 makeFields ''NodeConfig
