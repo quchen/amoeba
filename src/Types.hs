@@ -1,4 +1,4 @@
--- | Meta-module. Reexports everything in Types/.
+-- | Meta-module. Reexports everything in Types/ except the Lens module.
 
 module Types (module X) where
 
