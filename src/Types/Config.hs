@@ -143,7 +143,7 @@ data NodeConfig = NodeConfig {
 
 
 
--- ^ Node pool configuration
+-- | Node pool configuration
 data PoolConfig = PoolConfig {
 
         _poolSize :: Int     -- ^ Number of nodes in the server's pool
@@ -152,12 +152,15 @@ data PoolConfig = PoolConfig {
 
 
 
--- ^ Configuration of the bootstrap server
+-- | Configuration of the bootstrap server
 data BootstrapConfig = BootstrapConfig {
 
         _bootstrapconfigNodeConfig :: NodeConfig
+        -- Lens will create 'nodeConfig' out of this, stripped of the lowercase
+        -- prefix.
 
       , _bootstrapconfigPoolConfig :: PoolConfig
+        -- dito
 
       , _restartEvery :: Int -- ^ Every n bootstrap requests one client is
                              --   restarted at random
@@ -173,8 +176,11 @@ data BootstrapConfig = BootstrapConfig {
 data MultiConfig = MultiConfig {
 
         _multiconfigNodeConfig :: NodeConfig
+        -- Lens will create 'nodeConfig' out of this, stripped of the lowercase
+        -- prefix.
 
       , _multiconfigPoolConfig :: PoolConfig
+        -- dito
 
       } deriving (Show)
 
@@ -184,8 +190,11 @@ data MultiConfig = MultiConfig {
 data DrawingConfig = DrawingConfig {
 
         _drawingconfigNodeConfig :: NodeConfig
+        -- Lens will create 'nodeConfig' out of this, stripped of the lowercase
+        -- prefix.
 
       , _drawingconfigPoolConfig :: PoolConfig
+        -- dito
 
       , _drawEvery :: Int -- ^ Interval for sending out neighbour list
                           --   requests and drawing the currently known

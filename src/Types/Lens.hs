@@ -30,4 +30,4 @@ makeFields ''NodeConfig
 makeFields ''BootstrapConfig
 makeFields ''DrawingConfig
 makeFields ''MultiConfig
-makeFields ''PoolConfig
+-- makeFields ''PoolConfig -- Only holds a single field that nobody else has

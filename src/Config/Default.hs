@@ -38,6 +38,7 @@ nodeConfig = NodeConfig {
 
 
 
+-- | Default node pool configuration
 poolConfig :: PoolConfig
 poolConfig = PoolConfig {
 
@@ -46,6 +47,8 @@ poolConfig = PoolConfig {
       }
 
 
+
+-- | Default multi-node client configuration
 multiConfig :: MultiConfig
 multiConfig = MultiConfig {
         _multiconfigNodeConfig = nodeConfig
@@ -54,6 +57,7 @@ multiConfig = MultiConfig {
 
 
 
+-- | Default drawing server configuration
 drawingConfig :: DrawingConfig
 drawingConfig = DrawingConfig {
         _drawEvery         = 1e7
