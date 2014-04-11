@@ -9,6 +9,7 @@
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE BangPatterns #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Main.Bootstrap (main) where
 

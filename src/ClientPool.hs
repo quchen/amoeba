@@ -3,6 +3,7 @@
 
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RankNTypes #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module ClientPool (
           clientPool

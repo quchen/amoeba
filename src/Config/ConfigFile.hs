@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Config.ConfigFile (
         nodeModifier

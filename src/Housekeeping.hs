@@ -1,6 +1,7 @@
 -- | Watch the databases and clean up dead or orphaned entries.
 
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Housekeeping (dsnHousekeeping, workerWatcher) where
 
