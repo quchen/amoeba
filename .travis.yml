@@ -8,6 +8,9 @@ install:
       - make cabal-noupdate
 script:
       - make fast
+after_success:
+      - make haddock
+      # run tests
 
 
 
