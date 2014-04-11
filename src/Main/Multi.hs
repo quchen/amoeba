@@ -11,9 +11,10 @@ import           Text.Printf
 
 import Utilities
 import qualified Config.Getter as Config
-import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
-import Types
 import NodePool
+
+import qualified Types.Lens as L
+import Control.Lens ((^.))
 
 
 
@@ -26,15 +27,15 @@ multiNodeMain = do
       config <- Config.multi
 
       prepareOutputBuffers
-      (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
+      (output, _) <- outputThread (config ^. L.nodeConfig . L.maxChanSize)
 
-      printf "Starting pool with %d nodes"
-             (_poolSize (_poolConfig config))
+      let poolSize = config ^. L.poolConfig . L.poolSize
+      printf "Starting pool with %d nodes" poolSize
 
       ldc <- newChan
       terminate <- newEmptyMVar -- TODO: Never actually used. Refactor node pool?
-      nodePool (_poolSize (_poolConfig config))
-               (_nodeConfig config)
+      nodePool poolSize
+               (config ^. L.nodeConfig)
                ldc
                output
                terminate
