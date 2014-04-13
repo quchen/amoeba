@@ -35,6 +35,7 @@ PARALLEL_CABAL=-j$(NUM_CORES)
 # Executables
 CABAL=cabal
 GHC=ghc $(THREADED) $(PARALLEL_GHC) -i$(SRC-D) $(WARN) $(DYNAMIC) $(PACKAGEDB)
+GHCI=ghci -i$(SRC-D) $(WARN) $(PACKAGEDB)
 HLINT=hlint --colour
 PAGER=less -R
 SHELL=bash
@@ -152,6 +153,11 @@ haddock :
 .PHONY : hlint
 hlint :
 	find $(SRC-D) -name "*.hs" -print0 | xargs -0 $(HLINT) | $(PAGER)
+
+# GHCi
+.PHONY : repl
+repl :
+	$(GHCI)
 
 
 .PHONY : clean
