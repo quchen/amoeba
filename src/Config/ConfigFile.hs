@@ -168,7 +168,7 @@ lookupC prefixes name = ask >>= \cfg -> liftIO (C.lookup cfg fullName) where
 -- | Convert a field and a value to an 'OptionModifier' to set that field to
 --   that value. 'mempty' if no value is given.
 toSetter :: ASetter a a c b  -- ^ Lens to a field
-         -> (Maybe b)        -- ^ New value of the field
+         -> Maybe b          -- ^ New value of the field
          -> OptionModifier a -- ^ 'OptionModifier' to apply the lens
 toSetter l (Just x) = OptionModifier (l .~ x)
 toSetter _ Nothing  = mempty
