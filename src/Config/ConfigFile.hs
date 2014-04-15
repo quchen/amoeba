@@ -174,6 +174,20 @@ toSetter _ Nothing  = mempty
 
 
 
+-- | Get an option that cannot have wrong values (besides type mismatches).
+--   For example, the verbosity option only supports a handful of words and not
+--   all strings, so it is not a simple option. The number of neighbours on the
+--   other hand can be any value.
+getSimpleOption :: C.Configured b
+                => ASetter a a c b
+                -> C.Name
+                -> Prefixes
+                -> ReaderT C.Config IO (OptionModifier a)
+getSimpleOption l name prefixes = fmap (toSetter l)
+                                       (lookupC prefixes name)
+
+
+
 -- Node config specific
 
 serverPort, minNeighbours, maxNeighbours, maxChanSize, verbosity, hardBounces,
@@ -181,14 +195,18 @@ serverPort, minNeighbours, maxNeighbours, maxChanSize, verbosity, hardBounces,
       poolTimeout, floodMessageCache, bootstrapServers
             :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 
-serverPort prefixes = fmap (toSetter L.serverPort)
-                           (lookupC prefixes "serverPort")
-
-minNeighbours prefixes = fmap (toSetter L.minNeighbours)
-                              (lookupC prefixes "minNeighbours")
-
-maxNeighbours prefixes = fmap (toSetter L.maxNeighbours)
-                              (lookupC prefixes "maxNeighbours")
+serverPort        = getSimpleOption L.serverPort        "serverPort"
+minNeighbours     = getSimpleOption L.minNeighbours     "minNeighbours"
+maxNeighbours     = getSimpleOption L.maxNeighbours     "maxNeighbours"
+maxChanSize       = getSimpleOption L.maxChanSize       "maxChanSize"
+hardBounces       = getSimpleOption L.hardBounces       "hardBounces"
+acceptP           = getSimpleOption L.acceptP           "acceptP"
+maxSoftBounces    = getSimpleOption L.maxSoftBounces    "maxSoftBounces"
+shortTickRate     = getSimpleOption L.shortTickRate     "shortTickRate"
+mediumTickRate    = getSimpleOption L.mediumTickRate    "mediumTickRate"
+longTickRate      = getSimpleOption L.longTickRate      "longTickRate"
+poolTimeout       = getSimpleOption L.poolTimeout       "poolTimeout"
+floodMessageCache = getSimpleOption L.floodMessageCache "floodMessageCache"
 
 verbosity prefixes = fmap (toSetter L.verbosity) verbosity'
 
@@ -206,33 +224,6 @@ verbosity prefixes = fmap (toSetter L.verbosity) verbosity'
             | x == "debug"   = Just Ty.Debug
             | x == "chatty"  = Just Ty.Chatty
             | otherwise      = Nothing
-
-maxChanSize prefixes = fmap (toSetter L.maxChanSize)
-                            (lookupC prefixes "maxChanSize")
-
-hardBounces prefixes = fmap (toSetter L.hardBounces)
-                            (lookupC prefixes "hardBounces")
-
-acceptP prefixes = fmap (toSetter L.acceptP)
-                        (lookupC prefixes "acceptP")
-
-maxSoftBounces prefixes = fmap (toSetter L.maxSoftBounces)
-                               (lookupC prefixes "maxSoftBounces")
-
-shortTickRate prefixes = fmap (toSetter L.shortTickRate)
-                              (lookupC prefixes "shortTickRate")
-
-mediumTickRate prefixes = fmap (toSetter L.mediumTickRate)
-                               (lookupC prefixes "mediumTickRate")
-
-longTickRate prefixes = fmap (toSetter L.longTickRate)
-                             (lookupC prefixes "longTickRate")
-
-poolTimeout prefixes = fmap (toSetter L.poolTimeout)
-                            (lookupC prefixes "poolTimeout")
-
-floodMessageCache prefixes = fmap (toSetter L.floodMessageCache)
-                                  (lookupC prefixes "floodMessageCache")
 
 bootstrapServers prefixes = fmap appendBSS bootstrapServers'
 
@@ -267,8 +258,7 @@ bootstrapServers prefixes = fmap appendBSS bootstrapServers'
 -- Node pool specific
 
 poolSize :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.PoolConfig)
-poolSize prefixes = fmap (toSetter L.poolSize)
-                         (lookupC prefixes "poolSize")
+poolSize = getSimpleOption L.poolSize "poolSize"
 
 
 
@@ -277,11 +267,8 @@ poolSize prefixes = fmap (toSetter L.poolSize)
 restartEvery, restartMinimumPeriod
       :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.BootstrapConfig)
 
-restartEvery prefixes = fmap (toSetter L.restartEvery)
-                             (lookupC prefixes "restartEvery")
-
-restartMinimumPeriod prefixes = fmap (toSetter L.restartMinimumPeriod)
-                                     (lookupC prefixes "restartMinimumPeriod")
+restartEvery          = getSimpleOption L.restartEvery         "restartEvery"
+restartMinimumPeriod  = getSimpleOption L.restartMinimumPeriod "restartMinimumPeriod"
 
 
 
@@ -290,11 +277,8 @@ restartMinimumPeriod prefixes = fmap (toSetter L.restartMinimumPeriod)
 drawEvery, drawFilename, drawTimeout
       :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
 
-drawEvery prefixes = fmap (toSetter L.drawEvery)
-                          (lookupC prefixes "drawEvery")
-
-drawFilename prefixes = fmap (toSetter L.drawFilename)
-                             (lookupC prefixes "drawFilename")
+drawEvery    = getSimpleOption L.drawEvery    "drawEvery"
+drawFilename = getSimpleOption L.drawFilename "drawFilename"
 
 drawTimeout prefixes = fmap (toSetter L.drawTimeout)
                             drawTimeout'
