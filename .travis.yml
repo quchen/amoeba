@@ -9,6 +9,8 @@ before_install:
       - sudo apt-get update
       - sudo apt-get install cabal-install-1.18 ghc-7.8.2
       - export PATH=/opt/ghc/7.8.2/bin:$PATH
+      - ghc --version
+      - cabal --version
 
 install:
       # Travis automatically calls cabal update
@@ -18,6 +20,7 @@ script:
       - make fast
 
 after_success:
+      - cabal install hscolour
       - make haddock
       # run tests
 
