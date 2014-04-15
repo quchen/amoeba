@@ -280,9 +280,6 @@ drawEvery, drawFilename, drawTimeout
 drawEvery    = getSimpleOption L.drawEvery    "drawEvery"
 drawFilename = getSimpleOption L.drawFilename "drawFilename"
 
-drawTimeout prefixes = fmap (toSetter L.drawTimeout)
-                            drawTimeout'
-
-      where drawTimeout' :: ReaderT C.Config IO (Maybe Double)
-            drawTimeout' = (fmap . fmap) (fromIntegral :: Int -> Double)
-                                         (lookupC prefixes "drawTimeout")
+drawTimeout prefixes =
+      fmap (toSetter L.drawTimeout . fmap (fromIntegral :: Int -> Double))
+           (lookupC prefixes "drawTimeout")
