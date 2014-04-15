@@ -199,8 +199,6 @@ graphToDot (Graph g) =
 vertexToDot :: (To, Set To) -> String
 vertexToDot (start, ends) = F.foldMap (edgeToDot start) ends
 
-
-
 edgeToDot :: To -> To -> String
 edgeToDot from to =
       printf "\t\"%s\" -> \"%s\"\n"
@@ -209,6 +207,22 @@ edgeToDot from to =
       where show' :: To -> String
             show' (To (Node _host port)) = printf "%d" port
             -- TODO: print host as well (cut out for brevity/local testing)
+
+
+
+-- Potential refactoring of vertexToDot function. Should use a lot less
+-- space in .dot files by combining source nodes.
+--
+-- TODO: Test and replace vertexToDot+edgeToDot on success
+vertexToDot' :: (To, Set To) -> String
+vertexToDot' (to, ends) = printf "\t%s -> { %s}" (showAddress to)
+                                                 endSemicolonList
+      where
+
+      showAddress :: To -> String
+      showAddress (To (Node host port)) = printf "%s:%p" host port
+      showAddressLn x = "\t" ++ showAddress x ++ "\n"
+      endSemicolonList = F.foldMap showAddressLn ends
 
 
 
