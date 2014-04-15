@@ -242,12 +242,9 @@ This is a list of known and feasible attacks on the current design:
     ones could battle the possibility of nodes gathering up too many connections
     illegally.
 
-  - *Immune:* Bootstrap takeover: The bootstrap server remembers all nodes it
-    has helped spawn. Should the malicious network be able to bully out all
-    legally known nodes, the bootstrap server would have to send the next
-    request through the malicious network first. However, the newly spawned node
-    now exists in the bootstrap server's database, providing a way through the
-    blockade.
+  - Bootstrap takeover: if an attacker manages to replace all neighbours (both
+    up- and downstream) of a bootstrap server's pool, all new nodes connecting
+    via that server will be relayed into the malicious network.
 
 - Malicious swarms - right now it's trivial to spawn thousands of new nodes
   simultaneously. No matter how many honest nodes there are, it is very easy to
