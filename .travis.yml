@@ -2,12 +2,21 @@ language: haskell
 ghc: 7.8
 
 
+# Install GHC 7.8.2 on Travis using hvr's repo, see
+# https://github.com/hvr/multi-ghc-travis
+before_install:
+      - sudo add-apt-repository -y ppa:hvr/ghc
+      - sudo apt-get update
+      - sudo apt-get install cabal-install-1.18 ghc-7.8.2
+      - export PATH=/opt/ghc/7.8.2/bin:$PATH
 
 install:
       # Travis automatically calls cabal update
       - make cabal-noupdate
+
 script:
       - make fast
+
 after_success:
       - make haddock
       # run tests
