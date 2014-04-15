@@ -71,7 +71,7 @@ maxSoftBounces = 10
 
 
 # Period length of various internal loops.
-# Unit: int of milliseconds.
+# Unit: int of microseconds.
 shortTickRate  = 100000
 mediumTickRate = 300000
 longTickRate   = 1000000
@@ -121,7 +121,7 @@ bootstrap {
 
       # Minimum amount of time to wait for a node restart. (To avoid restarting
       # the entire pool if a lot of nodes connect all of a sudden.)
-      # Unit: int of milliseconds
+      # Unit: int of microseconds
       restartMinimumPeriod = 1000000
 
 }
