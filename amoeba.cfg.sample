@@ -114,9 +114,10 @@ bootstrap {
 
       serverPort = 20000
 
-      # Restart a node in the node pool once every 5 bootstrap requests. This
+      # Restart a node in the node pool once every N bootstrap requests. This
       # is supposed to break up high interconnectedness in the bootstrap pool.
-      # (One node sends out maxNeighbours bootstrap requests.)
+      # (One new node sends out maxNeighbours bootstrap requests, so pick
+      # this quantity on the order of maxNeighbours*10.)
       restartEvery = 50
 
       # Minimum amount of time to wait for a node restart. (To avoid restarting

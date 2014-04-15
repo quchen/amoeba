@@ -73,20 +73,27 @@ bootstrapServerMain = do
 --   Does not block.
 restarter :: Int                  -- ^ Minimum amount of time between
                                   --   consecutive restarts
-          -> MVar ()              -- ^ Will kill a pool node when filled
-          -> IO (Async (), IO ()) -- ^ Thread async, and action that when
-                                  --   executed restarts a node.
-restarter minPeriod trigger = do
-      newClient <- newEmptyMVar
-      thread <- async (go newClient)
-      let restart = void (tryPutMVar newClient ())
-      return (thread, restart)
+          -> MVar ()              -- ^ Will make the pool kill a pool node when
+                                  --   filled. Written to by the restarter,
+                                  --   read by the node pool.
+          -> IO (Async (), IO ()) -- ^ Thread async, and restart trigger that
+                                  --   when executed restarts a (semi-random)
+                                  --   node.
+restarter minPeriod outgoingTrigger = do
 
-      where go c = forever $ do
-                  delay minPeriod -- Cooldown TODO: Read from config
-                  void (takeMVar c)
-                  yell 44 "Restart triggered!"
-                  tryPutMVar trigger ()
+      -- When the incoming trigger is filled, the outgoing trigger will be
+      -- attempted to be filled. This is only possible if the minimum amount
+      -- of time since the last restart has passed. If the trigger is already
+      -- filled, triggering it again does nothing.
+      incomingTrigger <- newEmptyMVar
+      restarterThread <- async (forever (do delay minPeriod
+                                            _ <- takeMVar incomingTrigger
+                                            yell 44 "Restart triggered!"
+                                            tryPutMVar outgoingTrigger ()))
+
+      let restartTrigger = tryPutMVar incomingTrigger ()
+
+      return (restarterThread, void restartTrigger)
 
 
 
@@ -97,7 +104,7 @@ bootstrapServer :: BootstrapConfig
                 -> IO ()
 bootstrapServer config ioq ldc restart =
       PN.listen (PN.Host "127.0.0.1")
-                (config ^. L.nodeConfig ^. L.serverPort . L.to show)
+                (config ^. L.nodeConfig . L.serverPort . L.to show)
                 (\(sock, addr) -> do
                       toIO' ioq (STDLOG (printf "Bootstrap server listening on %s"
                                                 (show addr)))
@@ -130,17 +137,27 @@ bssLoop config ioq counter' serverSock ldc restartTrigger = go counter' where
                 -- The first couple of new nodes should not bounce, as there are
                 -- not enough nodes to relay the requests (hence the queues fill
                 -- up and the nodes block indefinitely.
-                nodeConfig = config ^. L.nodeConfig & if counter <= preRestart
-                                                            then L.hardBounces .~ 0
-                                                            else id
+                nodeConfig | counter <= preRestart = L.set L.hardBounces 0 cfg
+                           | otherwise = cfg
+                           where cfg = config ^. L.nodeConfig
 
                 -- If nodes are restarted when the server goes up there are
                 -- multi-connections to non-existing nodes, and the network dies off
                 -- after a couple of cycles for some reason. Disable restarting for
                 -- the first couple of nodes.
-                restartMaybe _ | counter <= preRestart = return ()
-                restartMaybe c = when (0 == c `rem` (config ^. L.restartEvery))
-                                      restartTrigger
+                attemptRestart
+                      | counter <= preRestart = return ()
+                      | counter `isMultipleOf` (config ^. L.restartEvery) = restartTrigger
+                      | otherwise = return ()
+
+                a `isMultipleOf` b | b > 0 = a `rem` b == 0
+                                   | otherwise = True
+                                             -- This default ensures that even
+                                             -- nonsensical config options don't
+                                             -- make the program misbehave.
+                                             -- Instead, they just restart on
+                                             -- every new node (if the minimum
+                                             -- restarting time has passed).
 
                 bootstrapRequestH socket node = do
                       dispatchSignal nodeConfig node ldc
@@ -154,7 +171,7 @@ bssLoop config ioq counter' serverSock ldc restartTrigger = go counter' where
                                                           \ of %s"
                                                     (show benefactor)))
                               bootstrapRequestH clientSock benefactor
-                              restartMaybe counter
+                              attemptRestart
                               toIO' ioq (STDLOG (printf "Request %d served"
                                                         counter))
                         Just _other_signal -> do
