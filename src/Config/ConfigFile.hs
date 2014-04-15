@@ -174,27 +174,29 @@ toSetter _ Nothing  = mempty
 
 
 
+-- Node config specific
 
+serverPort, minNeighbours, maxNeighbours, maxChanSize, verbosity, hardBounces,
+      acceptP, maxSoftBounces, shortTickRate, mediumTickRate, longTickRate,
+      poolTimeout, floodMessageCache, bootstrapServers
+            :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 
-serverPort :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 serverPort prefixes = fmap (toSetter L.serverPort)
                            (lookupC prefixes "serverPort")
 
-minNeighbours :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 minNeighbours prefixes = fmap (toSetter L.minNeighbours)
                               (lookupC prefixes "minNeighbours")
 
-maxNeighbours :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 maxNeighbours prefixes = fmap (toSetter L.maxNeighbours)
                               (lookupC prefixes "maxNeighbours")
 
-
--- | Helper function for 'verbosity'
-verbosity' :: Prefixes -> ReaderT C.Config IO (Maybe Ty.Verbosity)
-verbosity' prefixes = fmap (maybe Nothing parseVerbosity)
-                           (lookupC prefixes "verbosity")
+verbosity prefixes = fmap (toSetter L.verbosity) verbosity'
 
       where
+
+      verbosity' :: ReaderT C.Config IO (Maybe Ty.Verbosity)
+      verbosity' = fmap (maybe Nothing parseVerbosity)
+                        (lookupC prefixes "verbosity")
 
       parseVerbosity :: String -> Maybe Ty.Verbosity
       parseVerbosity (map toLower -> x)
@@ -205,52 +207,42 @@ verbosity' prefixes = fmap (maybe Nothing parseVerbosity)
             | x == "chatty"  = Just Ty.Chatty
             | otherwise      = Nothing
 
-
-verbosity :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-verbosity prefixes = toSetter L.verbosity <$> verbosity' prefixes
-
-maxChanSize :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 maxChanSize prefixes = fmap (toSetter L.maxChanSize)
                             (lookupC prefixes "maxChanSize")
 
-hardBounces :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 hardBounces prefixes = fmap (toSetter L.hardBounces)
                             (lookupC prefixes "hardBounces")
 
-acceptP :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 acceptP prefixes = fmap (toSetter L.acceptP)
                         (lookupC prefixes "acceptP")
 
-maxSoftBounces :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 maxSoftBounces prefixes = fmap (toSetter L.maxSoftBounces)
                                (lookupC prefixes "maxSoftBounces")
 
-shortTickRate :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 shortTickRate prefixes = fmap (toSetter L.shortTickRate)
                               (lookupC prefixes "shortTickRate")
 
-mediumTickRate :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 mediumTickRate prefixes = fmap (toSetter L.mediumTickRate)
                                (lookupC prefixes "mediumTickRate")
 
-longTickRate :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 longTickRate prefixes = fmap (toSetter L.longTickRate)
                              (lookupC prefixes "longTickRate")
 
-poolTimeout :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 poolTimeout prefixes = fmap (toSetter L.poolTimeout)
                             (lookupC prefixes "poolTimeout")
 
-floodMessageCache :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 floodMessageCache prefixes = fmap (toSetter L.floodMessageCache)
                                   (lookupC prefixes "floodMessageCache")
 
--- | Helper function for 'bootstrapServers'
-bootstrapServers' :: Prefixes -> ReaderT C.Config IO (Set.Set Ty.To)
-bootstrapServers' prefixes = fmap m'valueToTo
-                                  (lookupC prefixes "bootstrapServers")
+bootstrapServers prefixes = fmap appendBSS bootstrapServers'
 
       where
+
+      appendBSS x = OptionModifier (L.bootstrapServers <>~ x)
+
+      bootstrapServers' :: ReaderT C.Config IO (Set.Set Ty.To)
+      bootstrapServers' = fmap m'valueToTo
+                               (lookupC prefixes "bootstrapServers")
 
       m'valueToTo :: Maybe C.Value -> Set.Set Ty.To
       m'valueToTo = maybe Set.empty valueToTo
@@ -267,36 +259,46 @@ bootstrapServers' prefixes = fmap m'valueToTo
                   Left  _r -> xs
             go _else xs = xs
       valueToTo _else = Set.empty
+
       parseAddrText = AP.parseAddress . Text.unpack
 
-bootstrapServers :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-bootstrapServers prefixes = appendBSS  <$> bootstrapServers' prefixes where
-      appendBSS x = OptionModifier (L.bootstrapServers <>~ x)
+
+
+-- Node pool specific
 
 poolSize :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.PoolConfig)
 poolSize prefixes = fmap (toSetter L.poolSize)
                          (lookupC prefixes "poolSize")
 
-restartEvery :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.BootstrapConfig)
+
+
+-- Bootstrap server specific
+
+restartEvery, restartMinimumPeriod
+      :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.BootstrapConfig)
+
 restartEvery prefixes = fmap (toSetter L.restartEvery)
                              (lookupC prefixes "restartEvery")
 
-restartMinimumPeriod :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.BootstrapConfig)
 restartMinimumPeriod prefixes = fmap (toSetter L.restartMinimumPeriod)
                                      (lookupC prefixes "restartMinimumPeriod")
 
-drawEvery :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
+
+
+-- Drawing server specific
+
+drawEvery, drawFilename, drawTimeout
+      :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
+
 drawEvery prefixes = fmap (toSetter L.drawEvery)
                           (lookupC prefixes "drawEvery")
 
-drawFilename :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
 drawFilename prefixes = fmap (toSetter L.drawFilename)
                              (lookupC prefixes "drawFilename")
 
-drawTimeout' :: Prefixes -> ReaderT C.Config IO (Maybe Double)
-drawTimeout' prefixes = (fmap . fmap) (fromIntegral :: Int -> Double)
-                                      (lookupC prefixes "drawTimeout")
-
-drawTimeout :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
 drawTimeout prefixes = fmap (toSetter L.drawTimeout)
-                            (drawTimeout' prefixes)
+                            drawTimeout'
+
+      where drawTimeout' :: ReaderT C.Config IO (Maybe Double)
+            drawTimeout' = (fmap . fmap) (fromIntegral :: Int -> Double)
+                                         (lookupC prefixes "drawTimeout")
