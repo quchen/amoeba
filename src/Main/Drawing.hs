@@ -8,6 +8,7 @@
 --       STG = Server to graph.
 
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 module Main.Drawing (main) where
@@ -16,11 +17,14 @@ import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Data.List (intercalate)
+import           Data.Monoid
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Data.Set (Set)
 import           Text.Printf
 import qualified Data.Foldable as F
+import qualified Data.Text as T
+import           Data.Text (Text)
 
 import qualified Pipes.Concurrent as P
 import qualified Network.Simple.TCP as N
@@ -100,7 +104,7 @@ incomingLoop _ioq stg serverSock = forever $
                   -- Good answer
                   Just (NeighbourList node neighbours) -> do
                         -- toIO' ioq (putStrLn ("Received node data from" ++ show node))
-                        (atomically . void) (P.send (_pOutput stg)
+                        (atomically . void) (P.send (stg ^. L.pOutput)
                                                     (node, neighbours))
 
                   -- Invalid answer
@@ -131,13 +135,13 @@ graphDrawer :: DrawingConfig
             -> TVar (Graph To)
             -> IO ()
 graphDrawer config ioq t'graph = (initialDelay >>) . forever $ do
-      delay (_drawEvery config)
+      delay (config ^. L.drawEvery)
       cleanup config t'graph
       graph <- atomically (readTVar t'graph)
       let graphSize (Graph g) = Map.size g
           s = graphSize graph
       (toIO' ioq . STDLOG) (printf "Drawing graph. Current network size: %d nodes\n" s)
-      writeFile (_drawFilename config)
+      writeFile (config ^. L.drawFilename)
                 (graphToDot graph)
 
       where
@@ -172,7 +176,7 @@ networkAsker config poolSize toSelf ldc = forever $ do
       t <- makeTimestamp
       let signal = Flood t (SendNeighbourList toSelf)
       forM_ [1..poolSize]
-            (const (writeChan ldc signal))
+            (\_i -> writeChan ldc signal)
 
 
 
@@ -195,7 +199,6 @@ graphToDot (Graph g) =
       where stripTimestamp (a, (_t, b)) = (a,b)
 
 
-
 vertexToDot :: (To, Set To) -> String
 vertexToDot (start, ends) = F.foldMap (edgeToDot start) ends
 
@@ -210,31 +213,71 @@ edgeToDot from to =
 
 
 
--- Potential refactoring of vertexToDot function. Should use a lot less
--- space in .dot files by combining source nodes.
---
--- TODO: Test and replace vertexToDot+edgeToDot on success
-vertexToDot' :: (To, Set To) -> String
-vertexToDot' (to, ends) = printf "\t%s -> { %s}" (showAddress to)
-                                                 endSemicolonList
-      where
-
-      showAddress :: To -> String
-      showAddress (To (Node host port)) = printf "%s:%p" host port
-      showAddressLn x = "\t" ++ showAddress x ++ "\n"
-      endSemicolonList = F.foldMap showAddressLn ends
-
-
-
 -- | Add meta info to a list of edges to make them into a proper .dot file
 dotBoilerplate :: String -> String
 dotBoilerplate str =
       "digraph G {\n\
       \      node [shape = box, color = gray, fontname = \"Courier\"];\n\
       \      edge [fontname = \"Courier\", len = 6];\n\
-      \      " ++ str ++ "\n\
+      \      " ++ str ++ "\
       \}\n"
 
+
+
+-- #############################################################################
+-- ###  Refactored dot-file generation  ########################################
+-- #############################################################################
+
+-- RefC = Refactoring candidate.
+--
+-- The code in this section was not tested, and should only be used with
+-- immediate testing.
+
+-- | Convert a graph to dot format representation. Addresses become nodes, DSNs
+--   edges.
+graphToDot_RefC :: Graph To -> Text
+graphToDot_RefC (Graph g) = dotBoilerplate_RefC (Map.foldMapWithKey reduceNode g) where
+      reduceNode from (_timestamp, targets) = vertexToDot_RefC from targets
+
+-- | Convert a source node and a list of target nodes (DSNs) to dot-file
+--   representation @source -> { target1; target2; target3; }@
+vertexToDot_RefC :: To     -- ^ Source vertex
+                 -> Set To -- ^ Edge destination vertices
+                 -> Text
+vertexToDot_RefC to targets =
+      T.concat [ "\t"
+               , showAddress to             -- Node itself
+               , " -> { "
+               , F.foldMap showAddress' targets -- DSNs
+               , "}\n"
+               ]
+
+      where
+
+      -- Represent a node using its host/port, enclosed in quotes to account for
+      -- names involving whitespace. This should never be necessary, but it
+      -- doesn't hurt to do it anyway.
+      showAddress :: To -> Text
+      showAddress (To (Node host port)) = (quote . T.pack) (host ++ ":" ++ show port)
+
+      -- Show an address, terminated with a semicolon.
+      showAddress' = (<> "; ") . showAddress
+
+      -- Surround in quotes
+      quote :: Text -> Text
+      quote = (<> "\"") . ("\"" <>)
+
+
+
+-- | Add meta info to a list of edges to make them into a proper .dot file
+dotBoilerplate_RefC :: Text -> Text
+dotBoilerplate_RefC str =
+      T.unlines [ "digraph G {"
+                , "node [shape = box, color = gray, fontname = \"Courier\"];"
+                , "edge [fontname = \"Courier\", len = 6];"
+                , str
+                , "}"
+                ]
 
 
 
