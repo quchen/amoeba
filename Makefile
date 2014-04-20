@@ -18,14 +18,12 @@ MAIN_DRAW=drawing
 SRC-D=src
 MAIN-D=$(SRC-D)/Main
 DOC-D=doc
-PACKAGE-D=$(shell find .cabal-sandbox/ -name "*packages.conf.d")
 
 # GHC flags
 PARALLEL_GHC=-j$(NUM_CORES)
 OPTIMIZE=-O2
 PROF=-prof -auto-all -caf-all
 WARN=-Wall -fno-warn-type-defaults -fno-warn-unused-do-bind -fwarn-tabs -fwarn-incomplete-uni-patterns
-PACKAGEDB=-no-user-package-db -package-db $(PACKAGE-D)
 THREADED=-threaded
 DYNAMIC=-dynamic
 
@@ -34,8 +32,8 @@ PARALLEL_CABAL=-j$(NUM_CORES)
 
 # Executables
 CABAL=cabal
-GHC=ghc $(THREADED) $(PARALLEL_GHC) -i$(SRC-D) $(WARN) $(DYNAMIC) $(PACKAGEDB)
-GHCI=ghci -i$(SRC-D) $(WARN) $(PACKAGEDB)
+GHC=cabal exec ghc -- $(THREADED) $(PARALLEL_GHC) -i$(SRC-D) $(WARN) $(DYNAMIC)
+GHCI=cabal exec ghci -- -i$(SRC-D) $(WARN)
 HLINT=hlint --colour
 PAGER=less -R
 SHELL=bash
