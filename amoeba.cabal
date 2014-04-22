@@ -38,6 +38,9 @@ library
       hs-source-dirs:   src
       ghc-options:      -O2 -W
       default-language: Haskell2010
+      extensions:       TemplateHaskell
+            -- TH requires explicit mentioning in some cases, see
+            -- https://ghc.haskell.org/trac/ghc/wiki/GHC-7.8-FAQ
 
       build-depends:   async                 == 2.0.*
                    ,   base                  == 4.7.*
