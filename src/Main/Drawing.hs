@@ -17,14 +17,11 @@ import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Data.List (intercalate)
-import           Data.Monoid
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Data.Set (Set)
 import           Text.Printf
 import qualified Data.Foldable as F
-import qualified Data.Text as T
-import           Data.Text (Text)
 
 import qualified Pipes.Concurrent as P
 import qualified Network.Simple.TCP as N
@@ -221,63 +218,6 @@ dotBoilerplate str =
       \      edge [fontname = \"Courier\", len = 6];\n\
       \      " ++ str ++ "\
       \}\n"
-
-
-
--- #############################################################################
--- ###  Refactored dot-file generation  ########################################
--- #############################################################################
-
--- RefC = Refactoring candidate.
---
--- The code in this section was not tested, and should only be used with
--- immediate testing.
-
--- | Convert a graph to dot format representation. Addresses become nodes, DSNs
---   edges.
-graphToDot_RefC :: Graph To -> Text
-graphToDot_RefC (Graph g) = dotBoilerplate_RefC (Map.foldMapWithKey reduceNode g) where
-      reduceNode from (_timestamp, targets) = vertexToDot_RefC from targets
-
--- | Convert a source node and a list of target nodes (DSNs) to dot-file
---   representation @source -> { target1; target2; target3; }@
-vertexToDot_RefC :: To     -- ^ Source vertex
-                 -> Set To -- ^ Edge destination vertices
-                 -> Text
-vertexToDot_RefC to targets =
-      T.concat [ "\t"
-               , showAddress to             -- Node itself
-               , " -> { "
-               , F.foldMap showAddress' targets -- DSNs
-               , "}\n"
-               ]
-
-      where
-
-      -- Represent a node using its host/port, enclosed in quotes to account for
-      -- names involving whitespace. This should never be necessary, but it
-      -- doesn't hurt to do it anyway.
-      showAddress :: To -> Text
-      showAddress (To (Node host port)) = (quote . T.pack) (host ++ ":" ++ show port)
-
-      -- Show an address, terminated with a semicolon.
-      showAddress' = (<> "; ") . showAddress
-
-      -- Surround in quotes
-      quote :: Text -> Text
-      quote = (<> "\"") . ("\"" <>)
-
-
-
--- | Add meta info to a list of edges to make them into a proper .dot file
-dotBoilerplate_RefC :: Text -> Text
-dotBoilerplate_RefC str =
-      T.unlines [ "digraph G {"
-                , "node [shape = box, color = gray, fontname = \"Courier\"];"
-                , "edge [fontname = \"Courier\", len = 6];"
-                , str
-                , "}"
-                ]
 
 
 
