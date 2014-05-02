@@ -103,11 +103,25 @@ balanceEdges env = forever $ do
                    , minN - dsnCount
                    )
 
-      each (mergeLists (replicate dsnDeficit Outgoing)
-                       (replicate usnDeficit Incoming))
+      -- Convert a deficit in nodes into a number of edge requests to be sent
+      -- out.
+      --
+      -- - The number should be at least one, so that a deficit leads to at
+      --   least one request.
+      -- - In order not to flood the network, the number of requests should not
+      --   be too high: it might take multiple ticks of 'balanceEdges' to
+      --   establish a new connection, and lots of requests will be sent out in
+      --   that time.
+      --
+      -- For this reason, the current number of requests sent out is bounded
+      -- below by 1, and grows like sqrt with the deficit.
+      let requests deficit = max 1 (round (sqrt (fromIntegral deficit)))
+
+      each (mergeLists (replicate (requests dsnDeficit) Outgoing)
+                       (replicate (requests usnDeficit) Incoming))
 
 
-      where config     = env ^. L.config
+      where config     = env    ^. L.config
             minN       = config ^. L.minNeighbours
             maxN       = config ^. L.maxNeighbours
             maxNDigits = round (logBase 10 (fromIntegral maxN)) + 1 :: Int
