@@ -4,6 +4,8 @@
 --   Throws an exception on failure (which hopefully crashes the program unless
 --   I get the glorious idea of a catchall for some reason).
 
+{-# LANGUAGE OverloadedStrings #-}
+
 module Config.Getter (
         node
       , bootstrap
@@ -14,6 +16,7 @@ module Config.Getter (
 import qualified Data.Traversable as T
 import Data.Monoid
 import Control.Monad
+import qualified Data.Text as Text
 import qualified Data.Text.IO as Text
 
 import Control.Lens.Operators
@@ -74,6 +77,10 @@ multi = do let mods = [ File.multiModifier, CmdArg.multiModifier ]
 
 -- | Print a configuration if the predicate is met.
 printIfVerbose :: PrettyShow config => NodeConfig -> config -> IO ()
-printIfVerbose nodeCfg cfg = when (nodeCfg ^. L.verbosity >= Debug)
-                                  (do putStr "Configuration: "
-                                      Text.putStrLn (pretty cfg))
+printIfVerbose nodeCfg cfg =
+      when (nodeCfg ^. L.verbosity >= Debug)
+           (Text.putStrLn (Text.unlines
+                 [ "\ESC[31m###  Configuration:  #############\ESC[0m"
+                 , pretty cfg
+                 , "\ESC[31m##################################\ESC[0m"
+                 ]))
