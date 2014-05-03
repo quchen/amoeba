@@ -1,5 +1,7 @@
 -- | Environment/configuration types.
 
+{-# LANGUAGE OverloadedStrings #-}
+
 module Types.Config (
 
 
@@ -15,14 +17,18 @@ module Types.Config (
       , MultiConfig     (..)
       , DrawingConfig   (..)
 
+      , PrettyShow (..)
+
 ) where
 
 
 
 import Control.Concurrent.STM
-import Data.Set
-import Data.Map
+import Data.Set (Set, toList)
+import Data.Map (Map)
+import Data.Monoid
 import Data.Word
+import qualified Data.Text as T
 
 import Types.Signal
 import Types.Misc
@@ -107,7 +113,7 @@ data NodeConfig = NodeConfig {
 
       , _hardBounces    :: Word       -- ^ Number of initial bounces
 
-            -- TODO: Rename nounces to hardBounces
+            -- TODO: Rename bounces to hardBounces
 
       , _acceptP        :: Double     -- ^ Edge request acceptance probability
                                       --   for the second bounce phase.
@@ -205,3 +211,96 @@ data DrawingConfig = DrawingConfig {
       , _drawTimeout :: Double
 
       } deriving (Show)
+
+
+
+-- | 'Show' for prettyprinting.
+class Show a => PrettyShow a where
+      pretty :: a -> T.Text
+      pretty = T.pack . show
+
+instance PrettyShow Int
+instance PrettyShow Double
+instance PrettyShow Word
+instance PrettyShow Verbosity
+instance PrettyShow To
+instance Show a => PrettyShow (Set a)
+instance Show a => PrettyShow [a]
+
+
+instance PrettyShow NodeConfig where
+      pretty cfg = (T.intercalate "\n" . map mconcat)
+            [  ["Server port: " <> pretty (_serverPort cfg)]
+
+            ,  [ "Min/max neighbours: "
+               , pretty (_minNeighbours cfg)
+               , "/"
+               , pretty (_maxNeighbours cfg)
+               ]
+
+            ,  [ "Maximum channel size: "
+               , pretty (_maxChanSize cfg)
+               ]
+
+            ,  [ "Hard bounces/"
+               , "soft bounce acceptance probability/"
+               , "maximum number of soft bounces: "
+               , pretty (_hardBounces cfg)
+               , "/"
+               , pretty (_acceptP cfg)
+               , "/"
+               , pretty (_maxSoftBounces cfg)
+               ]
+
+            ,  [ "Tick rates (short/medium/long)/µs: "
+               , pretty (_shortTickRate cfg)
+               , "/"
+               , pretty (_mediumTickRate cfg)
+               , "/"
+               , pretty (_longTickRate cfg)
+               ]
+
+            ,  [ "Pool timeout/s: "
+               , pretty (_poolTimeout cfg)
+               ]
+
+            ,  [ "Verbosity: "
+               , pretty (_verbosity cfg)
+               ]
+
+            ,  [ "Boostrap servers: "
+               , pretty (toList (_bootstrapServers cfg))
+               ]
+
+            ,  [ "Flood message cache size: "
+               , pretty (_floodMessageCache cfg)
+               ]
+            ]
+
+instance PrettyShow PoolConfig where
+      pretty cfg = "Node pool size: " <> pretty (_poolSize cfg)
+
+instance PrettyShow BootstrapConfig where
+      pretty cfg = T.intercalate "\n"
+            [  pretty (_bootstrapconfigNodeConfig cfg)
+            ,  pretty (_bootstrapconfigPoolConfig cfg)
+            ,  "Restart every number of bootstrap requests: "
+               <> pretty (_restartEvery cfg)
+            ,  "Minimum time between restarts/µs: "
+               <> pretty (_restartMinimumPeriod cfg)
+            ]
+
+instance PrettyShow MultiConfig where
+      pretty cfg = T.intercalate "\n"
+            [  pretty (_multiconfigNodeConfig cfg)
+            ,  pretty (_multiconfigPoolConfig cfg)
+            ]
+
+instance PrettyShow DrawingConfig where
+      pretty cfg = T.intercalate "\n"
+            [  pretty (_drawingconfigNodeConfig cfg)
+            ,  pretty (_drawingconfigPoolConfig cfg)
+            ,  "Draw every µs: " <> pretty (_drawEvery cfg)
+            ,  "Graph output filename: " <> pretty (_drawFilename cfg)
+            ,  "Drawing node orphaned timeout: " <> pretty (_drawTimeout cfg)
+            ]

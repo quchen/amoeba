@@ -13,6 +13,11 @@ module Config.Getter (
 
 import qualified Data.Traversable as T
 import Data.Monoid
+import Control.Monad
+import qualified Data.Text.IO as Text
+
+import Control.Lens.Operators
+import qualified Types.Lens as L
 
 import qualified Config.ConfigFile   as File
 import qualified Config.CmdArgParser as CmdArg
@@ -36,6 +41,7 @@ node :: IO NodeConfig
 node = do let mods = [ File.nodeModifier, CmdArg.nodeModifier ]
           cfg <- runModifier Default.nodeConfig mods
           Verify.node cfg
+          printIfVerbose cfg cfg
           return cfg
 
 
@@ -44,6 +50,7 @@ bootstrap :: IO BootstrapConfig
 bootstrap = do let mods = [ File.bootstrapModifier, CmdArg.bootstrapModifier ]
                cfg <- runModifier Default.bootstrapConfig mods
                Verify.bootstrap cfg
+               printIfVerbose (cfg ^. L.nodeConfig) cfg
                return cfg
 
 
@@ -52,6 +59,7 @@ drawing :: IO DrawingConfig
 drawing = do let mods = [ File.drawingModifier, CmdArg.drawingModifier ]
              cfg <- runModifier Default.drawingConfig mods
              Verify.drawing cfg
+             printIfVerbose (cfg ^. L.nodeConfig) cfg
              return cfg
 
 
@@ -60,4 +68,12 @@ multi :: IO MultiConfig
 multi = do let mods = [ File.multiModifier, CmdArg.multiModifier ]
            cfg <- runModifier Default.multiConfig mods
            Verify.multi cfg
+           printIfVerbose (cfg ^. L.nodeConfig) cfg
            return cfg
+
+
+-- | Print a configuration if the predicate is met.
+printIfVerbose :: PrettyShow config => NodeConfig -> config -> IO ()
+printIfVerbose nodeCfg cfg = when (nodeCfg ^. L.verbosity >= Debug)
+                                  (do putStr "Configuration: "
+                                      Text.putStrLn (pretty cfg))
