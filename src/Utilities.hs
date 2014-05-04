@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NumDecimals #-}
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 module Utilities (
@@ -57,6 +58,9 @@ import qualified Control.Lens.Zoom as L
 import Control.Monad.Catch (MonadCatch)
 
 import Data.Binary
+
+import qualified Control.Lens as L
+import qualified Types.Lens as L
 
 import Types
 import Utilities.Debug as Reexport
@@ -127,7 +131,7 @@ listenOnNode node = N.listen (N.Host (_host node))
 sender :: (MonadIO io, Binary b)
        => N.Socket
        -> Consumer b io ServerResponse
-sender s = encodeMany >-> toSocketTimeout (3*10^6) s -- TODO: Don't hardcode timeout
+sender s = encodeMany >-> toSocketTimeout 3e6 s -- TODO: Don't hardcode timeout
 
 
 
@@ -153,7 +157,7 @@ receiver :: (MonadIO io, Binary b)
          -> Producer b io ServerResponse
 receiver s = decoded where
 
-      input = fromSocketTimeout (3*10^6) s 4096 -- TODO: Don't hardcode timeout
+      input = fromSocketTimeout 3e6 s 4096 -- TODO: Don't hardcode timeout
 
       decoded = P.evalStateT (L.zoom P.decoded P.draw) input >>= \case
             Nothing -> return DecodeError
@@ -300,8 +304,8 @@ checkOutputBuffers = do
 
 
 -- | "MonadIO" version of "threadDelay".
-delay :: MonadIO io => Int -> io ()
-delay = liftIO . threadDelay
+delay :: MonadIO io => Microseconds -> io ()
+delay = liftIO . threadDelay . L.view (L.from L.microseconds)
 
 
 

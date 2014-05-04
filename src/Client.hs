@@ -26,6 +26,8 @@ import qualified Pipes.Concurrent as P
 import           Pipes.Network.TCP (Socket)
 
 import qualified Types.Lens as L
+import qualified Control.Lens as L
+import           Control.Lens.Operators
 
 import           Types
 import           ClientPool
@@ -110,7 +112,7 @@ newClient env to socket = ifM allowed
       -- Remove the DSN from the DB, and notify it of the event before
       -- terminating the connection
       cleanup = do atomically (deleteDsn env to)
-                   timeout (_mediumTickRate (_config env))
+                   timeout (env ^. L.config . L.mediumTickRate . L.from L.microseconds)
                            (send socket (Normal ShuttingDown))
 
 

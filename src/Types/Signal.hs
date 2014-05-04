@@ -1,6 +1,7 @@
 -- | Signal types, i.e. the protocol used.
 
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 module Types.Signal where
@@ -14,6 +15,9 @@ import Data.Set (Set)
 import Data.Binary
 import Pipes.Concurrent as P
 
+-- For Microseconds instance
+import Data.Configurator ()
+import Data.Configurator.Types (Configured)
 
 
 
@@ -266,3 +270,10 @@ data PChan a = PChan { _pOutput :: P.Output a
                      , _pInput  :: P.Input  a
                      , _pSeal   :: STM ()
                      }
+
+
+newtype Microseconds = Microseconds Int
+      deriving (Eq, Ord, Num, Read, Integral, Real, Enum, Configured)
+
+instance Show Microseconds where
+      show (Microseconds s) = show s ++ " µs"

@@ -16,12 +16,12 @@ module Config.Verify (
 ) where
 
 
-import Data.List
 import Control.Exception
 import Data.Typeable
 import Control.Monad
 
 import qualified Control.Lens as L
+import Control.Lens.Operators
 import qualified Types.Lens as L
 
 import Types.Config
@@ -44,11 +44,10 @@ instance Exception ConfigError
 node :: NodeConfig -> IO ()
 node config = sequence_ [portRange, tickRates, poolTimeout, poolSize]
 
-
       where
             -- Is the server port in range?
             portRange = unless (p >= 0 && p < 2^16) (throwIO PortRange)
-                  where p = _serverPort config
+                  where p = config ^. L.serverPort
 
             -- Are the tickrates in the right order?
             -- (small <= medium <= long)
@@ -63,13 +62,13 @@ node config = sequence_ [portRange, tickRates, poolTimeout, poolSize]
             -- Timeouts must be longer than the long tickrate (and should be so
             -- by a factor of about 3, nyquist etc.)
             poolTimeout = when (ltr > tout) (throwIO PoolTimeout)
-                  where ltr  = fromIntegral (_longTickRate config) / 10^6
-                        tout = _poolTimeout config
+                  where ltr  = fromIntegral (config ^. L.longTickRate) / 10^6
+                        tout = config ^. L.poolTimeout
 
             -- minimum <= maximum neighbours
             poolSize = when (minN > maxN) (throwIO PoolSize)
-                  where minN = _minNeighbours config
-                        maxN = _maxNeighbours config
+                  where minN = config ^. L.minNeighbours
+                        maxN = config ^. L.maxNeighbours
 
 
 

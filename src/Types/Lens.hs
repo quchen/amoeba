@@ -38,3 +38,5 @@ timestamp :: Iso' Double Timestamp
 timestamp = iso f b where
       f t = Timestamp t
       b (Timestamp t) = t
+
+makeIso ''Microseconds

@@ -71,7 +71,7 @@ bootstrapServerMain = do
 --   new node is bootstrapped.
 --
 --   Does not block.
-restarter :: Int                  -- ^ Minimum amount of time between
+restarter :: Microseconds         -- ^ Minimum amount of time between
                                   --   consecutive restarts
           -> MVar ()              -- ^ Will make the pool kill a pool node when
                                   --   filled. Written to by the restarter,

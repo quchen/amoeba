@@ -122,15 +122,13 @@ data NodeConfig = NodeConfig {
                                       --   is maximally relayed before it is
                                       --   rejected
 
-      , _shortTickRate  :: Int        -- ^ Tick interval in milliseconds for
-                                      --   "short" loops.
+      , _shortTickRate  :: Microseconds -- ^ Tick interval for "short" loops.
 
-      , _mediumTickRate :: Int        -- ^ Tick interval in milliseconds for
-                                      --   "medium" loops, for example the
-                                      --   client pool or the keep-alive loops.
+      , _mediumTickRate :: Microseconds -- ^ Tick interval for "medium" loops,
+                                        --   for example the client pool or the
+                                        --   keep-alive loops.
 
-      , _longTickRate   :: Int        -- ^ Tick interval in milliseconds for
-                                      --   "long" loops.
+      , _longTickRate   :: Microseconds -- ^ Tick interval for "long" loops.
 
       , _poolTimeout    :: Double     -- ^ Number of seconds before a
                                       --   non-responding node is considered
@@ -171,8 +169,8 @@ data BootstrapConfig = BootstrapConfig {
       , _restartEvery :: Int -- ^ Every n bootstrap requests one client is
                              --   restarted at random
 
-      , _restartMinimumPeriod :: Int -- ^ Limit the maximal frequency at which
-                                     --   restarts can happen
+      , _restartMinimumPeriod :: Microseconds -- ^ Limit the maximal frequency
+                                              --   at which restarts can happen
 
       } deriving (Show)
 
@@ -202,9 +200,9 @@ data DrawingConfig = DrawingConfig {
       , _drawingconfigPoolConfig :: PoolConfig
         -- dito
 
-      , _drawEvery :: Int -- ^ Interval for sending out neighbour list
-                          --   requests and drawing the currently known
-                          --   state of the network
+      , _drawEvery :: Microseconds -- ^ Interval for sending out neighbour list
+                                   --   requests and drawing the currently known
+                                   --   state of the network
 
       , _drawFilename :: FilePath -- ^ Filename for the .dot file
 
@@ -224,6 +222,7 @@ instance PrettyShow Double
 instance PrettyShow Word
 instance PrettyShow Verbosity
 instance PrettyShow To
+instance PrettyShow Microseconds
 instance Show a => PrettyShow (Set a)
 instance Show a => PrettyShow [a]
 
@@ -252,7 +251,7 @@ instance PrettyShow NodeConfig where
                , pretty (_maxSoftBounces cfg)
                ]
 
-            ,  [ "Tick rates (short/medium/long)/µs: "
+            ,  [ "Tick rates (short/medium/long): "
                , pretty (_shortTickRate cfg)
                , "/"
                , pretty (_mediumTickRate cfg)
@@ -286,7 +285,7 @@ instance PrettyShow BootstrapConfig where
             ,  pretty (_bootstrapconfigPoolConfig cfg)
             ,  "Restart every number of bootstrap requests: "
                <> pretty (_restartEvery cfg)
-            ,  "Minimum time between restarts/µs: "
+            ,  "Minimum time between restarts: "
                <> pretty (_restartMinimumPeriod cfg)
             ]
 
