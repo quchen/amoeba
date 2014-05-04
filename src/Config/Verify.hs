@@ -52,11 +52,13 @@ node config = sequence_ [portRange, tickRates, poolTimeout, poolSize]
 
             -- Are the tickrates in the right order?
             -- (small <= medium <= long)
-            tickRates = when (rates /= sort rates) (throwIO TickRates)
-                  where rates = [ _shortTickRate  config
-                                , _mediumTickRate config
-                                , _longTickRate   config
-                                ]
+            tickRates = unless (isSorted rates) (throwIO TickRates)
+                  where rates = map (config ^.) [ L.shortTickRate
+                                                , L.mediumTickRate
+                                                , L.longTickRate
+                                                ]
+                        isSorted xs = and (zipWith (<=) xs (tail xs))
+                        -- TODO: Test ^
 
             -- Timeouts must be longer than the long tickrate (and should be so
             -- by a factor of about 3, nyquist etc.)
