@@ -9,6 +9,7 @@ before_install:
       - sudo apt-get update
       - sudo apt-get install cabal-install-1.20 ghc-7.8.2
       - export PATH=/opt/ghc/7.8.2/bin:$PATH
+      - export PATH=/opt/cabal/1.20/bin:$PATH
       - ghc --version
       - cabal --version
 
