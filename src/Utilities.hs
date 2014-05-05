@@ -13,6 +13,7 @@ module Utilities (
       , whileM
       , pluralS
       , mergeLists
+      , showT
 
       -- * Concurrency
       , toIO
@@ -56,6 +57,7 @@ import qualified Pipes.Binary as P
 import qualified Pipes.Parse as P
 import qualified Control.Lens.Zoom as L
 import Control.Monad.Catch (MonadCatch)
+import qualified Data.Text as T
 
 import Data.Binary
 
@@ -325,3 +327,6 @@ pluralS _ = "s"
 mergeLists :: [a] -> [a] -> [a]
 mergeLists []     ys = ys
 mergeLists (x:xs) ys = x : mergeLists ys xs
+
+showT :: Show a => a -> T.Text
+showT = T.pack . show
