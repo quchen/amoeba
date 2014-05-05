@@ -1,7 +1,7 @@
 Amœba
 ======
 
-Amœba is a program for setting up a decentralized network. The name comes from
+Amœba is a program for setting up a distributed network. The name comes from
 the hope that eventually, the network will be so robust that you can poke any of
 its parts without endangering its overall integrity.
 
@@ -18,7 +18,7 @@ Click for higher resolution.
 
 
 
-The current development stage is Alpha.
+The current development stage is unstable alpha.
 
 Branch  | Status
 :-----: | :-----:

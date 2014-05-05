@@ -1,8 +1,8 @@
 name:                amoeba
-version:             0.0.0.201404111
-synopsis:            Decentralized network client and utilities to set it up and
+version:             0.0.0.201405061
+synopsis:            Distributed network client and utilities to set it up and
                      investigate its behaviour
-description:         Amœba is a program for setting up a decentralized network.
+description:         Amœba is a program for setting up a distributed network.
                      The name comes from the hope that eventually, the network
                      will be so robust that you can poke any of its parts
                      without endangering its overall integrity.
