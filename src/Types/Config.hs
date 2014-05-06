@@ -98,50 +98,48 @@ data Environment = Environment {
 -- | Configuration parameters accessible before anything goes online.
 data NodeConfig = NodeConfig {
 
-        _serverPort     :: Int        -- ^ Port to open the server socket on
+        _serverPort     :: !Int       -- ^ Port to open the server socket on
 
-      , _maxNeighbours  :: Int        -- ^ The maximum number of neighbours. No
+      , _maxNeighbours  :: !Int       -- ^ The maximum number of neighbours. No
                                       --   new ones will be accepted once it's
                                       --   full.
 
-      , _minNeighbours  :: Int        -- ^ The minimum number of neighbours. If
+      , _minNeighbours  :: !Int       -- ^ The minimum number of neighbours. If
                                       --   the current number is smaller issue
                                       --   announce signals.
 
-      , _maxChanSize    :: Int        -- ^ How many entries the bounded
+      , _maxChanSize    :: !Int       -- ^ How many entries the bounded
                                       --   communication channels can hold
 
-      , _hardBounces    :: Word       -- ^ Number of initial bounces
+      , _hardBounces    :: !Word      -- ^ Number of initial bounces
 
-            -- TODO: Rename bounces to hardBounces
-
-      , _acceptP        :: Double     -- ^ Edge request acceptance probability
+      , _acceptP        :: !Double    -- ^ Edge request acceptance probability
                                       --   for the second bounce phase.
 
-      , _maxSoftBounces :: Word       -- ^ How many times a soft-bounced request
+      , _maxSoftBounces :: !Word      -- ^ How many times a soft-bounced request
                                       --   is maximally relayed before it is
                                       --   rejected
 
-      , _shortTickRate  :: Microseconds -- ^ Tick interval for "short" loops.
+      , _shortTickRate  :: !Microseconds -- ^ Tick interval for "short" loops.
 
-      , _mediumTickRate :: Microseconds -- ^ Tick interval for "medium" loops,
-                                        --   for example the client pool or the
-                                        --   keep-alive loops.
+      , _mediumTickRate :: !Microseconds -- ^ Tick interval for "medium" loops,
+                                         --   for example the client pool or the
+                                         --   keep-alive loops.
 
-      , _longTickRate   :: Microseconds -- ^ Tick interval for "long" loops.
+      , _longTickRate   :: !Microseconds -- ^ Tick interval for "long" loops.
 
-      , _poolTimeout    :: Double     -- ^ Number of seconds before a
-                                      --   non-responding node is considered
-                                      --   gone
+      , _poolTimeout    :: !Double     -- ^ Number of seconds before a
+                                       --   non-responding node is considered
+                                       --   gone
 
-      , _verbosity      :: Verbosity  -- ^ Determines quantity of messages
-                                      --   printed
+      , _verbosity      :: !Verbosity  -- ^ Determines quantity of messages
+                                       --   printed
 
       , _bootstrapServers :: Set To   -- ^ Addresses of bootstrap servers
                                       --   statically known
 
-      , _floodMessageCache :: Int     -- ^ Number of past flood messages to
-                                      --   store so duplicates can be discarded
+      , _floodMessageCache :: !Int     -- ^ Number of past flood messages to
+                                       --   store so duplicates can be discarded
 
       } deriving (Show)
 
@@ -150,7 +148,7 @@ data NodeConfig = NodeConfig {
 -- | Node pool configuration
 data PoolConfig = PoolConfig {
 
-        _poolSize :: Int     -- ^ Number of nodes in the server's pool
+        _poolSize :: Int -- ^ Number of nodes in the server's pool
 
       } deriving (Show)
 
@@ -166,11 +164,11 @@ data BootstrapConfig = BootstrapConfig {
       , _bootstrapconfigPoolConfig :: PoolConfig
         -- dito
 
-      , _restartEvery :: Int -- ^ Every n bootstrap requests one client is
-                             --   restarted at random
+      , _restartEvery :: !Int -- ^ Every n bootstrap requests one client is
+                              --   restarted at random
 
-      , _restartMinimumPeriod :: Microseconds -- ^ Limit the maximal frequency
-                                              --   at which restarts can happen
+      , _restartMinimumPeriod :: !Microseconds -- ^ Limit the maximal frequency
+                                               --   at which restarts can happen
 
       } deriving (Show)
 
@@ -200,13 +198,15 @@ data DrawingConfig = DrawingConfig {
       , _drawingconfigPoolConfig :: PoolConfig
         -- dito
 
-      , _drawEvery :: Microseconds -- ^ Interval for sending out neighbour list
-                                   --   requests and drawing the currently known
-                                   --   state of the network
+      , _drawEvery :: !Microseconds -- ^ Interval for sending out neighbour list
+                                    --   requests and drawing the currently
+                                    --   known state of the network
 
       , _drawFilename :: FilePath -- ^ Filename for the .dot file
 
-      , _drawTimeout :: Double
+      , _drawTimeout :: !Double -- ^ If no new information is received within
+                                --   this timeout, the node will be considered
+                                --   dead and removed from the graph.
 
       } deriving (Show)
 
