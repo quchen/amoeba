@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+# This file provides a couple of shortcuts for setting up Amoeba networks for
+# testing.
+
+case "$1" in
+      "bss1" )
+            ../bootstrap -p 20000 -n10 --bootstrap 127.0.0.1:20000 --verbosity=debug
+            ;;
+      "bss2" )
+            ../bootstrap -p 20020 -n10 --bootstrap 127.0.0.1:20020 --verbosity=debug
+            ;;
+      "bss3" )
+            ../bootstrap -p 20040 -n10 --bootstrap 127.0.0.1:20040 --verbosity=debug
+            ;;
+      "multi1" )
+            ulimit -n 4000
+            ../amoeba_multi -p 20100 -n 100 --bootstrap 127.0.0.1:20000 --verbosity=debug
+            ;;
+      "multi2" )
+            ulimit -n 4000
+            ../amoeba_multi -p 20200 -n 100 --bootstrap 127.0.0.1:20020 --verbosity=debug
+            ;;
+      "multi3" )
+            ulimit -n 4000
+            ../amoeba_multi -p 20300 -n 100 --bootstrap 127.0.0.1:20040 --verbosity=debug
+            ;;
+      *)
+            echo "Unsupported option given"
+            ;;
+esac
