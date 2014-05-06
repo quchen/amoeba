@@ -5,16 +5,16 @@
 
 module Main.Multi (main) where
 
-import           Control.Monad
 import           Control.Concurrent
+import           Control.Monad
 import           Text.Printf
 
-import Utilities
+import           NodePool
+import           Utilities
 import qualified Config.Getter as Config
-import NodePool
 
+import           Control.Lens.Operators
 import qualified Types.Lens as L
-import Control.Lens ((^.))
 
 
 

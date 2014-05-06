@@ -5,7 +5,8 @@
 
 module Utilities (
 
-      module Reexport
+        module Utilities.Debug
+      , module Utilities.Databases
 
       -- * Various utilities
       , whenM
@@ -41,33 +42,33 @@ module Utilities (
 
 
 
+import           Control.Applicative
 import           Control.Concurrent (threadDelay, ThreadId, forkIO)
 import           Control.Concurrent.STM
 import           Control.Monad
-import           Control.Applicative
 import qualified Data.ByteString as BS
 import           System.IO
 import           System.Timeout
 
 import           Pipes
-import qualified Pipes.Prelude as P
-import qualified Pipes.Concurrent as P
 import qualified Network.Simple.TCP as N
 import qualified Network.Socket.ByteString as NSB
 import qualified Pipes.Binary as P
+import qualified Pipes.Concurrent as P
 import qualified Pipes.Parse as P
-import qualified Control.Lens.Zoom as L
-import Control.Monad.Catch (MonadCatch)
-import qualified Data.Text as T
+import qualified Pipes.Prelude as P
 
-import Data.Binary
+
+import           Control.Monad.Catch (MonadCatch)
+import           Data.Binary
+import qualified Data.Text as T
 
 import qualified Control.Lens as L
 import qualified Types.Lens as L
 
-import Types
-import Utilities.Debug as Reexport
-import Utilities.Databases as Reexport
+import           Types
+import           Utilities.Debug
+import           Utilities.Databases
 
 
 

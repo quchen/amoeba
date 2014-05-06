@@ -10,19 +10,19 @@ module NodePool (nodePool) where
 
 
 
-import Control.Concurrent (forkIO)
-import Control.Concurrent.Async
-import Control.Concurrent.MVar
-import Control.Concurrent.Chan
-import Control.Exception
-import Control.Monad
+import           Control.Concurrent (forkIO)
+import           Control.Concurrent.Async
+import           Control.Concurrent.Chan
+import           Control.Concurrent.MVar
+import           Control.Exception
+import           Control.Monad
 
-import Pipes
+import           Pipes
 import qualified Pipes.Concurrent as P
 
-import Node
-import Types
-import Utilities
+import           Node
+import           Types
+import           Utilities
 
 
 

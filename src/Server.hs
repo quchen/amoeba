@@ -11,30 +11,30 @@
 
 module Server (server) where
 
-import           Control.Concurrent.Async
+import           Control.Applicative
 import           Control.Concurrent (forkIO)
+import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
-import           Control.Applicative
+import qualified Data.Foldable as F
 import           System.Random
 import           Text.Printf
-import qualified Data.Foldable as F
 
 import           Pipes
-import qualified Pipes.Prelude as P
-import qualified Pipes.Concurrent as P
 import           Pipes.Network.TCP (Socket)
+import qualified Pipes.Concurrent as P
 import qualified Pipes.Network.TCP as PN
+import qualified Pipes.Prelude as P
 
-import qualified Types.Lens as L
-import Control.Lens.Operators
+import           Control.Lens.Operators
 import qualified Control.Lens as L
+import qualified Types.Lens as L
 
-import Types
-import Utilities
-import Client
-import Housekeeping
+import           Client
+import           Housekeeping
+import           Types
+import           Utilities
 
 
 

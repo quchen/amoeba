@@ -17,24 +17,25 @@ import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Data.List (intercalate)
+import qualified Data.Foldable as F
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Data.Set (Set)
 import           Text.Printf
-import qualified Data.Foldable as F
 
-import qualified Pipes.Concurrent as P
 import qualified Network.Simple.TCP as N
+import qualified Pipes.Concurrent as P
 
-import Utilities
-import Types
-import NodePool
+import           Control.Lens.Operators
+import qualified Control.Lens as L
+import qualified Types.Lens as L
+
+import           NodePool
+import           Types
+import           Utilities
 import qualified Config.Getter as Config
 
 
-import qualified Types.Lens as L
-import Control.Lens.Operators
-import qualified Control.Lens as L
 
 
 

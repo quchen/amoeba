@@ -11,26 +11,26 @@ module Client  (
 
 
 
+import           Control.Applicative
+import           Control.Concurrent (forkIO)
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
-import           Control.Concurrent (forkIO)
+import           Control.Exception
+import           Control.Monad
 import           Data.Monoid
 import           System.Timeout
-import           Control.Monad
-import           Control.Exception
 import           Text.Printf
-import           Control.Applicative
 
 import           Pipes
-import qualified Pipes.Concurrent as P
 import           Pipes.Network.TCP (Socket)
+import qualified Pipes.Concurrent as P
 
-import qualified Types.Lens as L
-import qualified Control.Lens as L
 import           Control.Lens.Operators
+import qualified Control.Lens as L
+import qualified Types.Lens as L
 
-import           Types
 import           ClientPool
+import           Types
 import           Utilities
 
 

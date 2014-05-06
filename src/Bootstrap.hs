@@ -11,24 +11,24 @@ module Bootstrap (bootstrap) where
 
 
 
-import Control.Exception
-import Control.Concurrent.Async
-import GHC.IO.Exception (ioe_description)
-import Data.Typeable
-import System.Random
-import Data.Monoid
-import Control.Monad
-import qualified Data.Set as Set
+import           Control.Concurrent.Async
+import           Control.Exception
+import           Control.Monad
+import           Data.Monoid
+import qualified Data.Set     as Set
+import           Data.Typeable
+import           GHC.IO.Exception (ioe_description)
+import           System.Random
 
-import qualified Data.Text as T
+import qualified Data.Text    as T
 import qualified Data.Text.IO as T
 
-import qualified Types.Lens as L
+import           Control.Lens.Operators
 import qualified Control.Lens as L
-import Control.Lens.Operators
+import qualified Types.Lens   as L
 
-import Types
-import Utilities
+import           Types
+import           Utilities
 
 
 

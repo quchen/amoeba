@@ -2,10 +2,10 @@
 
 module Main.Node (main) where
 
+import           Node
+import           Types
+import           Utilities
 import qualified Config.Getter as Config
-import Node
-import Types
-import Utilities
 
 -- | Start a single node.
 main :: IO ()

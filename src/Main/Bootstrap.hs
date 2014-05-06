@@ -13,22 +13,23 @@
 
 module Main.Bootstrap (main) where
 
-import Control.Concurrent.Async
-import Control.Concurrent hiding (yield)
-import Control.Monad
-import Text.Printf
+import           Control.Concurrent hiding (yield)
+import           Control.Concurrent.Async
+import           Control.Monad
+import           Text.Printf
 
-import Pipes.Network.TCP (Socket)
+import           Pipes.Network.TCP (Socket)
 import qualified Pipes.Network.TCP as PN
 
-import NodePool
-import Utilities
-import Types
+import           Control.Lens.Operators
+import qualified Control.Lens as L
+import qualified Types.Lens as L
+
+import           NodePool
+import           Types
+import           Utilities
 import qualified Config.Getter as Config
 
-import qualified Types.Lens as L
-import Control.Lens.Operators
-import qualified Control.Lens as L
 
 
 

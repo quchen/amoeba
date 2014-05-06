@@ -4,24 +4,24 @@ module Node (startNode) where
 
 
 
-import           Text.Printf
 import           Control.Applicative
-import           Control.Concurrent.STM
 import           Control.Concurrent.Async
+import           Control.Concurrent.STM
+import           Control.Exception (assert)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import           Control.Exception (assert)
+import           Text.Printf
 
 import qualified Pipes.Concurrent as P
 
-import qualified Pipes.Network.TCP as PN
 import qualified Network.Socket as NS
+import qualified Pipes.Network.TCP as PN
 
-import Bootstrap
-import ClientPool
-import Server
-import Types
-import Utilities
+import           Bootstrap
+import           ClientPool
+import           Server
+import           Types
+import           Utilities
 
 
 -- | Node main function. Bootstraps, launches server loop, client pool,

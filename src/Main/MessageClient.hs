@@ -4,16 +4,18 @@
 module Main (main) where
 
 
-import Control.Monad
-import qualified Pipes.Network.TCP as P
-import Pipes
-import Data.Binary (Binary)
-import qualified Data.ByteString as BS
-import qualified Pipes.Prelude as P
-import qualified Pipes.Binary as P
+import           Control.Monad
 
-import Utilities (connectToNode, makeTimestamp, encodeMany)
-import Types
+import           Data.Binary (Binary)
+
+import           Pipes
+import qualified Data.ByteString as BS
+import qualified Pipes.Binary as P
+import qualified Pipes.Network.TCP as P
+import qualified Pipes.Prelude as P
+
+import           Utilities (connectToNode, makeTimestamp, encodeMany)
+import           Types
 
 
 

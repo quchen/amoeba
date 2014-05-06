@@ -10,26 +10,25 @@ module ClientPool (
         , isRoomIn
 ) where
 
-import           Control.Concurrent.STM
 import           Control.Concurrent.Async
-import qualified Data.Map as Map
+import           Control.Concurrent.STM
 import           Control.Monad
-import           Text.Printf
-import           Data.Set as Set (toList)
 import           Data.List (intercalate)
+import           Data.Set as Set (toList)
+import           Text.Printf
+import qualified Data.Map as Map
 
-import Pipes
-import qualified Pipes.Prelude as P
+import           Pipes
 import qualified Pipes.Concurrent as P
+import qualified Pipes.Prelude as P
 
-import qualified Types.Lens as L
+import           Control.Lens.Operators
 import qualified Control.Lens as L
-import Control.Lens.Operators
+import qualified Types.Lens as L
 
-
-import Types
-import Housekeeping
-import Utilities
+import           Housekeeping
+import           Types
+import           Utilities
 
 
 -- | Sets up the client pool by forking the housekeeping thread, and then starts

@@ -23,15 +23,15 @@ module Types.Config (
 
 
 
-import Control.Concurrent.STM
-import Data.Set (Set, toList)
-import Data.Map (Map)
-import Data.Monoid
-import Data.Word
+import           Control.Concurrent.STM
+import           Data.Set (Set, toList)
+import           Data.Map (Map)
+import           Data.Monoid
 import qualified Data.Text as T
+import           Data.Word
 
-import Types.Signal
-import Types.Misc
+import           Types.Signal
+import           Types.Misc
 
 
 

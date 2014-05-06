@@ -5,25 +5,25 @@
 
 module Housekeeping (dsnHousekeeping, workerWatcher) where
 
-import Control.Concurrent
-import Control.Concurrent.STM hiding (check)
-import Control.Concurrent.Async
+import           Control.Applicative
+import           Control.Concurrent
+import           Control.Concurrent.Async
+import           Control.Concurrent.STM hiding (check)
 import qualified Data.Foldable as F
-import qualified Data.Traversable as T
+import           Control.Monad
 import qualified Data.Map as Map
-import Data.Maybe
-import Control.Applicative
-import Control.Monad
-import Data.Monoid
+import           Data.Maybe
+import           Data.Monoid
+import qualified Data.Traversable as T
 
 import qualified Pipes.Concurrent as P
 
-import qualified Types.Lens as L
-import Control.Lens.Operators
+import           Control.Lens.Operators
 import qualified Control.Lens as L
+import qualified Types.Lens as L
 
-import Types
-import Utilities
+import           Types
+import           Utilities
 
 
 
