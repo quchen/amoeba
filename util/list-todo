@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+# List all "TODO" entries in the source folder
+
+find ../src -name '*.hs' -print0 | xargs -0 -- grep --color=always "TODO"
