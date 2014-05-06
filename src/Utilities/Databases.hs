@@ -154,7 +154,8 @@ updateUsnTimestamp env from t = modifyTVar (env ^. L.upstream)
 
 -- | "Set.Set" of all known DSN.
 dumpDsnDB :: Environment -> STM (Set.Set To)
-dumpDsnDB env = Map.keysSet <$> readTVar (env ^. L.downstream)
+dumpDsnDB env = fmap Map.keysSet
+                     (readTVar (env ^. L.downstream))
 
 
 
@@ -163,7 +164,8 @@ dumpDsnDB env = Map.keysSet <$> readTVar (env ^. L.downstream)
 --   (Defined in terms of "nodeRelationship", mainly to provide an analogon for
 --   "isUsn".)
 isDsn :: Environment -> To -> STM Bool
-isDsn env to = (== IsDownstreamNeighbour) <$> nodeRelationship env to
+isDsn env to = fmap (== IsDownstreamNeighbour)
+                    (nodeRelationship env to)
 
 
 
@@ -204,9 +206,10 @@ nodeRelationship :: Environment
                  -> STM NodeRelationship
 nodeRelationship env to
       | to == env ^. L.self = return IsSelf
-      | otherwise = do isDS <- Map.member to <$> readTVar (env ^. L.downstream)
-                       return (if isDS then IsDownstreamNeighbour
-                                       else IsUnrelated)
+      | otherwise = do isDSN <- fmap (Map.member to)
+                                    (readTVar (env ^. L.downstream))
+                       return (if isDSN then IsDownstreamNeighbour
+                                        else IsUnrelated)
 
 
 
