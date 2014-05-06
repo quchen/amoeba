@@ -135,7 +135,7 @@ drawing {
       poolSize = 10
 
       # Send out requests and draw the currently known network periodically
-      # Unit: Int of ms
+      # Unit: Int of microseconds
       drawEvery = 10000000
 
       # Time after which a node times out after not sending new data to the
