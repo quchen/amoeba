@@ -80,46 +80,50 @@ worker env from socket =
       (`finally` release) . runEffect $
             receiver socket >-> dispatch >-> terminator >-> sender socket
 
-      where dispatch :: Pipe Signal ServerResponse IO r
-            dispatch = P.mapM $ \case
-                  Normal  normal  -> normalH  env from        normal
-                  Special special -> specialH env from socket special
+      where
 
-            -- Pipes incoming signals on, but terminates afterwards if the last
-            -- one was an error. In other words it's similar P.takeWhile, but
-            -- passes on the first failing element before returning it.
-            terminator :: Pipe ServerResponse ServerResponse IO ServerResponse
-            terminator = do
-                  signal <- await
-                  yield signal
-                  case signal of
-                        OK  -> terminator
-                        err -> return err
+      dispatch :: Pipe Signal ServerResponse IO r
+      dispatch = P.mapM $ \case
+            Normal  normal  -> normalH  env from        normal
+            Special special -> specialH env from socket special
 
-            release = atomically (deleteUsn env from)
+      -- Pipes incoming signals on, but terminates afterwards if the last
+      -- one was an error. In other words it's similar P.takeWhile, but
+      -- passes on the first failing element before returning it.
+      terminator :: Pipe ServerResponse ServerResponse IO ServerResponse
+      terminator = do
+            signal <- await
+            yield signal
+            case signal of
+                  OK  -> terminator
+                  err -> return err
+
+      release = atomically (deleteUsn env from)
 
 
 -- | Handles "Signal"s coming in from the LDC (local direct connection).
 --   Used by node pools; only accepts a handful of signals.
 workerLdc :: Environment
           -> IO ()
-workerLdc env@(_ldc -> Just pChan) =
+workerLdc env@(L.view L.ldc -> Just ldc) =
 
       runEffect (input >-> dispatch >-> P.drain)
                                         -- Since there is no USN to send the
                                         -- ServerResponse back to, discard
                                         -- the answers to LDC signals.
 
-      where input :: Producer NormalSignal IO ()
-            input = P.fromInput (pChan ^. L.pInput)
+      where
 
-            dispatch :: Pipe NormalSignal ServerResponse IO r
-            dispatch = P.mapM $ \case
-                  EdgeRequest to edge  -> edgeBounceH env to edge
-                  Flood tStamp fSignal -> floodSignalH env (tStamp, fSignal)
-                  _else                -> return (Error "Bad LDC signal")
+      input :: Producer NormalSignal IO ()
+      input = P.fromInput (ldc ^. L.pInput)
 
-workerLdc _ = return ()
+      dispatch :: Pipe NormalSignal ServerResponse IO r
+      dispatch = P.mapM $ \case
+            EdgeRequest to edge  -> edgeBounceH env to edge
+            Flood tStamp fSignal -> floodSignalH env (tStamp, fSignal)
+            _else                -> return (Error "Bad LDC signal")
+
+workerLdc _noLdc = return ()
 
 
 
@@ -133,22 +137,24 @@ normalH env from signal =
       atomically (isUsn env from) >>= \case True  -> continue
                                             False -> deny
 
-      where continue = do
-                  result <- case signal of
-                        EdgeRequest to edge  -> edgeBounceH   env to edge
-                        Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
-                        KeepAlive            -> keepAliveH    env from
-                        ShuttingDown         -> shuttingDownH env from
-                        Prune                -> pruneH        env
-                  when (result == OK)
-                       (do t <- makeTimestamp
-                           atomically (updateUsnTimestamp env from t))
-                  return result
+      where
 
-            deny = do
-                  atomically . toIO env Debug . STDLOG $
-                        "Illegally contacted by " ++ show from ++ "; ignoring"
-                  return Ignore
+      continue = do
+            result <- case signal of
+                  EdgeRequest to edge  -> edgeBounceH   env to edge
+                  Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
+                  KeepAlive            -> keepAliveH    env from
+                  ShuttingDown         -> shuttingDownH env from
+                  Prune                -> pruneH        env
+            when (result == OK)
+                 (do t <- makeTimestamp
+                     atomically (updateUsnTimestamp env from t))
+            return result
+
+      deny = do
+            atomically . toIO env Debug . STDLOG $
+                  "Illegally contacted by " ++ show from ++ "; ignoring"
+            return Ignore
 
 
 
@@ -443,32 +449,34 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
       return OK -- The upstream neighbour that relayed the EdgeRequest has
                 -- nothing to do with whether the handshake fails etc.
 
+
       where
 
-            buildSignal = EdgeRequest origin . EdgeData dir
+
+      buildSignal = EdgeRequest origin . EdgeData dir
 
 
-            -- Build "bounce on" action to relay signal if necessary
-            bounceOn | n >= env ^. L.config . L.maxSoftBounces =
-                             toIO env Chatty . STDLOG $
-                                   "Too many bounces, swallowing"
-                     | otherwise =
-                           let p' = max p (env ^. L.config . L.acceptP)
-                               -- ^ The relayed acceptance probability is at
-                               --   least as high as the one the relaying node
-                               --   uses. This prevents "small p" attacks that
-                               --   bounce indefinitely.
-                           in  void (P.send (env ^. L.st1c . L.pOutput)
-                                            (buildSignal (SoftBounce (n+1) p')))
+      -- Build "bounce on" action to relay signal if necessary
+      bounceOn | n >= env ^. L.config . L.maxSoftBounces =
+                       toIO env Chatty . STDLOG $
+                             "Too many bounces, swallowing"
+               | otherwise =
+                     let p' = max p (env ^. L.config . L.acceptP)
+                         -- ^^ The relayed acceptance probability is at least as
+                         --    high as the one the relaying node uses. This
+                         --    prevents "small p" attacks that bounce
+                         --    indefinitely.
+                     in  void (P.send (env ^. L.st1c . L.pOutput)
+                                      (buildSignal (SoftBounce (n+1) p')))
 
-            -- Build "bounce again from the beginning" signal. This is invoked
-            -- if an EdgeRequest reaches the issuing node again.
-            bounceReset = let b = env ^. L.config . L.hardBounces
-                          in  void (P.send (env ^. L.st1c . L.pOutput)
-                                           (buildSignal (HardBounce b)))
-            -- TODO: Maybe swallowing the request in this case makes more sense.
-            --       The node is spamming the network with requests anyway after
-            --       all.
+      -- Build "bounce again from the beginning" signal. This is invoked
+      -- if an EdgeRequest reaches the issuing node again.
+      bounceReset = let b = env ^. L.config . L.hardBounces
+                    in  void (P.send (env ^. L.st1c . L.pOutput)
+                                     (buildSignal (HardBounce b)))
+      -- TODO: Maybe swallowing the request in this case makes more sense.
+      --       The node is spamming the network with requests anyway after
+      --       all.
 
 
 
