@@ -14,6 +14,7 @@ module Utilities (
       , pluralS
       , mergeLists
       , showT
+      , seqM
 
       -- * Concurrency
       , toIO
@@ -328,5 +329,14 @@ mergeLists :: [a] -> [a] -> [a]
 mergeLists []     ys = ys
 mergeLists (x:xs) ys = x : mergeLists ys xs
 
+
+
+-- | 'T.Text' version of 'show'.
 showT :: Show a => a -> T.Text
 showT = T.pack . show
+
+
+
+-- | Strictify monadic values
+seqM :: Monad m => m a -> m a
+seqM m = m >>= (return $!)
