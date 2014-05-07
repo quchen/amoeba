@@ -32,7 +32,6 @@ import qualified Config.Getter as Config
 
 
 
-
 main :: IO ()
 main = bootstrapServerMain
 
@@ -58,9 +57,19 @@ bootstrapServerMain = do
 
       toIO' output (STDLOG (printf "Starting bootstrap server with %d nodes"
                                    poolSize))
-      (_rthread, restart) <- restarter (config ^. L.restartMinimumPeriod)
-                                       terminate
+      (rThread, restart) <- restarter (config ^. L.restartMinimumPeriod)
+                                      terminate
       bootstrapServer config output ldc restart
+      cancel rThread -- Not really necessary since this is the end of 'main'
+                     -- and the thread would be killed automatically when the
+                     -- program finishes, but might be useful just to be safe
+                     -- in all possible futures.
+
+
+
+-- | Stores an action that restarts a random node. Provided mostly for more
+--   explicit naming.
+newtype Restarter = Restarter { runRestarter :: IO () }
 
 
 
@@ -77,9 +86,9 @@ restarter :: Microseconds         -- ^ Minimum amount of time between
           -> MVar ()              -- ^ Will make the pool kill a pool node when
                                   --   filled. Written to by the restarter,
                                   --   read by the node pool.
-          -> IO (Async (), IO ()) -- ^ Thread async, and restart trigger that
-                                  --   when executed restarts a (semi-random)
-                                  --   node.
+          -> IO (Async (), Restarter) -- ^ Thread async, and restart trigger
+                                      --   that when executed restarts a
+                                      --   (semi-random) node.
 restarter minPeriod outgoingTrigger = do
 
       -- When the incoming trigger is filled, the outgoing trigger will be
@@ -92,16 +101,16 @@ restarter minPeriod outgoingTrigger = do
                                             yell 44 "Restart triggered!"
                                             tryPutMVar outgoingTrigger ()))
 
-      let restartTrigger = tryPutMVar incomingTrigger ()
+      let restart = Restarter (void (tryPutMVar incomingTrigger ()))
 
-      return (restarterThread, void restartTrigger)
+      return (restarterThread, restart)
 
 
 
 bootstrapServer :: BootstrapConfig
                 -> IOQueue
                 -> Chan NormalSignal
-                -> IO () -- ^ Restarting action, see "restarter"
+                -> Restarter -- ^ Restarting action, see "restarter"
                 -> IO ()
 bootstrapServer config ioq ldc restart =
       PN.listen (PN.Host "127.0.0.1")
@@ -121,9 +130,9 @@ bssLoop
       -> Int               -- ^ Number of total clients served
       -> Socket            -- ^ Socket to listen on for bootstrap requests
       -> Chan NormalSignal -- ^ LDC to the node pool
-      -> IO ()             -- ^ Restarting action, see "restarter"
+      -> Restarter         -- ^ Restarting action, see "restarter"
       -> IO r
-bssLoop config ioq counter' serverSock ldc restartTrigger = go counter' where
+bssLoop config ioq counter' serverSock ldc restart = go counter' where
 
 
       -- Number of times this loop runs with simplified settings
@@ -148,7 +157,8 @@ bssLoop config ioq counter' serverSock ldc restartTrigger = go counter' where
                 -- the first couple of nodes.
                 attemptRestart
                       | counter <= preRestart = return ()
-                      | counter `isMultipleOf` (config ^. L.restartEvery) = restartTrigger
+                      | counter `isMultipleOf` (config ^. L.restartEvery) =
+                                                            runRestarter restart
                       | otherwise = return ()
 
                 a `isMultipleOf` b | b > 0 = a `rem` b == 0
