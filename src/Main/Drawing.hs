@@ -110,10 +110,10 @@ incomingLoop _ioq stg serverSock = forever $
                                                     (node, neighbours))
 
                   -- Invalid answer
-                  Just _ -> return () -- toIO' ioq (putStrLn "Invalid signal received")
+                  Just _invalid -> return () -- toIO' ioq (putStrLn "Invalid signal received")
 
                   -- No answer
-                  _ -> return () -- toIO' ioq (putStrLn "No signal received")
+                  Nothing -> return () -- toIO' ioq (putStrLn "No signal received")
 
 
 

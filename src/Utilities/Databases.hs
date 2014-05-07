@@ -4,7 +4,6 @@
 
 module Utilities.Databases (
 
-
       -- * General
         isRoomIn
       , dbSize
@@ -30,6 +29,7 @@ module Utilities.Databases (
       -- * Flood signal DB
       , knownFlood
       , insertFlood
+
 ) where
 
 
@@ -67,7 +67,7 @@ type DBProjector k a = L.Lens' Environment (TVar (Map.Map k a))
 isRoomIn :: Environment
          -> DBProjector k a -- ^ 'L.upstream' or 'L.downstream'
          -> STM Bool
-isRoomIn env db = (maxSize >) <$> dbSize env db
+isRoomIn env db = fmap (maxSize >) (dbSize env db)
       where maxSize = env ^. L.config . L.maxNeighbours . L.to fromIntegral
 
 
@@ -76,7 +76,7 @@ isRoomIn env db = (maxSize >) <$> dbSize env db
 dbSize :: Environment
        -> DBProjector k a -- ^ 'L.upstream' or 'L.downstream'
        -> STM Int
-dbSize env db = Map.size <$> env ^. db . L.to readTVar
+dbSize env db = fmap Map.size (env ^. db . L.to readTVar)
 
 
 
@@ -207,9 +207,10 @@ nodeRelationship :: Environment
 nodeRelationship env to
       | to == env ^. L.self = return IsSelf
       | otherwise = do isDSN <- fmap (Map.member to)
-                                    (readTVar (env ^. L.downstream))
+                                     (readTVar (env ^. L.downstream))
                        return (if isDSN then IsDownstreamNeighbour
                                         else IsUnrelated)
+
 
 
 

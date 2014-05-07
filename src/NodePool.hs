@@ -42,16 +42,15 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
                     --   lack of fairness in STM.
          -> IOQueue -- ^ Channel to output thread
          -> Maybe TerminationTrigger
-                               -- ^ If the MVar contained in the
-                               --   'TerminationTrigger' is filled, a node is
-                               --   killed (and a new one is started by its
-                               --   janitor).
+                    -- ^ If the MVar contained in the 'TerminationTrigger' is
+                    --   filled, a node is killed (and a new one is started by
+                    --   its janitor).
          -> IO ()
 nodePool n config ldc output m'terminate =
       forM_ [1..n] $ \portOffset -> do
             let -- Give nodes in the pool consecutive numbers, starting with
                 -- <config port> + 1
-                offsetConfig = L.serverPort +~ fromIntegral portOffset
+                offsetConfig = L.serverPort +~ portOffset
             forkIO (janitor (offsetConfig config)
                             ldc
                             output
@@ -75,10 +74,11 @@ janitor :: NodeConfig
 janitor config fromPool output m'terminate = yellCatchall . forever $ do
       toNode <- spawn (P.Bounded (config ^. L.maxChanSize))
       (`catches` handlers) $
-            withAsync (startNode (Just toNode) output config) $ \node ->
-             withAsync (fromPool `pipeTo` toNode)             $ \_chanPipe ->
-              withAsync (terminationWatch m'terminate node)   $ \_terminator ->
-               wait node
+       withAsync (startNode (Just toNode) output config) $ \node ->
+        withAsync (fromPool `pipeTo` toNode) $ \_chanPipe ->
+         case m'terminate of
+               Just t -> withAsync (terminationWatch t node) (\_ -> wait node)
+               Nothing -> wait node
 
       where
             handlers = [ Handler asyncException ]
@@ -101,7 +101,6 @@ pipeTo input output = runEffect (fromChan input >-> P.toOutput toChan) where
 
 
 -- | Terminate a thread when the MVar is filled, and block until this happens.
-terminationWatch :: Maybe TerminationTrigger -> Async () -> IO ()
-terminationWatch Nothing _thread = return ()
-terminationWatch (Just (TerminationTrigger mVar)) thread = do takeMVar mVar
-                                                              cancel thread
+terminationWatch :: TerminationTrigger -> Async () -> IO ()
+terminationWatch (TerminationTrigger mVar) thread = do takeMVar mVar
+                                                       cancel thread

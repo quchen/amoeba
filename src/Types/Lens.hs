@@ -40,3 +40,4 @@ timestamp = iso f b where
       b (Timestamp t) = t
 
 makeIso ''Microseconds
+makeIso ''IOQueue

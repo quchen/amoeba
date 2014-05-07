@@ -17,6 +17,8 @@ import qualified Config.Getter as Config
 import           Control.Lens.Operators
 import qualified Types.Lens as L
 
+import           Types (Microseconds(..))
+
 
 
 main :: IO ()
@@ -35,12 +37,12 @@ multiNodeMain = do
 
       ldc <- newChan
       npThread <- async (nodePool poolSize
-                                 (config ^. L.nodeConfig)
-                                 ldc
-                                 output
-                                 Nothing) -- No termination trigger
+                                  (config ^. L.nodeConfig)
+                                  ldc
+                                  output
+                                  Nothing) -- No termination trigger
 
-      forever (threadDelay (10^8))
+      forever (delay (Microseconds (10^8)))
 
       wait npThread -- Not really necessary since this is the end of 'main'
               -- and the thread would be killed automatically when the

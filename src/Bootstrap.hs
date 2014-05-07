@@ -44,8 +44,8 @@ instance Exception BootstrapError
 
 
 
--- | Send out a 'BootstrapRequest' to a bootstrap server and handle the
---   response.
+-- | Send <max neighbours> 'BootstrapRequest's to bootstrap servers, and repeat
+--   the process until each neighbour has issued one successful one.
 bootstrap :: NodeConfig
           -> To -- Own address so other nodes can connect
           -> IO ()
@@ -57,13 +57,13 @@ bootstrap config self = do T.putStrLn "Starting bootstrap"
 
       maxN = config ^. L.maxNeighbours
 
+      retryBootstrap = delay (config ^. L.longTickRate) >> dispatch
+
       dispatch = do
 
             bsServer <- getBootstrapServer config
 
-            let retryBootstrap = delay (config ^. L.longTickRate) >> dispatch
-
-                catchMulti action = catches action [ bootstrapErrorH
+            let catchMulti action = catches action [ bootstrapErrorH
                                                    , ioExceptionH
                                                    ]
 

@@ -65,6 +65,7 @@ import           Data.Binary
 import qualified Data.Text as T
 
 import qualified Control.Lens as L
+import           Control.Lens.Operators
 import qualified Types.Lens as L
 
 import           Types
@@ -98,8 +99,8 @@ connectToNode :: (MonadIO io, MonadCatch io)
               => To
               -> ((N.Socket, N.SockAddr) -> io r)
               -> io r
-connectToNode (To node) = N.connect (_host node)
-                                    (show (_port node))
+connectToNode (To node) = N.connect (node ^. L.host)
+                                    (node ^. L.port . L.to show)
 
 
 
@@ -109,8 +110,8 @@ connectToNode (To node) = N.connect (_host node)
 connectToNode' :: (MonadIO io)
                => To
                -> io (N.Socket, N.SockAddr)
-connectToNode' (To node) = N.connectSock (_host node)
-                                         (show (_port node))
+connectToNode' (To node) = N.connectSock (node ^. L.host)
+                                         (node ^. L.port . L.to show)
 
 
 
@@ -127,8 +128,8 @@ listenOnNode :: (MonadIO io, MonadCatch io)
              => Node
              -> ((N.Socket, N.SockAddr) -> io r)
              -> io r
-listenOnNode node = N.listen (N.Host (_host node))
-                             (show   (_port node))
+listenOnNode node = N.listen (node ^. L.host . L.to N.Host)
+                             (node ^. L.port . L.to show  )
 
 
 
@@ -232,9 +233,9 @@ toIO :: Environment
      -> Verbosity
      -> OutMsg
      -> STM ()
-toIO env verbosity msg = when p (writeTBQueue (_getIOQueue (_io env))
+toIO env verbosity msg = when p (writeTBQueue (env ^. L.io . L.ioQueue)
                                               msg)
-      where p = verbosity >= _verbosity (_config env)
+      where p = verbosity >= env ^. L.config . L.verbosity
 
 
 
@@ -242,7 +243,7 @@ toIO env verbosity msg = when p (writeTBQueue (_getIOQueue (_io env))
 toIO' :: IOQueue
       -> OutMsg
       -> IO ()
-toIO' ioq msg = atomically (writeTBQueue (_getIOQueue ioq) msg)
+toIO' ioq msg = atomically (writeTBQueue (ioq ^. L.ioQueue) msg)
 
 
 
