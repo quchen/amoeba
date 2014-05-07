@@ -146,6 +146,11 @@ used by special network services.
   of them accepts the request, and establishes the desired connection with the
   initially issuing node.
 
+  The number of edge requests depending on the deficit is currently a simple
+  square root:
+
+  ![(Picture missing, uh oh)](doc/request_per_deficit_function.png)
+
 - Nodes will attempt to minimize the number of connections above the minimum by
   *pruning*. They will do so by telling downstream neighbours of their wish to
   drop the connection, which will be accepted if this can be done without making

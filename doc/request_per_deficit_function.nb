@@ -1,0 +1,245 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Mathematica 9.0' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       157,          7]
+NotebookDataLength[      9272,        236]
+NotebookOptionsPosition[      8715,        213]
+NotebookOutlinePosition[      9151,        230]
+CellTagsIndexPosition[      9108,        227]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+
+Cell[CellGroupData[{
+Cell["Requests per deficit function", "Title",
+ CellChangeTimes->{{3.608447870642378*^9, 3.60844787495508*^9}}],
+
+Cell[TextData[{
+ "This is a playground to test various curves for sending out a number edge \
+requests based on how large the deficit is. The result is used in ",
+ StyleBox["ClientPool.hs", "Input"],
+ "."
+}], "Text",
+ CellChangeTimes->{{3.60844787918286*^9, 3.60844796406995*^9}}],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[{
+ RowBox[{"f", "=", 
+  RowBox[{
+   RowBox[{"{", 
+    RowBox[{"x", ",", "a"}], "}"}], "\[Function]", 
+   SuperscriptBox["x", 
+    FractionBox["1", "a"]]}]}], "\[IndentingNewLine]", 
+ RowBox[{"Manipulate", "[", "\[IndentingNewLine]", "\t", 
+  RowBox[{
+   RowBox[{"Column", "[", 
+    RowBox[{"{", "\[IndentingNewLine]", "\t\t", 
+     RowBox[{
+      RowBox[{"f", "[", 
+       RowBox[{"x", ",", "a"}], "]"}], ",", "\[IndentingNewLine]", "\t\t", 
+      RowBox[{"Show", "[", "\[IndentingNewLine]", "\t\t\t", 
+       RowBox[{
+        RowBox[{"Plot", "[", "\[IndentingNewLine]", "\t\t\t\t", 
+         RowBox[{
+          RowBox[{"f", "[", 
+           RowBox[{"x", ",", "a"}], "]"}], ",", "\[IndentingNewLine]", 
+          "\t\t\t\t", 
+          RowBox[{"{", 
+           RowBox[{"x", ",", "0", ",", "20"}], "}"}], ",", 
+          "\[IndentingNewLine]", "\t\t\t\t", 
+          RowBox[{"AxesOrigin", "\[Rule]", 
+           RowBox[{"{", 
+            RowBox[{"0", ",", "0"}], "}"}]}], ",", "\[IndentingNewLine]", 
+          "\t\t\t\t", 
+          RowBox[{"PlotRange", "\[Rule]", 
+           RowBox[{"{", 
+            RowBox[{"0", ",", 
+             RowBox[{
+              RowBox[{"f", "[", 
+               RowBox[{"20", ",", "a"}], "]"}], "+", "0.2"}]}], "}"}]}], ",", 
+          "\[IndentingNewLine]", "\t\t\t\t", 
+          RowBox[{"PlotStyle", "\[Rule]", 
+           RowBox[{"ColorData", "[", 
+            RowBox[{"1", ",", "2"}], "]"}]}]}], "]"}], ",", 
+        "\[IndentingNewLine]", "\t\t\t", 
+        RowBox[{"DiscretePlot", "[", "\[IndentingNewLine]", "\t\t\t\t", 
+         RowBox[{
+          RowBox[{"Round", "[", 
+           RowBox[{"f", "[", 
+            RowBox[{"x", ",", "a"}], "]"}], "]"}], ",", "\[IndentingNewLine]",
+           "\t\t\t\t", 
+          RowBox[{"{", 
+           RowBox[{"x", ",", "0", ",", "20"}], "}"}], ",", 
+          "\[IndentingNewLine]", "\t\t\t\t", 
+          RowBox[{"AxesOrigin", "\[Rule]", 
+           RowBox[{"{", 
+            RowBox[{"0", ",", "0"}], "}"}]}]}], "]"}], ",", 
+        "\[IndentingNewLine]", "\t\t\t", 
+        RowBox[{"FrameLabel", "\[Rule]", 
+         RowBox[{"{", 
+          RowBox[{"\"\<deficit\>\"", ",", "\"\<requests\>\""}], "}"}]}], ",", 
+        "\[IndentingNewLine]", "\t\t\t", 
+        RowBox[{"Frame", "\[Rule]", 
+         RowBox[{"{", 
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{"True", ",", "False"}], "}"}], ",", 
+           RowBox[{"{", 
+            RowBox[{"True", ",", "False"}], "}"}]}], "}"}]}], ",", 
+        "\[IndentingNewLine]", "\t\t\t", 
+        RowBox[{"FrameStyle", "\[Rule]", 
+         RowBox[{"(", 
+          RowBox[{"FontFamily", "\[Rule]", "\"\<Helvetica\>\""}], ")"}]}]}], 
+       "]"}], ",", "\[IndentingNewLine]", "\t\t", 
+      RowBox[{"Grid", "[", "\[IndentingNewLine]", "\t\t\t", 
+       RowBox[{
+        RowBox[{
+         RowBox[{"Table", "[", "\[IndentingNewLine]", "\t\t\t", 
+          RowBox[{
+           RowBox[{"{", 
+            RowBox[{"x", ",", 
+             RowBox[{"f", "[", 
+              RowBox[{"x", ",", "a"}], "]"}], ",", " ", 
+             RowBox[{"Round", "[", 
+              RowBox[{"f", "[", 
+               RowBox[{"x", ",", "a"}], "]"}], "]"}]}], "}"}], ",", 
+           "\[IndentingNewLine]", "\t\t\t", 
+           RowBox[{"{", 
+            RowBox[{"x", ",", "0", ",", "20"}], "}"}]}], "]"}], "//", "N"}], 
+        ",", "\[IndentingNewLine]", "\t\t\t", 
+        RowBox[{"Dividers", "\[Rule]", 
+         RowBox[{"{", 
+          RowBox[{"All", ",", "False"}], "}"}]}]}], "]"}]}], "}"}], "]"}], 
+   ",", "\[IndentingNewLine]", "\t", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"a", ",", "2"}], "}"}], ",", "0.3", ",", "10"}], "}"}]}], 
+  "\[IndentingNewLine]", "]"}]}], "Input",
+ CellChangeTimes->{{3.608446056499584*^9, 3.608446235229559*^9}, {
+  3.608446285722701*^9, 3.608446328229951*^9}, {3.608446362604904*^9, 
+  3.608446447374867*^9}, {3.6084464931348457`*^9, 3.608446856580196*^9}, {
+  3.608447475957097*^9, 3.608447598297036*^9}, {3.608447631912513*^9, 
+  3.60844766184778*^9}, {3.6084477014318743`*^9, 3.608447794467187*^9}, {
+  3.608447973676813*^9, 3.608447977985524*^9}, {3.608448011591436*^9, 
+  3.608448146232175*^9}}],
+
+Cell[BoxData[
+ RowBox[{"Function", "[", 
+  RowBox[{
+   RowBox[{"{", 
+    RowBox[{"x", ",", "a"}], "}"}], ",", 
+   SuperscriptBox["x", 
+    RowBox[{"1", "/", "a"}]]}], "]"}]], "Output",
+ CellChangeTimes->{{3.608446675450251*^9, 3.608446689574566*^9}, {
+   3.60844672419319*^9, 3.608446752754876*^9}, 3.608446785187414*^9, {
+   3.608446824642942*^9, 3.608446857056904*^9}, {3.608447488737824*^9, 
+   3.608447598938727*^9}, {3.608447643710908*^9, 3.608447662250793*^9}, {
+   3.6084477080823097`*^9, 3.608447794963251*^9}, 3.608447979743218*^9, {
+   3.608448013354518*^9, 3.608448047086751*^9}, {3.608448079585223*^9, 
+   3.608448100568301*^9}, 3.608448146595787*^9}],
+
+Cell[BoxData[
+ TagBox[
+  StyleBox[
+   DynamicModuleBox[{$CellContext`a$$ = 2, Typeset`show$$ = True, 
+    Typeset`bookmarkList$$ = {}, Typeset`bookmarkMode$$ = "Menu", 
+    Typeset`animator$$, Typeset`animvar$$ = 1, Typeset`name$$ = 
+    "\"untitled\"", Typeset`specs$$ = {{{
+       Hold[$CellContext`a$$], 2}, 0.3, 10}}, Typeset`size$$ = {
+    447., {415., 424.}}, Typeset`update$$ = 0, Typeset`initDone$$, 
+    Typeset`skipInitDone$$ = True, $CellContext`a$39547$$ = 0}, 
+    DynamicBox[Manipulate`ManipulateBoxes[
+     1, StandardForm, "Variables" :> {$CellContext`a$$ = 2}, 
+      "ControllerVariables" :> {
+        Hold[$CellContext`a$$, $CellContext`a$39547$$, 0]}, 
+      "OtherVariables" :> {
+       Typeset`show$$, Typeset`bookmarkList$$, Typeset`bookmarkMode$$, 
+        Typeset`animator$$, Typeset`animvar$$, Typeset`name$$, 
+        Typeset`specs$$, Typeset`size$$, Typeset`update$$, Typeset`initDone$$,
+         Typeset`skipInitDone$$}, "Body" :> Column[{
+         $CellContext`f[$CellContext`x, $CellContext`a$$], 
+         Show[
+          Plot[
+           $CellContext`f[$CellContext`x, $CellContext`a$$], {$CellContext`x, 
+            0, 20}, AxesOrigin -> {0, 0}, 
+           PlotRange -> {0, $CellContext`f[20, $CellContext`a$$] + 0.2}, 
+           PlotStyle -> ColorData[1, 2]], 
+          DiscretePlot[
+           Round[
+            $CellContext`f[$CellContext`x, $CellContext`a$$]], \
+{$CellContext`x, 0, 20}, AxesOrigin -> {0, 0}], 
+          FrameLabel -> {"deficit", "requests"}, 
+          Frame -> {{True, False}, {True, False}}, 
+          FrameStyle -> (FontFamily -> "Helvetica")], 
+         Grid[
+          N[
+           Table[{$CellContext`x, 
+             $CellContext`f[$CellContext`x, $CellContext`a$$], 
+             Round[
+              $CellContext`f[$CellContext`x, $CellContext`a$$]]}, \
+{$CellContext`x, 0, 20}]], Dividers -> {All, False}]}], 
+      "Specifications" :> {{{$CellContext`a$$, 2}, 0.3, 10}}, "Options" :> {},
+       "DefaultOptions" :> {}],
+     ImageSizeCache->{515., {480., 489.}},
+     SingleEvaluation->True],
+    Deinitialization:>None,
+    DynamicModuleValues:>{},
+    SynchronousInitialization->True,
+    UnsavedVariables:>{Typeset`initDone$$},
+    UntrackedVariables:>{Typeset`size$$}], "Manipulate",
+   Deployed->True,
+   StripOnInput->False],
+  Manipulate`InterpretManipulate[1]]], "Output",
+ CellChangeTimes->{{3.608446675450251*^9, 3.608446689574566*^9}, {
+   3.60844672419319*^9, 3.608446752754876*^9}, 3.608446785187414*^9, {
+   3.608446824642942*^9, 3.608446857056904*^9}, {3.608447488737824*^9, 
+   3.608447598938727*^9}, {3.608447643710908*^9, 3.608447662250793*^9}, {
+   3.6084477080823097`*^9, 3.608447794963251*^9}, 3.608447979743218*^9, {
+   3.608448013354518*^9, 3.608448047086751*^9}, {3.608448079585223*^9, 
+   3.608448100568301*^9}, 3.608448146632207*^9}]
+}, Open  ]]
+}, Open  ]]
+},
+WindowSize->{1362, 1003},
+WindowMargins->{{0, Automatic}, {Automatic, 0}},
+Magnification:>FEPrivate`If[
+  FEPrivate`Equal[FEPrivate`$VersionNumber, 6.], 1.5, 1.5 Inherited],
+FrontEndVersion->"9.0 for Linux x86 (64-bit) (November 20, 2012)",
+StyleDefinitions->"Default.nb"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[CellGroupData[{
+Cell[579, 22, 111, 1, 138, "Title"],
+Cell[693, 25, 280, 6, 77, "Text"],
+Cell[CellGroupData[{
+Cell[998, 35, 4186, 99, 762, "Input"],
+Cell[5187, 136, 663, 13, 106, "Output"],
+Cell[5853, 151, 2834, 58, 1015, "Output"]
+}, Open  ]]
+}, Open  ]]
+}
+]
+*)
+
+(* End of internal cache information *)

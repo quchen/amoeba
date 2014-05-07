@@ -98,23 +98,10 @@ balanceEdges env = forever $ do
                           maxNDigits dsnCount minN maxN
                           (showColoured (map colouredNumber dsnPorts)))
 
+            -- Note that both these values can, and often are, negative!
             return ( minN - usnCount
                    , minN - dsnCount
                    )
-
-      -- Convert a deficit in nodes into a number of edge requests to be sent
-      -- out.
-      --
-      -- - The number should be at least one, so that a deficit leads to at
-      --   least one request.
-      -- - In order not to flood the network, the number of requests should not
-      --   be too high: it might take multiple ticks of 'balanceEdges' to
-      --   establish a new connection, and lots of requests will be sent out in
-      --   that time.
-      --
-      -- For this reason, the current number of requests sent out is bounded
-      -- below by 1, and grows like sqrt with the deficit.
-      let requests deficit = max 1 (round (sqrt (fromIntegral deficit)))
 
       each (mergeLists (replicate (requests dsnDeficit) Outgoing)
                        (replicate (requests usnDeficit) Incoming))
@@ -125,3 +112,19 @@ balanceEdges env = forever $ do
             maxN       = config ^. L.maxNeighbours
             maxNDigits = round (logBase 10 (fromIntegral maxN)) + 1 :: Int
             serverPort = config ^. L.serverPort
+
+            -- Convert a deficit in nodes into a number of edge requests to be
+            -- sent out. This is done because in order not to flood the network,
+            -- the number of requests should not be too high: it might take
+            -- multiple ticks of 'balanceEdges' to establish a new connection,
+            -- and lots of requests will be sent out in that time.
+
+            -- The current value table starts like this:
+            --     0 -> 0
+            --     1-2 -> 1
+            --     3-6 -> 2
+            --     7-13 -> 3
+            --
+            -- This function has to be total, and not only work for positive
+            -- integers.
+            requests deficit = round (sqrt (max 0 (fromIntegral deficit)))
