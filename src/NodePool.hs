@@ -41,11 +41,13 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
                     --   turns). 'Chan' instead of 'TQueue' because of the
                     --   lack of fairness in STM.
          -> IOQueue -- ^ Channel to output thread
-         -> TerminationTrigger -- ^ If the contained MVar is filled, a node is
+         -> Maybe TerminationTrigger
+                               -- ^ If the MVar contained in the
+                               --   'TerminationTrigger' is filled, a node is
                                --   killed (and a new one is started by its
                                --   janitor).
          -> IO ()
-nodePool n config ldc output terminate =
+nodePool n config ldc output m'terminate =
       forM_ [1..n] $ \portOffset -> do
             let -- Give nodes in the pool consecutive numbers, starting with
                 -- <config port> + 1
@@ -53,7 +55,7 @@ nodePool n config ldc output terminate =
             forkIO (janitor (offsetConfig config)
                             ldc
                             output
-                            terminate)
+                            m'terminate)
             delay (config ^. L.mediumTickRate)
 
 
@@ -68,14 +70,14 @@ nodePool n config ldc output terminate =
 janitor :: NodeConfig
         -> Chan NormalSignal -- ^ Local direct connection
         -> IOQueue           -- ^ Channel to output thread
-        -> TerminationTrigger
+        -> Maybe TerminationTrigger
         -> IO ()
-janitor config fromPool output terminate = yellCatchall . forever $ do
+janitor config fromPool output m'terminate = yellCatchall . forever $ do
       toNode <- spawn (P.Bounded (config ^. L.maxChanSize))
       (`catches` handlers) $
             withAsync (startNode (Just toNode) output config) $ \node ->
              withAsync (fromPool `pipeTo` toNode)             $ \_chanPipe ->
-              withAsync (terminationWatch terminate node)     $ \_terminator ->
+              withAsync (terminationWatch m'terminate node)   $ \_terminator ->
                wait node
 
       where
@@ -98,7 +100,8 @@ pipeTo input output = runEffect (fromChan input >-> P.toOutput toChan) where
 
 
 
--- | Terminate a thread when the MVar is filled
-terminationWatch :: TerminationTrigger -> Async () -> IO ()
-terminationWatch trigger thread = takeMVar mVar >> cancel thread
-      where TerminationTrigger mVar = trigger
+-- | Terminate a thread when the MVar is filled, and block until this happens.
+terminationWatch :: Maybe TerminationTrigger -> Async () -> IO ()
+terminationWatch Nothing _thread = return ()
+terminationWatch (Just (TerminationTrigger mVar)) thread = do takeMVar mVar
+                                                              cancel thread

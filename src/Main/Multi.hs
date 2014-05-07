@@ -34,12 +34,11 @@ multiNodeMain = do
       printf "Starting pool with %d nodes" poolSize
 
       ldc <- newChan
-      terminationTrigger <- newTerminationTrigger -- TODO: Never actually used. Refactor node pool?
       npThread <- async (nodePool poolSize
                                  (config ^. L.nodeConfig)
                                  ldc
                                  output
-                                 terminationTrigger)
+                                 Nothing) -- No termination trigger
 
       forever (threadDelay (10^8))
 

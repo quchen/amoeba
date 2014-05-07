@@ -56,12 +56,11 @@ drawingServerMain = do
 
       let poolSize = config ^. L.poolConfig . L.poolSize
       ldc <- newChan
-      terminate <- newTerminationTrigger -- TODO: Never actually used. Refactor node pool?
       npThread <- async (nodePool poolSize
                                   (config ^. L.nodeConfig)
                                   ldc
                                   output
-                                  terminate)
+                                  Nothing) -- No termination trigger
 
       printf "Starting drawing server with %d nodes\n"poolSize
       drawingServer config output ldc

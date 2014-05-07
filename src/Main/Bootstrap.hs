@@ -53,7 +53,7 @@ bootstrapServerMain = do
                (config ^. L.nodeConfig)
                ldc
                output
-               terminationTrigger
+               (Just terminationTrigger)
 
       toIO' output (STDLOG (printf "Starting bootstrap server with %d nodes"
                                    poolSize))
