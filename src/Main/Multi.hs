@@ -6,6 +6,7 @@
 module Main.Multi (main) where
 
 import           Control.Concurrent
+import           Control.Concurrent.Async
 import           Control.Monad
 import           Text.Printf
 
@@ -33,11 +34,16 @@ multiNodeMain = do
       printf "Starting pool with %d nodes" poolSize
 
       ldc <- newChan
-      terminate <- newEmptyMVar -- TODO: Never actually used. Refactor node pool?
-      nodePool poolSize
-               (config ^. L.nodeConfig)
-               ldc
-               output
-               terminate
+      terminationTrigger <- newTerminationTrigger -- TODO: Never actually used. Refactor node pool?
+      npThread <- async (nodePool poolSize
+                                 (config ^. L.nodeConfig)
+                                 ldc
+                                 output
+                                 terminationTrigger)
 
-      forever (threadDelay (10^7))
+      forever (threadDelay (10^8))
+
+      wait npThread -- Not really necessary since this is the end of 'main'
+              -- and the thread would be killed automatically when the
+              -- program finishes, but might be useful just to be safe
+              -- in all possible futures.

@@ -48,17 +48,17 @@ bootstrapServerMain = do
 
       let poolSize = config ^. L.poolConfig . L.poolSize
       ldc <- newChan
-      terminate <- newEmptyMVar
+      terminationTrigger <- newTerminationTrigger
       nodePool poolSize
                (config ^. L.nodeConfig)
                ldc
                output
-               terminate
+               terminationTrigger
 
       toIO' output (STDLOG (printf "Starting bootstrap server with %d nodes"
                                    poolSize))
       (rThread, restart) <- restarter (config ^. L.restartMinimumPeriod)
-                                      terminate
+                                      terminationTrigger
       bootstrapServer config output ldc restart
       cancel rThread -- Not really necessary since this is the end of 'main'
                      -- and the thread would be killed automatically when the
@@ -83,13 +83,13 @@ newtype Restarter = Restarter { runRestarter :: IO () }
 --   Does not block.
 restarter :: Microseconds         -- ^ Minimum amount of time between
                                   --   consecutive restarts
-          -> MVar ()              -- ^ Will make the pool kill a pool node when
+          -> TerminationTrigger   -- ^ Will make the pool kill a pool node when
                                   --   filled. Written to by the restarter,
                                   --   read by the node pool.
           -> IO (Async (), Restarter) -- ^ Thread async, and restart trigger
                                       --   that when executed restarts a
                                       --   (semi-random) node.
-restarter minPeriod outgoingTrigger = do
+restarter minPeriod (TerminationTrigger outgoingTrigger) = do
 
       -- When the incoming trigger is filled, the outgoing trigger will be
       -- attempted to be filled. This is only possible if the minimum amount

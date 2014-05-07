@@ -22,6 +22,7 @@ module Utilities (
       , toIO'
       , prepareOutputBuffers
       , delay
+      , newTerminationTrigger
 
       -- * Networking
       , connectToNode
@@ -43,7 +44,7 @@ module Utilities (
 
 
 import           Control.Applicative
-import           Control.Concurrent (threadDelay, ThreadId, forkIO)
+import           Control.Concurrent hiding (yield)
 import           Control.Concurrent.STM
 import           Control.Monad
 import qualified Data.ByteString as BS
@@ -250,6 +251,11 @@ toIO' ioq msg = atomically (writeTBQueue (_getIOQueue ioq) msg)
 spawn :: P.Buffer a -> IO (PChan a)
 spawn buffer = toPChan <$> P.spawn' buffer
       where toPChan (output, input, seal) = PChan output input seal
+
+
+
+newTerminationTrigger :: IO TerminationTrigger
+newTerminationTrigger = fmap TerminationTrigger newEmptyMVar
 
 
 

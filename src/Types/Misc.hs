@@ -2,6 +2,7 @@
 
 module Types.Misc where
 
+import Control.Concurrent
 import Control.Concurrent.STM.TBQueue
 
 
@@ -44,3 +45,7 @@ newtype IOQueue = IOQueue { _getIOQueue :: TBQueue OutMsg }
 data OutMsg = STDOUT String
             | STDERR String
             | STDLOG String
+
+-- | Used by the client pool. When the MVar contained is filled, an arbitrary
+--   node will be terminated.
+newtype TerminationTrigger = TerminationTrigger (MVar ())

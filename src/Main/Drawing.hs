@@ -15,6 +15,7 @@ module Main.Drawing (main) where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM
+import           Control.Concurrent.Async
 import           Control.Monad
 import           Data.List (intercalate)
 import qualified Data.Foldable as F
@@ -55,15 +56,19 @@ drawingServerMain = do
 
       let poolSize = config ^. L.poolConfig . L.poolSize
       ldc <- newChan
-      terminate <- newEmptyMVar -- TODO: Never actually used. Refactor node pool?
-      nodePool poolSize
-               (config ^. L.nodeConfig)
-               ldc
-               output
-               terminate
+      terminate <- newTerminationTrigger -- TODO: Never actually used. Refactor node pool?
+      npThread <- async (nodePool poolSize
+                                  (config ^. L.nodeConfig)
+                                  ldc
+                                  output
+                                  terminate)
 
       printf "Starting drawing server with %d nodes\n"poolSize
       drawingServer config output ldc
+      wait npThread -- Not really necessary since this is the end of 'main'
+                    -- and the thread would be killed automatically when the
+                    -- program finishes, but might be useful just to be safe
+                    -- in all possible futures.
 
 
 

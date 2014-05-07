@@ -20,6 +20,10 @@ import           Control.Monad
 import           Pipes
 import qualified Pipes.Concurrent as P
 
+import           Control.Lens.Operators
+-- import qualified Control.Lens as L
+import qualified Types.Lens as L
+
 import           Node
 import           Types
 import           Utilities
@@ -37,16 +41,20 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
                     --   turns). 'Chan' instead of 'TQueue' because of the
                     --   lack of fairness in STM.
          -> IOQueue -- ^ Channel to output thread
-         -> MVar () -- ^ Termination lock. If the MVar is filled, the next
-                    --   node (due to fairness) is killed and restarted,
-                    --   see 'janitor'.
+         -> TerminationTrigger -- ^ If the contained MVar is filled, a node is
+                               --   killed (and a new one is started by its
+                               --   janitor).
          -> IO ()
 nodePool n config ldc output terminate =
-      void . forkIO . forM_ [1..n] $ \portOffset -> do
-            let port    = _serverPort config + fromIntegral portOffset
-                config' = config { _serverPort = port }
-            forkIO (janitor config' ldc output terminate)
-            delay (_mediumTickRate config)
+      forM_ [1..n] $ \portOffset -> do
+            let -- Give nodes in the pool consecutive numbers, starting with
+                -- <config port> + 1
+                offsetConfig = L.serverPort +~ fromIntegral portOffset
+            forkIO (janitor (offsetConfig config)
+                            ldc
+                            output
+                            terminate)
+            delay (config ^. L.mediumTickRate)
 
 
 
@@ -60,12 +68,10 @@ nodePool n config ldc output terminate =
 janitor :: NodeConfig
         -> Chan NormalSignal -- ^ Local direct connection
         -> IOQueue           -- ^ Channel to output thread
-        -> MVar ()           -- ^ Termination MVar. If filled, a node is
-                             --   terminated (and replaced by a new one by the
-                             --   janitor). Also see 'terminationWatch'.
+        -> TerminationTrigger
         -> IO ()
 janitor config fromPool output terminate = yellCatchall . forever $ do
-      toNode <- spawn (P.Bounded (_maxChanSize config))
+      toNode <- spawn (P.Bounded (config ^. L.maxChanSize))
       (`catches` handlers) $
             withAsync (startNode (Just toNode) output config) $ \node ->
              withAsync (fromPool `pipeTo` toNode)             $ \_chanPipe ->
@@ -88,10 +94,11 @@ pipeTo :: Chan  NormalSignal -- ^ From
        -> IO ()
 pipeTo input output = runEffect (fromChan input >-> P.toOutput toChan) where
       fromChan chan = forever (liftIO (readChan chan) >>= yield)
-      toChan        = _pOutput output
+      toChan        = output ^. L.pOutput
 
 
 
 -- | Terminate a thread when the MVar is filled
-terminationWatch :: MVar () -> Async () -> IO ()
-terminationWatch mVar thread = takeMVar mVar >> cancel thread
+terminationWatch :: TerminationTrigger -> Async () -> IO ()
+terminationWatch trigger thread = takeMVar mVar >> cancel thread
+      where TerminationTrigger mVar = trigger
