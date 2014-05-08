@@ -20,12 +20,12 @@ import Data.Configurator ()
 import Data.Configurator.Types (Configured)
 
 
-
+-- | Top-level signal type. This is what is typically exchanged between nodes.
 data Signal =
 
         Normal NormalSignal
 
-      -- | Signals that are handled in a special way. For example 'IAddedYou'
+      -- | Signals that are handled in a special way. For example 'Handshake'
       --   signals have to be processed because when they are received the other
       --   node is by definition not an upstream neighbour yet.
       | Special SpecialSignal
@@ -35,8 +35,8 @@ data Signal =
 instance Binary Signal
 
 
--- | Stores a signal to be executed by a node, e.g. print a message, search for
---   new neighbours etc.
+-- | Signal to be executed by a node, e.g. print a message, search for new
+--   neighbours etc.
 data NormalSignal =
 
       -- | Query to add an edge to the network. The 'To' parameter is the
@@ -65,10 +65,10 @@ data NormalSignal =
       deriving (Eq, Ord, Generic)
 
 instance Show NormalSignal where
-      show KeepAlive = "KeepAlive"
-      show Prune = "Prune"
-      show ShuttingDown = "ShuttingDown"
-      show (Flood t s) = printf "Flood %s %s" (show t) (show s)
+      show KeepAlive           = "KeepAlive"
+      show Prune               = "Prune"
+      show ShuttingDown        = "ShuttingDown"
+      show (Flood t s)         = printf "Flood %s %s" (show t) (show s)
       show (EdgeRequest to ed) = printf "EdgeRequest { %s, %s }" (show to) (show ed)
 
 instance Binary NormalSignal
@@ -180,13 +180,17 @@ data EdgeData = EdgeData {
       deriving (Eq, Ord, Generic)
 
 instance Show EdgeData where
-      show ed = printf "%s edge (%s)"(show $ _direction ed) bp
-            where bp :: String
-                  bp = case _bounceParam ed of
-                        HardBounce n -> printf "%d bounce%s left"
-                                        n
-                                        (if n /= 1 then "s" else "")
-                        SoftBounce n p -> printf "bounces: %d, accept: %.2f" n p
+      show EdgeData { _bounceParam = bp, _direction = dir } =
+            printf "%s edge (%s)" (show dir) showBp
+
+            where
+
+            showBp :: String
+            showBp = case bp of
+                  HardBounce n -> printf "%d bounce%s left"
+                                  n
+                                  (if n /= 1 then "s" else "")
+                  SoftBounce n p -> printf "bounces: %d, accept: %.2f" n p
 
 instance Binary EdgeData
 

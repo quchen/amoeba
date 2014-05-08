@@ -48,10 +48,9 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
          -> IO ()
 nodePool n config ldc output m'terminate =
       forM_ [1..n] $ \portOffset -> do
-            let -- Give nodes in the pool consecutive numbers, starting with
-                -- <config port> + 1
-                offsetConfig = L.serverPort +~ portOffset
-            forkIO (janitor (offsetConfig config)
+            -- Give nodes in the pool consecutive numbers, starting with
+            -- <config port> + 1
+            forkIO (janitor (config & L.serverPort +~ portOffset)
                             ldc
                             output
                             m'terminate)
@@ -77,7 +76,7 @@ janitor config fromPool output m'terminate = yellCatchall . forever $ do
        withAsync (startNode (Just toNode) output config) $ \node ->
         withAsync (fromPool `pipeTo` toNode) $ \_chanPipe ->
          case m'terminate of
-               Just t -> withAsync (terminationWatch t node) (\_ -> wait node)
+               Just t  -> withAsync (terminationWatch t node) (\_ -> wait node)
                Nothing -> wait node
 
       where

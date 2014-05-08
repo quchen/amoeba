@@ -14,9 +14,7 @@ import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Data.List (intercalate)
-import           Data.Set as Set (toList)
 import           Text.Printf
-import qualified Data.Map as Map
 
 import           Pipes
 import qualified Pipes.Concurrent as P
@@ -31,16 +29,14 @@ import           Types
 import           Utilities
 
 
--- | Sets up the client pool by forking the housekeeping thread, and then starts
+-- | Set up the client pool by forking the housekeeping thread, and then start
 --   the client pool loop.
---
---   For further documentation, see @housekeeping@ and @clientLoop@.
 clientPool :: Environment -> IO ()
 clientPool env = withAsync hkeep $ \_ -> fillPool env
       where hkeep = dsnHousekeeping env
 
 
--- | Watches the count of nodes in the database, and issues 'EdgeRequest's
+-- | Watch the count of nodes in the database, and issue 'EdgeRequest's
 --   to fill the ranks if necessary.
 fillPool :: Environment -> IO ()
 fillPool env = runEffect (balanceEdges env >-> P.map edgeRequest >-> dispatch)
@@ -54,10 +50,9 @@ fillPool env = runEffect (balanceEdges env >-> P.map edgeRequest >-> dispatch)
       -- Create an EdgeRequest from a Direction
       edgeRequest :: Direction
                   -> NormalSignal
-      edgeRequest dir =
-            EdgeRequest (env ^. L.self)
-                        (EdgeData dir
-                                  (HardBounce (env ^. L.config . L.hardBounces)))
+      edgeRequest dir = EdgeRequest self (EdgeData dir hardBounces)
+            where self        = env ^. L.self
+                  hardBounces = HardBounce (env ^. L.config . L.hardBounces)
 
 
 
@@ -75,14 +70,10 @@ balanceEdges env = forever $ do
             dsnCount <- dbSize env L.downstream
 
             -- Gather all DSN node ports
-            dsnPorts <- fmap (map (L.view L.port . getTo) . Set.toList . Map.keysSet)
-                             (env ^. L.downstream . L.to readTVar)
-
-            let colouredNumber :: Int -> String
-                colouredNumber n = printf "\ESC[3%dm%d\ESC[0m" (n `rem` 8 + 1) n
-                -- Like List's Show instance, but won't recursively show
-                -- list elements (therefore avoiding "\ESC..." in the output).
-                showColoured = (++ "]") . ("[" ++) . intercalate ", "
+            dsns <- env ^. L.downstream . L.to readTVar
+            let traverseKeys = L.itraversed . L.asIndex
+                port = L.to getTo . L.port
+                dsnPorts = dsns ^.. traverseKeys . port
 
             -- Print status message: "Network connections: upstream 7/(5..10),
             -- downstream 5/(5..10)"to indicate there are 7 of a minimum of 5,
@@ -96,7 +87,7 @@ balanceEdges env = forever $ do
                           (colouredNumber serverPort)
                           maxNDigits usnCount minN maxN
                           maxNDigits dsnCount minN maxN
-                          (showColoured (map colouredNumber dsnPorts)))
+                          (showL (map colouredNumber dsnPorts)))
 
             -- Note that both these values can, and often are, negative!
             return ( minN - usnCount
@@ -113,6 +104,8 @@ balanceEdges env = forever $ do
             maxNDigits = round (logBase 10 (fromIntegral maxN)) + 1 :: Int
             serverPort = config ^. L.serverPort
 
+
+
             -- Convert a deficit in nodes into a number of edge requests to be
             -- sent out. This is done because in order not to flood the network,
             -- the number of requests should not be too high: it might take
@@ -128,3 +121,14 @@ balanceEdges env = forever $ do
             -- This function has to be total, and not only work for positive
             -- integers.
             requests deficit = round (sqrt (max 0 (fromIntegral deficit)))
+
+
+
+-- | Show a number in colour.
+colouredNumber :: Int -> String
+colouredNumber n = printf "\ESC[3%dm%d\ESC[0m" (n `rem` 8 + 1) n
+
+-- | Like List's Show instance, but won't recursively show
+--   list elements (therefore avoiding "\ESC..." in the output).
+showL :: [String] -> String
+showL x = "[" ++ intercalate ", " x ++ "]"

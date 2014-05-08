@@ -27,9 +27,9 @@ import           Utilities
 
 
 
--- | Makes sure other nodes know this node is still running and has them as its
---   neighbour, removes timed out upstream nodes and dead clients/downstream
---   nodes.
+-- | Housekeeping of the downstream node database. Makes sure other nodes know
+--   this node is still running and has them as its neighbour, removes dead
+--   DSNs.
 dsnHousekeeping :: Environment -> IO ()
 dsnHousekeeping env = forever $ do
       t <- makeTimestamp

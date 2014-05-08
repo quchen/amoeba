@@ -367,7 +367,7 @@ These may help reading the source comments:
 
         Name | Meaning
 -----------: | -----------------------------------------------------------------
-          _* | Accessor functions that don't do any computation otherwise.
+          _* | Accessor functions that don't do any computation otherwise. When dependencies permit, the lenses generated from these are used.
           *H | Handler. Signals or commands are delegated to these for processing.
          BSS | Bootstrap server
          DSN | Downstream node, i.e. a neighbouring node the current sends commands do. (S, T, U in the picture above.)
