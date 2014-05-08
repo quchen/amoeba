@@ -26,7 +26,6 @@ module Utilities (
 
       -- * Networking
       , connectToNode
-      , connectToNode'
       , listenOnNode
       , disconnect
       , sender
@@ -101,17 +100,6 @@ connectToNode :: (MonadIO io, MonadCatch io)
               -> io r
 connectToNode (To node) = N.connect (node ^. L.host)
                                     (node ^. L.port . L.to show)
-
-
-
--- | 'Node'-based version of 'P.connectSock'. Opens the connection, but
---   contrary to 'connectToNode', it will not be closed automatically. Use
---   'P.closeSock' to do so.
-connectToNode' :: (MonadIO io)
-               => To
-               -> io (N.Socket, N.SockAddr)
-connectToNode' (To node) = N.connectSock (node ^. L.host)
-                                         (node ^. L.port . L.to show)
 
 
 
