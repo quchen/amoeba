@@ -12,7 +12,6 @@ module Client  (
 
 
 import           Control.Applicative
-import           Control.Concurrent (forkIO)
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Exception
@@ -50,11 +49,10 @@ import           Utilities
 --      but will only done so if this node has room for it, and the downstream
 --      neighbour is not yet known.
 --   4. Spawn a new client with the connection just opened.
-startHandshakeH :: MonadIO io
-                => Environment
+startHandshakeH :: Environment
                 -> To -- ^ Node to add
-                -> io ()
-startHandshakeH env to = liftIO . void . forkIO $ do
+                -> IO ()
+startHandshakeH env to =
       connectToNode to $ \(socket, _addr) ->
             (request socket (Special Handshake) >>= \case
                   Just OK -> newClient env to socket -- OK will be sent back by

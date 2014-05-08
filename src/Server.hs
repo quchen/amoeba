@@ -168,10 +168,8 @@ specialH env from socket signal = case signal of
       BootstrapRequest {} -> illegalBootstrapSignalH env
       NeighbourList {}    -> illegalNeighbourListSignalH env
       Handshake           -> incomingHandshakeH      env from socket
-      HandshakeRequest to -> Client.startHandshakeH  env to >> return OK
-                                                               -- Sender doesn't handle
-                                                               -- this response anyway,
-                                                               -- see sendHandshakeRequest
+      HandshakeRequest to -> do void (forkIO (Client.startHandshakeH  env to))
+                                return OK
 
 
 
@@ -485,7 +483,7 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
 sendHandshakeRequest :: Environment
                      -> To
                      -> IO ()
-sendHandshakeRequest env to =
+sendHandshakeRequest env to = do
       connectToNode to $ \(socket, _addr) -> do
             request socket signal >>= \case
                   Just OK -> return ()
