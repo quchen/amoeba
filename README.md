@@ -37,13 +37,40 @@ develop | [![(Travis image broken)](https://travis-ci.org/quchen/amoeba.png?bran
 Explanation in simple terms
 ---------------------------
 
-(This section is for you if you're wondering what the fuzz about the above crumbled up piece of strings and dots is.)
+(This section is for you if you're wondering what the fuzz about the above
+crumbled up piece of strings and dots is.)
 
-I was always superficially fascinated by complex systems and networks, most notably by what is called *emergence*: the appearance of complex behaviour in systems made up from simple rules. A single ant does not do anything complex, and neither do ten of them. Put a thousand together though and you will discover that, although each is still individually doing the same things as before, it will amount to something much bigger than what you would have expected from the individual: complex structures of air tunnels or [fungus farms][leafcutter]. Another example is any living organism: even if you understood how every cell worked exactly, you still would have no idea about whether (or why) putting them together in some way can make up the organism that I am right now, typing this paragraph.
+I was always superficially fascinated by complex systems and networks, most
+notably by what is called *emergence*: the appearance of complex behaviour in
+systems made up from simple rules. A single ant does not do anything complex,
+and neither do ten of them. Put a thousand together though and you will discover
+that, although each is still individually doing the same things as before, it
+will amount to something much bigger than what you would have expected from the
+individual: complex structures of air tunnels or [fungus farms][leafcutter].
+Another example is any living organism: even if you understood how every cell
+worked exactly, you still would have no idea about whether (or why) putting them
+together in some way can make up the organism that I am right now, typing this
+paragraph.
 
-Networks also exhibit a lot of emergent properties, and contrary to living organisms they are much more suitable to being simulated and applied by computers. A network in this sense is simply a number of constituents with connections to other constituents. These networks can consist of people (where conncetions can be "who likes who" or "have met each other at some point"), computers ("connected over the internet", "contains parts made by the same manufacturer"), languages ("what words can be used after others") and many other things.
+Networks also exhibit a lot of emergent properties, and contrary to living
+organisms they are much more suitable to being simulated and applied by
+computers. A network in this sense is simply a number of constituents with
+connections to other constituents. These networks can consist of people (where
+conncetions can be "who likes who" or "have met each other at some point"),
+computers ("connected over the internet", "contains parts made by the same
+manufacturer"), languages ("what words can be used after others") and many other
+things.
 
-Amœba is a program that creates a computer network. I came up with the idea around the time of the first Bitcoin boom in 2013; the Torrent network did also seem somewhat interesting to me. So I thought "why not implement a basic version of something like that yourself?" - generously estimating 500 lines of code to get the core done. Months and thousands of lines of code added/removed/edited later, a satisfying first version is still just barely on the horizon, but it's finished enough to be able to play around with it. The "crumbled up piece of strings and dots" above is a snapshot of an Amœba network, a few seconds before I terminated half of it to see whether it would survive that without clustering into many disconnected components. Research has begun! :-)
+Amœba is a program that creates a computer network. I came up with the idea
+around the time of the first Bitcoin boom in 2013; the Torrent network did also
+seem somewhat interesting to me. So I thought "why not implement a basic version
+of something like that yourself?" - generously estimating 500 lines of code to
+get the core done. Months and thousands of lines of code added/removed/edited
+later, a satisfying first version is still just barely on the horizon, but it's
+finished enough to be able to play around with it. The "crumbled up piece of
+strings and dots" above is a snapshot of an Amœba network, a few seconds before
+I terminated half of it to see whether it would survive that without clustering
+into many disconnected components. Research has begun! :-)
 
 [leafcutter]: https://en.wikipedia.org/wiki/Leaf_cutter_ant
 
@@ -247,12 +274,9 @@ This is a list of known and feasible attacks on the current design:
     ones could battle the possibility of nodes gathering up too many connections
     illegally.
 
-  - *Immune:* Bootstrap takeover: The bootstrap server remembers all nodes it
-    has helped spawn. Should the malicious network be able to bully out all
-    legally known nodes, the bootstrap server would have to send the next
-    request through the malicious network first. However, the newly spawned node
-    now exists in the bootstrap server's database, providing a way through the
-    blockade.
+  - Bootstrap takeover: if an attacker manages to replace all neighbours (both
+    up- and downstream) of a bootstrap server's pool, all new nodes connecting
+    via that server will be relayed into the malicious network.
 
 - Malicious swarms - right now it's trivial to spawn thousands of new nodes
   simultaneously. No matter how many honest nodes there are, it is very easy to

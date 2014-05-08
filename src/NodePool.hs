@@ -84,7 +84,6 @@ janitor config fromPool output m'terminate = yellCatchall . forever $ do
             handlers = [ Handler asyncException ]
             asyncException ThreadKilled = return ()
             asyncException e = throwIO e
-
             yellCatchall = handle (\(SomeException e) ->
                              yell 41 ("Janitor crashed! Exception: " ++ show e))
 

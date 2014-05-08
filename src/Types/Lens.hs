@@ -12,7 +12,7 @@
 --   imported qualified.
 --
 --   This module is predominantly generated automatically by Template Haskell.
---   For documentatino on what the different fields do, have a look at the
+--   For documentation on what the different fields do, have a look at the
 --   documentation in the other 'Types' modules.
 module Types.Lens where
 
