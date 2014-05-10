@@ -120,7 +120,7 @@ balanceEdges env = forever $ do
             --
             -- This function has to be total, and not only work for positive
             -- integers.
-            requests deficit = round (sqrt (max 0 (fromIntegral deficit)))
+            requests = iSqrt
 
 
 

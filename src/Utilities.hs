@@ -16,6 +16,7 @@ module Utilities (
       , mergeLists
       , showT
       , seqM
+      , iSqrt
 
       -- * Concurrency
       , toIO
@@ -336,3 +337,11 @@ showT = T.pack . show
 -- | Strictify monadic values
 seqM :: Monad m => m a -> m a
 seqM m = m >>= (return $!)
+
+
+-- | Reasonably accurate version of an integer square root, used to model
+--   diminishing returns for small values (e.g. neighbour counts).
+--
+--   This function is total, and returns 0 for inputs smaller than zero.
+iSqrt :: Integral int => int -> int
+iSqrt n = round (sqrt (max 0 (fromIntegral n)))

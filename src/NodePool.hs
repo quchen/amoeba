@@ -16,6 +16,7 @@ import           Control.Concurrent.Chan
 import           Control.Concurrent.MVar
 import           Control.Exception
 import           Control.Monad
+import qualified Data.Foldable as F
 
 import           Pipes
 import qualified Pipes.Concurrent as P
@@ -47,14 +48,14 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
                     --   its janitor).
          -> IO ()
 nodePool n config ldc output m'terminate =
-      forM_ [1..n] $ \portOffset -> do
-            -- Give nodes in the pool consecutive numbers, starting with
-            -- <config port> + 1
-            forkIO (janitor (config & L.serverPort +~ portOffset)
-                            ldc
-                            output
-                            m'terminate)
-            delay (config ^. L.mediumTickRate)
+      F.for_ [1..n] $ \portOffset -> do
+             -- Give nodes in the pool consecutive numbers, starting with
+             -- <config port> + 1
+             forkIO (janitor (config & L.serverPort +~ portOffset)
+                             ldc
+                             output
+                             m'terminate)
+             delay (config ^. L.mediumTickRate)
 
 
 

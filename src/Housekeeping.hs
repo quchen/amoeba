@@ -87,9 +87,10 @@ prune env = atomically $ do
       usnSize <- dbSize env L.upstream
       let minN = env ^. L.config . L.minNeighbours
           excess = usnSize - minN
-      forM_ [1..excess]
-            (\_i -> (P.send (env ^. L.st1c . L.pOutput)
-                            Prune))
+          prunes = iSqrt
+      F.for_ [1..prunes excess]
+             (\_i -> (P.send (env ^. L.st1c . L.pOutput)
+                             Prune))
 
 
 

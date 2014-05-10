@@ -177,8 +177,8 @@ networkAsker config poolSize toSelf ldc = forever $ do
       delay (_drawEvery config)
       t <- makeTimestamp
       let signal = Flood t (SendNeighbourList toSelf)
-      forM_ [1..poolSize]
-            (\_i -> writeChan ldc signal)
+      F.for_ [1..poolSize]
+             (\_i -> writeChan ldc signal)
 
 
 
