@@ -31,9 +31,9 @@ import Types
 
 
 
-runModifier :: a -- ^ Default config
-            -> [IO (OptionModifier a)] -- ^ List of modifiers
-            -> IO a
+runModifier :: config                       -- ^ Default config
+            -> [IO (OptionModifier config)] -- ^ List of modifiers
+            -> IO config
 runModifier defaultConfig ioMods = do
       mods <- (fmap mconcat . T.sequenceA) ioMods
       return (applyOptionModifier mods defaultConfig)
