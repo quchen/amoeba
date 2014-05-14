@@ -395,7 +395,7 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
             -- an Incoming request will construct a downstream neighbour from
             -- this node, so the database lookups are flipped.
             room <- case dir of
-                  Incoming -> isRoomIn env L.downstream
+                  Incoming -> isRoomForDsn env
                   Outgoing -> isRoomForUsn env
 
             return (room, rel)

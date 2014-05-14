@@ -1,27 +1,28 @@
 -- | Functions to query the upstream/downstream databases
 
-{-# LANGUAGE RankNTypes #-} -- for DBProjector
+-- TODO: The USN/DSN API could probably be refactored significantly by using
+--       optics.
 
 module Utilities.Databases (
 
       -- * General
-        isRoomIn
-      , dbSize
-      , makeTimestamp
+        makeTimestamp
 
 
       -- * USN DB
       , insertUsn
       , deleteUsn
-      , usnDBSize
       , isUsn
+      , usnDBSize
       , isRoomForUsn
 
 
       -- * DSN DB
-      , isDsn
       , insertDsn
       , deleteDsn
+      , isDsn
+      , dsnDBSize
+      , isRoomForDsn
       , dumpDsnDB
       , updateDsnTimestamp
       , nodeRelationship
@@ -36,8 +37,8 @@ module Utilities.Databases (
 
 import           Control.Concurrent.STM
 import           Control.Monad.Trans
-import           Control.Applicative
 import qualified Data.Map as Map
+import           Data.Map (Map)
 import qualified Data.Set as Set
 import           Data.Set (Set)
 import           Data.Time.Clock.POSIX (getPOSIXTime)
@@ -58,32 +59,9 @@ import qualified Types.Lens as L
 
 
 
--- | Projector of the upstream or downstream DB from the "Environment".
---   Unifies with 'L.upstream' or 'L.downstream'.
-type DBProjector k a = L.Lens' Environment (TVar (Map.Map k a))
-
-
-
--- | Check whether there is room to add another node to the pool.
-isRoomIn :: Environment
-         -> DBProjector k a -- ^ 'L.upstream' or 'L.downstream'
-         -> STM Bool
-isRoomIn env db = fmap (maxSize >) (dbSize env db)
-      where maxSize = env ^. L.config . L.maxNeighbours . L.to fromIntegral
-
-
-
--- | Determine the current size of a database
-dbSize :: Environment
-       -> DBProjector k a -- ^ 'L.upstream' or 'L.downstream'
-       -> STM Int
-dbSize env db = fmap Map.size (env ^. db . L.to readTVar)
-
-
-
 -- | Create a timestamp, which is a Double representation of the Unix time.
 makeTimestamp :: (MonadIO m) => m Timestamp
-makeTimestamp = liftIO (Timestamp . realToFrac <$> getPOSIXTime)
+makeTimestamp = liftIO (fmap (Timestamp . realToFrac) getPOSIXTime)
 --   Since Haskell's Time library is borderline retarded, this seems to be the
 --   cleanest way to get something that is easily an instance of Binary and
 --   comparable to seconds.
@@ -97,31 +75,47 @@ makeTimestamp = liftIO (Timestamp . realToFrac <$> getPOSIXTime)
 -- #############################################################################
 
 
-insertUsn, deleteUsn :: Environment -> From -> STM ()
+
+-- | Insert a USN into the DB.
+insertUsn :: Environment -> From -> STM ()
 insertUsn env from = modifyUsnDB env (Set.insert from)
+
+
+
+-- | Delete a USN from the DB.
+deleteUsn :: Environment -> From -> STM ()
 deleteUsn env from = modifyUsnDB env (Set.delete from)
 
 
+
+-- | Modify the entire USN DB with a function. Used as a general interface for
+--   smaller functions.
 modifyUsnDB :: Environment -> (Set From -> Set From) -> STM ()
 modifyUsnDB env f = modifyTVar' db f
       where db = L.view L.upstream env
 
 
+-- | Query the entire USN DB. Used as a general interface for smaller functions.
 queryUsnDB :: Environment -> (Set From -> a) -> STM a
 queryUsnDB env query = fmap query (readTVar db)
       where db = env ^. L.upstream
 
 
 
+-- | Retrieve the current USN DB size.
 usnDBSize :: Environment -> STM Int
 usnDBSize env = queryUsnDB env (Set.size)
 
 
 
+-- | Check whether a USN is in the DB.
 isUsn :: Environment -> From -> STM Bool
 isUsn env from = queryUsnDB env (Set.member from)
 
 
+
+-- | Check whether another USN can be added to the DB without exceeding the
+--   neighbour limit.
 isRoomForUsn :: Environment -> STM Bool
 isRoomForUsn env = fmap (maxSize > ) (usnDBSize env)
       where maxSize = env ^. L.config . L.maxNeighbours . L.to fromIntegral
@@ -136,10 +130,33 @@ isRoomForUsn env = fmap (maxSize > ) (usnDBSize env)
 
 
 
--- | "Set.Set" of all known DSN.
-dumpDsnDB :: Environment -> STM (Set.Set To)
+-- | 'Set' of all known DSN.
+dumpDsnDB :: Environment -> STM (Set To)
 dumpDsnDB env = fmap Map.keysSet
                      (readTVar (env ^. L.downstream))
+
+
+
+-- | Query the entire DSN DB. Used as a general interface for smaller functions.
+queryDsnDB :: Environment -> (Map To Client -> a) -> STM a
+queryDsnDB env query = fmap query (readTVar db)
+      where db = env ^. L.downstream
+
+
+
+
+
+-- | Determine the current size of a database
+dsnDBSize :: Environment -> STM Int
+dsnDBSize env = queryDsnDB env (Map.size)
+
+
+
+-- | Check whether there is room to add another node to the pool.
+isRoomForDsn :: Environment -> STM Bool
+isRoomForDsn env = fmap (maxSize >) (dsnDBSize env)
+      where maxSize = env ^. L.config . L.maxNeighbours . L.to fromIntegral
+
 
 
 
@@ -219,7 +236,7 @@ insertFlood env tfSignal = modifyTVar (env ^. L.handledFloods)
                                       (prune . Set.insert tfSignal)
 
       where -- Delete the oldest entry if the DB is full
-            prune :: Set.Set a -> Set.Set a
+            prune :: Set a -> Set a
             prune db | Set.size db > dbMaxSize = Set.deleteMin db
                      | otherwise               = db
 

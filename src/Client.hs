@@ -28,7 +28,6 @@ import           Control.Lens.Operators
 import qualified Control.Lens as L
 import qualified Types.Lens as L
 
-import           ClientPool
 import           Types
 import           Utilities
 
@@ -101,7 +100,7 @@ newClient env to socket = ifM allowed
                   toIO env Debug (STDERR "Tried to launch client to already known node")
                   return False
             IsUnrelated -> do
-                  isRoom <- isRoomIn env L.downstream
+                  isRoom <- isRoomForDsn env
                   if not isRoom
                         then do toIO env Debug (STDERR "No room for new client")
                                 return False

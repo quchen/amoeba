@@ -5,10 +5,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_HADDOCK show-extensions #-}
 
-module ClientPool (
-          clientPool
-        , isRoomIn
-) where
+module ClientPool (clientPool) where
 
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
@@ -67,7 +64,7 @@ balanceEdges env = forever $ do
       (usnDeficit, dsnDeficit) <- liftIO . atomically $ do
 
             usnCount <- usnDBSize env
-            dsnCount <- dbSize env L.downstream
+            dsnCount <- dsnDBSize env
 
             -- Gather all DSN node ports
             dsns <- env ^. L.downstream . L.to readTVar
