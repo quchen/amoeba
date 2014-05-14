@@ -217,12 +217,32 @@ class Show a => PrettyShow a where
       pretty :: a -> T.Text
       pretty = T.pack . show
 
-instance PrettyShow Int
+instance PrettyShow Int where
+      pretty = pretty . (fromIntegral :: Int -> Integer)
+
+instance PrettyShow Word where
+      pretty = pretty . (fromIntegral :: Word -> Integer)
+
+-- What a mess. Surely there's a better implementation.
+instance PrettyShow Integer where
+      pretty = T.intercalate ","
+             . reverse
+             . map T.reverse
+             . chunksOf 3
+             . T.reverse
+             . T.pack
+             . show
+
+            where chunksOf n xs = case T.splitAt n xs of
+                        (as, bs) | T.null bs -> [as]
+                                 | otherwise -> [as] ++ chunksOf n bs
+
 instance PrettyShow Double
-instance PrettyShow Word
 instance PrettyShow Verbosity
 instance PrettyShow To
-instance PrettyShow Microseconds
+instance PrettyShow Microseconds where
+      pretty (Microseconds us) = pretty us <> " µs"
+
 instance Show a => PrettyShow (Set a)
 instance Show a => PrettyShow [a]
 

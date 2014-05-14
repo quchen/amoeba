@@ -279,5 +279,4 @@ data PChan a = PChan { _pOutput :: P.Output a
 newtype Microseconds = Microseconds Int
       deriving (Eq, Ord, Num, Read, Integral, Real, Enum, Configured)
 
-instance Show Microseconds where
-      show (Microseconds s) = show s ++ " µs"
+instance Binary Microseconds
