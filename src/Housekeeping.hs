@@ -91,7 +91,7 @@ removeTerminatedDsn env = do
 --   (The amount of DSNs contacted is equivalent to the excess of connections.)
 prune :: Environment -> IO ()
 prune env = atomically $ do
-      usnSize <- dbSize env L.upstream
+      usnSize <- usnDBSize env
       let minN = env ^. L.config . L.minNeighbours
           excess = usnSize - minN
           prunes = iSqrt

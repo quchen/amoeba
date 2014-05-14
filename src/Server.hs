@@ -158,17 +158,12 @@ normalH env from signal =
 
       where
 
-      continue = do
-            result <- case signal of
-                  EdgeRequest to edge  -> edgeBounceH   env to edge
-                  Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
-                  KeepAlive            -> keepAliveH    env from
-                  ShuttingDown         -> shuttingDownH env from
-                  Prune                -> pruneH        env
-            when (result == OK)
-                 (do t <- makeTimestamp
-                     atomically (updateUsnTimestamp env from t))
-            return result
+      continue = case signal of
+            EdgeRequest to edge  -> edgeBounceH   env to edge
+            Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
+            KeepAlive            -> keepAliveH    env from
+            ShuttingDown         -> shuttingDownH env from
+            Prune                -> pruneH        env
 
       deny = do
             atomically . toIO env Debug . STDLOG $
@@ -306,7 +301,7 @@ shuttingDownH env from = atomically $ do
 pruneH :: Environment
        -> IO ServerResponse
 pruneH env = atomically $ do
-      usnSize <- dbSize env L.upstream
+      usnSize <- usnDBSize env
       let minN = env ^. L.config . L.minNeighbours
       if usnSize > minN
             then
@@ -401,7 +396,7 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
             -- this node, so the database lookups are flipped.
             room <- case dir of
                   Incoming -> isRoomIn env L.downstream
-                  Outgoing -> isRoomIn env L.upstream
+                  Outgoing -> isRoomForUsn env
 
             return (room, rel)
 
@@ -534,9 +529,10 @@ incomingHandshakeH :: Environment
                    -> Socket
                    -> IO ServerResponse
 incomingHandshakeH env from socket = do
-      timestamp <- makeTimestamp
-
-      inserted <- atomically (insertUsn env from timestamp)
+      inserted <- atomically $ do
+            ifM (isRoomForUsn env)
+                (insertUsn env from >> return True)
+                (return False)
 
       if inserted
             then send socket OK >> receive socket >>= \case

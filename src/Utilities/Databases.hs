@@ -11,10 +11,11 @@ module Utilities.Databases (
 
 
       -- * USN DB
-      , isUsn
       , insertUsn
       , deleteUsn
-      , updateUsnTimestamp
+      , usnDBSize
+      , isUsn
+      , isRoomForUsn
 
 
       -- * DSN DB
@@ -33,18 +34,18 @@ module Utilities.Databases (
 ) where
 
 
-import Control.Concurrent.STM
-import Control.Monad.Trans
-import Control.Monad
-import Control.Applicative
+import           Control.Concurrent.STM
+import           Control.Monad.Trans
+import           Control.Applicative
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Data.Time.Clock.POSIX (getPOSIXTime)
+import           Data.Set (Set)
+import           Data.Time.Clock.POSIX (getPOSIXTime)
 
-import Control.Lens.Operators
+import           Control.Lens.Operators
 import qualified Control.Lens as L
 
-import Types
+import           Types
 import qualified Types.Lens as L
 
 
@@ -96,51 +97,34 @@ makeTimestamp = liftIO (Timestamp . realToFrac <$> getPOSIXTime)
 -- #############################################################################
 
 
+insertUsn, deleteUsn :: Environment -> From -> STM ()
+insertUsn env from = modifyUsnDB env (Set.insert from)
+deleteUsn env from = modifyUsnDB env (Set.delete from)
 
--- | Is the USN in the DB?
+
+modifyUsnDB :: Environment -> (Set From -> Set From) -> STM ()
+modifyUsnDB env f = modifyTVar' db f
+      where db = L.view L.upstream env
+
+
+queryUsnDB :: Environment -> (Set From -> a) -> STM a
+queryUsnDB env query = fmap query (readTVar db)
+      where db = env ^. L.upstream
+
+
+
+usnDBSize :: Environment -> STM Int
+usnDBSize env = queryUsnDB env (Set.size)
+
+
+
 isUsn :: Environment -> From -> STM Bool
-isUsn env from = Map.member from <$> env ^. L.upstream . L.to readTVar
+isUsn env from = queryUsnDB env (Set.member from)
 
 
-
--- | Add a USN to the DB if there is space and it's not already in there.
-insertUsn :: Environment
-          -> From -- ^ New USN
-          -> Timestamp
-          -> STM Bool -- ^ True if an insertion was made, False if the node is
-                      --   already present or a connection is not allowed.
-insertUsn env from t = do
-      isRoom <- isRoomIn env L.upstream
-
-      -- Check for previous membership, just in case this method is called
-      -- twice concurrently for some odd reason TODO: can this happen?
-      -- This is an STM block after all
-      alreadyKnown <- isUsn env from
-
-      let p = isRoom && not alreadyKnown
-
-      -- Reserve slot. Cleanup happens when the worker shuts down because
-      -- of a non-OK signal.
-      when p (modifyTVar (env ^. L.upstream)
-                         (Map.insert from t))
-
-      return p
-
-
-
-
-
--- | Remove a USN from the DB.
-deleteUsn :: Environment -> From -> STM ()
-deleteUsn env from = modifyTVar (env ^. L.upstream)
-                                (Map.delete from)
-
-
-
--- | Update the "last heard of" timestmap in the database.
-updateUsnTimestamp :: Environment -> From -> Timestamp -> STM ()
-updateUsnTimestamp env from t = modifyTVar (env ^. L.upstream)
-                                           (Map.adjust (const t) from)
+isRoomForUsn :: Environment -> STM Bool
+isRoomForUsn env = fmap (maxSize > ) (usnDBSize env)
+      where maxSize = env ^. L.config . L.maxNeighbours . L.to fromIntegral
 
 
 

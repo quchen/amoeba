@@ -75,7 +75,7 @@ initEnvironment :: To                         -- ^ Own address
 initEnvironment node ldc output config = Environment
 
       <$> newTVarIO Map.empty -- Known nodes
-      <*> newTVarIO Map.empty -- Nodes known by
+      <*> newTVarIO Set.empty -- Nodes known by
       <*> spawn buffer        -- Channel read by all clients
       <*> pure output         -- Channel to the IO thread
       <*> newTVarIO Set.empty -- Previously handled queries

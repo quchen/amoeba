@@ -66,7 +66,7 @@ balanceEdges env = forever $ do
 
       (usnDeficit, dsnDeficit) <- liftIO . atomically $ do
 
-            usnCount <- dbSize env L.upstream
+            usnCount <- usnDBSize env
             dsnCount <- dbSize env L.downstream
 
             -- Gather all DSN node ports

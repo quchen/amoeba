@@ -57,7 +57,7 @@ data Environment = Environment {
         --   equivalently the set of upstream neighbours of the current node.
         --   Also carries a timestamp to keep track of when the last signal was
         --   received.
-      , _upstream   :: TVar (Map From Timestamp)
+      , _upstream   :: TVar (Set From)
 
         -- | Channel read by all clients. Sending a signal here will
         --   semi-randomly reach one of them.
