@@ -3,10 +3,8 @@
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_HADDOCK show-extensions #-}
 
-module Housekeeping (dsnHousekeeping, workerWatcher) where
+module Housekeeping (dsnHousekeeping) where
 
-import           Control.Applicative
-import           Control.Concurrent
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM hiding (check)
 import qualified Data.Foldable as F
@@ -125,35 +123,3 @@ sendKeepAlive env (Timestamp now) = do
       sendSignal node = atomically $ do
             P.send (node ^. L.stsc . L.pOutput)
                    KeepAlive
-
-
-
--- | Periodically check whether the worker is allowed to be; if not, kill its
---   thread.
---
---   Starts by giving the worker a grace period after it is created. If it is
---   not entered as an upstream neighbour in this time, it is killed.
---   If it is in the DB, periodically check whether this hasn't changed.
-workerWatcher :: Environment -> From -> ThreadId -> IO ()
-workerWatcher env from tid =
-      race (delay tickrate) waitForEntry >>= \case
-            Left  _ -> kill
-            Right _ -> watch
-
-      where
-
-      waitForEntry = atomically $ do
-            known <- fmap (Map.member from) (readTVar usnDB)
-            unless known retry
-      tickrate = env ^. L.config . L.longTickRate
-      timeout  = env ^. L.config . L.poolTimeout
-      usnDB    = env ^. L.upstream
-      isTimedOut (Timestamp now) =
-            let check (Just (Timestamp past)) = now - past > timeout
-                check _ = True -- Node not even present in DB
-            in  atomically (check . Map.lookup from <$> readTVar usnDB)
-      watch = delay tickrate >> makeTimestamp >>= isTimedOut >>= \case
-                    True  -> kill
-                    False -> watch
-      kill = do killThread tid
-                atomically (modifyTVar usnDB (Map.delete from))

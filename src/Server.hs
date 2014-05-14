@@ -7,6 +7,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 module Server (server) where
@@ -19,6 +20,7 @@ import           Control.Exception
 import           Control.Monad
 import qualified Data.Foldable as F
 import           System.Random
+import           Data.Typeable
 import           Text.Printf
 
 import           Pipes
@@ -32,7 +34,6 @@ import qualified Control.Lens as L
 import qualified Types.Lens as L
 
 import           Client
-import           Housekeeping
 import           Types
 import           Utilities
 
@@ -53,7 +54,7 @@ server env serverSocket = do
                   modifyTVar counter (+1)
                   return (From c)
 
-            pid <- PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
+            PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
                   (atomically . toIO env Debug . STDLOG)
                         (printf "New worker %s from %s"
                                 (show from)
@@ -65,8 +66,6 @@ server env serverSocket = do
                                 (show addr)
                                 (show terminationReason))
 
-            forkIO (workerWatcher env from pid)
-
 
 
 -- | Handles 'Signal's coming in from the network and sends back the server's
@@ -77,7 +76,7 @@ worker :: Environment
        -> IO ServerResponse
 worker env from socket =
 
-      (`finally` release) . runEffect $
+      catchUsnTimeout . (`finally` release) . runEffect $
             receiver socket >-> dispatch >-> terminator >-> sender socket
 
       where
@@ -92,13 +91,33 @@ worker env from socket =
       -- passes on the first failing element before returning it.
       terminator :: Pipe ServerResponse ServerResponse IO ServerResponse
       terminator = do
-            signal <- await
+            signal <- withTimeout await
             yield signal
             case signal of
                   OK  -> terminator
                   err -> return err
 
+      -- Run a pipes action with a timeout. A bit hacky since it's hard to
+      -- use 'timeout' directly on a pipe.
+      withTimeout :: MonadIO io => io a -> io a
+      withTimeout action = do
+            timeoutThrowThread <- liftIO . async $ do
+                  -- Convert Double of seconds to Integer of µs
+                  let us = Microseconds . round . (* 10e6)
+                  delay (env ^. L.config . L.poolTimeout . L.to us)
+                  throwIO UsnTimeout
+            result <- action
+            liftIO (cancel timeoutThrowThread)
+            return result
+
+      catchUsnTimeout = handle (\UsnTimeout -> return Timeout)
+
       release = atomically (deleteUsn env from)
+
+
+
+data UsnTimeout = UsnTimeout deriving (Show, Typeable)
+instance Exception UsnTimeout
 
 
 -- | Handles "Signal"s coming in from the LDC (local direct connection).
