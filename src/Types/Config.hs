@@ -57,15 +57,15 @@ data Environment = Environment {
         --   equivalently the set of upstream neighbours of the current node.
         --   Also carries a timestamp to keep track of when the last signal was
         --   received.
-      , _upstream   :: TVar (Set From)
+      , _upstream :: TVar (Set From)
 
         -- | Channel read by all clients. Sending a signal here will
         --   semi-randomly reach one of them.
-      , _st1c       :: PChan NormalSignal
+      , _st1c :: PChan NormalSignal
 
-        -- | Send action to the output thread (so that concurrent prints don't
-        --   get interleaved)
-      , _io         :: IOQueue
+        -- | Queue read only by the IO thread, who executes the actions one
+        --   by one. This prevents interleaved messages in concurrent settings.
+      , _io :: IOQueue
 
         -- | Timestamped signals that have already been handled by the current
         --   node, and can thus be ignored if they come in again.
@@ -75,13 +75,13 @@ data Environment = Environment {
                         -- Set.deleteMin works properly!
 
         -- | Own hostname/port
-      , _self       :: To
+      , _self :: To
 
         -- | Local direct connection (LDC) to a node. Used by NodePool.
-      , _ldc        :: Maybe (PChan NormalSignal)
+      , _ldc :: Maybe (PChan NormalSignal)
 
         -- | Program start configuration
-      , _config     :: NodeConfig
+      , _config :: NodeConfig
 
       }
 
@@ -202,7 +202,7 @@ data DrawingConfig = DrawingConfig {
                                     --   requests and drawing the currently
                                     --   known state of the network
 
-      , _drawFilename :: FilePath -- ^ Filename for the .dot file
+      , _drawFilename :: FilePath -- ^ Filename for the @.dot@ file
 
       , _drawTimeout :: !Microseconds -- ^ If no new information is received
                                       --   within this timeout, the node will

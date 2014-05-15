@@ -44,7 +44,7 @@ instance Exception BootstrapError
 
 
 
--- | Send <max neighbours> 'BootstrapRequest's to bootstrap servers, and repeat
+-- | Send '_maxNeighbours' 'BootstrapRequest's to bootstrap servers, and repeat
 --   the process until each neighbour has issued one successful one.
 bootstrap :: NodeConfig
           -> To -- Own address so other nodes can connect

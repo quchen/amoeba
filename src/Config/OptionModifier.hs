@@ -7,10 +7,11 @@ import Control.Lens
 
 
 -- | Represents a modification of a configuration type.
+--
+--   Considering its 'Monoid' instance, this is equivalent to `Dual (Endo a)`,
+--   i.e. functions added to the right of '<>' are used at higher precedence.
 newtype OptionModifier a = OptionModifier { applyOptionModifier :: a -> a }
 
--- mappend applies the modifiers from left to right, i.e. the rightmost
--- modifier has the final say. Equivalent to `Dual (Endo a)`.
 instance Monoid (OptionModifier a) where
       mempty = OptionModifier id
       mappend (OptionModifier x) (OptionModifier y) = OptionModifier (y . x)

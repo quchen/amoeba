@@ -3,7 +3,7 @@
 --   options.
 --
 --   This module is intended to be used qualified, e.g. as \"CmdArgParser\" to
---   make nice names such as \"CmdArgParser.nodeArgs\".
+--   make nice names such as \"CmdArgParser.'nodeModifier'\".
 
 module Config.CmdArgParser (
         nodeModifier

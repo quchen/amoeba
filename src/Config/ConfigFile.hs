@@ -1,4 +1,7 @@
 -- | Read configuration settings from a configuration file.
+--
+--   The potential locations of these files are hardcoded here,
+--   in the 'configFiles' value.
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}

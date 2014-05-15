@@ -1,11 +1,8 @@
 -- | Default configurations, used by the command line arguments parser. This
 --   module is intended to be used qualified, e.g. as \"Default\" to make nice
---   names such as \"Default.nodeConfig\".
+--   names such as \"Default.'nodeConfig'\".
 
-{-# LANGUAGE NumDecimals #-} -- Added in GHC 7.8: Specify integer literals using
-                             -- exponential notation, e.g.
-                             -- >>> 1e3 :: Int
-                             -- >   1000
+{-# LANGUAGE NumDecimals #-}
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 module Config.Default where

@@ -1,4 +1,4 @@
--- | Parses a string of the form @123.123.123.123:54321@ to a "To".
+-- | Parses a string of the form @123.123.123.123:54321@ to a 'To'.
 
 -- TODO: Allow arbitrary hostnames, in particular IPv6 and DNS
 
@@ -6,7 +6,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_HADDOCK show-extensions #-}
 
-module Config.AddressParser where
+module Config.AddressParser (parseAddress) where
 
 import Text.Parsec hiding (many, (<|>))
 import Text.Parsec.String
@@ -27,7 +27,7 @@ lexer :: P.GenTokenParser String u Identity
 lexer = P.makeTokenParser haskellDef
 
 
--- | General "Int" parser.
+-- | General 'Int' parser.
 intP :: Parser Int
 intP = fromIntegral <$> P.integer lexer
 

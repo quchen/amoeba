@@ -2,7 +2,7 @@
 --   to avoid nonsense program behaviour because of human error.
 --
 --   This module is intended to be used qualified, e.g. as \"Verify\" to
---   make nice names such as \"Verify.nodeArgs\".
+--   make nice names such as \"Verify.'nodeArgs'\".
 
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}

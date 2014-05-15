@@ -62,8 +62,8 @@ removeTimedOutDsn env (Timestamp now) = do
 
       isTimedOut client =
             let Timestamp clientTimestamp = client ^. L.clientTimestamp
-                timeout = env ^. L.config . L.poolTimeout
-            in  now - clientTimestamp > timeout
+                threshold = env ^. L.config . L.poolTimeout
+            in  now - clientTimestamp > threshold
 
 
 

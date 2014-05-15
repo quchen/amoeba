@@ -32,7 +32,7 @@ import           Utilities
 
 
 -- | Start a node pool of a certain size, and provide a channel to
---   communitcate with (random nodes in) it
+--   communitcate with (random nodes in) it.
 nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
          -> NodeConfig  -- ^ Configuration for a single node. Of particular
                     --   importance is the port (nodes will be spawned
@@ -43,7 +43,7 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
                     --   lack of fairness in STM.
          -> IOQueue -- ^ Channel to output thread
          -> Maybe TerminationTrigger
-                    -- ^ If the MVar contained in the 'TerminationTrigger' is
+                    -- ^ If the 'MVar' contained in the 'TerminationTrigger' is
                     --   filled, a node is killed (and a new one is started by
                     --   its janitor).
          -> IO ()
