@@ -36,8 +36,10 @@ intP = fromIntegral <$> P.integer lexer
 -- | Parse an Int between 0 and 2^16-1 = 65536 (inclusive).
 portP :: Parser Int
 portP = do p <- intP
-           if | p < 0      -> parserFail "Port < 0"
-              | p > 2^16-1 -> parserFail "Port > 65535"
+           let minPort = 0
+               maxPort = 2^(16::Int)-1
+           if | p < minPort -> parserFail "Port < 0"
+              | p > maxPort -> parserFail "Port > 65535"
               | otherwise  -> return p
 
 

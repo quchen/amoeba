@@ -183,7 +183,7 @@ drawingInterval = v <|> defaultValue where
       v = toSetter L.drawEvery <$> (nullOption . mconcat)
             [ reader  positive
             , long    "draw-every"
-            , metavar "[ms]"
+            , metavar "[µs]"
             , help    "Tickrate for drawing the current network to file\
                       \ and sending out neighbour information requests."
             , hidden
@@ -194,9 +194,9 @@ drawingInterval = v <|> defaultValue where
 drawingTimeout :: Parser (OptionModifier Ty.DrawingConfig)
 drawingTimeout = v <|> defaultValue where
       v = toSetter L.drawTimeout . fromIntegral <$> (nullOption . mconcat)
-            [ reader  positive
+            [ reader  (positive :: String -> ReadM Integer)
             , long    "draw-timeout"
-            , metavar "[s]"
+            , metavar "[µs]"
             , help    "Timeout for removing nodes that haven't sent data to the\
                       \ drawing server"
             , hidden
@@ -219,7 +219,7 @@ restartMinimumPeriod = v <|> defaultValue where
       v = toSetter L.restartMinimumPeriod <$> (nullOption . mconcat)
             [ reader  positive
             , long    "restart-minperiod"
-            , metavar "[ms]"
+            , metavar "[µs]"
             , help    "Restart a random pool node every n new nodes.\
                       \ (Note that a restart is one new node by itself\
                       \ already.)"
@@ -323,7 +323,7 @@ shortTickRate = v <|> defaultValue where
       v = toSetter L.shortTickRate <$> (nullOption . mconcat)
             [ reader  positive
             , long    "stick"
-            , metavar "[ms]"
+            , metavar "[µs]"
             , help    "Tick rate of short loops"
             , hidden
             ]
@@ -334,7 +334,7 @@ mediumTickRate = v <|> defaultValue where
       v = toSetter L.mediumTickRate <$> (nullOption . mconcat)
             [ reader  positive
             , long    "mtick"
-            , metavar "[ms]"
+            , metavar "[µs]"
             , help    "Tick rate of medium loops"
             , hidden
             ]
@@ -345,7 +345,7 @@ longTickRate = v <|> defaultValue where
       v = toSetter L.longTickRate <$> (nullOption . mconcat)
             [ reader  positive
             , long    "ltick"
-            , metavar "[ms]"
+            , metavar "[µs]"
             , help    "Tick rate of long loops"
             , hidden
             ]
@@ -356,7 +356,7 @@ poolTimeout = v <|> defaultValue where
       v = toSetter L.poolTimeout <$> (nullOption . mconcat)
             [ reader  positive
             , long    "timeout"
-            , metavar "[s]"
+            , metavar "[µs]"
             , help    "Timeout for removal of nodes from the USN/DSN pool"
             , hidden
             ]

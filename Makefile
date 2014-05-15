@@ -23,7 +23,7 @@ DOC-D=doc
 PARALLEL_GHC=-j$(NUM_CORES)
 OPTIMIZE=-O2
 PROF=-prof -auto-all -caf-all
-WARN=-Wall -fno-warn-type-defaults -fno-warn-unused-do-bind -fwarn-tabs -fwarn-incomplete-uni-patterns
+WARN=-Wall -fno-warn-unused-do-bind -fwarn-tabs -fwarn-incomplete-uni-patterns
 THREADED=-threaded
 DYNAMIC=-dynamic
 

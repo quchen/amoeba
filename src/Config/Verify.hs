@@ -46,8 +46,13 @@ node config = sequence_ [portRange, tickRates, poolTimeout, poolSize]
 
       where
             -- Is the server port in range?
-            portRange = unless (p >= 0 && p < 2^16) (throwIO PortRange)
+            portRange = unless (inRange minPort maxPort p) (throwIO PortRange)
                   where p = config ^. L.serverPort
+                        minPort = 0
+                        maxPort = 2^(16 :: Int) - 1
+                        inRange a b x =
+                              let (lo,hi) = (min a b, max a b)
+                              in  x >= lo && x <= hi
 
             -- Are the tickrates in the right order?
             -- (small <= medium <= long)

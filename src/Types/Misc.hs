@@ -3,7 +3,6 @@
 module Types.Misc where
 
 import Control.Concurrent
-import Control.Concurrent.STM.TBQueue
 
 
 

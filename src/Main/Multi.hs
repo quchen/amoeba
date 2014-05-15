@@ -3,6 +3,8 @@
 --   Launches a node pool without further services. In other words, it's like a
 --   bootstrap server without the bootstrapping part.
 
+{-# LANGUAGE NumDecimals #-}
+
 module Main.Multi (main) where
 
 import           Control.Concurrent
@@ -42,7 +44,7 @@ multiNodeMain = do
                                   output
                                   Nothing) -- No termination trigger
 
-      forever (delay (Microseconds (10^8)))
+      forever (delay (Microseconds 10e8))
 
       wait npThread -- Not really necessary since this is the end of 'main'
               -- and the thread would be killed automatically when the

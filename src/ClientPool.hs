@@ -99,7 +99,7 @@ balanceEdges env = forever $ do
       where config     = env    ^. L.config
             minN       = config ^. L.minNeighbours
             maxN       = config ^. L.maxNeighbours
-            maxNDigits = round (logBase 10 (fromIntegral maxN)) + 1 :: Int
+            maxNDigits = round (logBase 10 (fromIntegral maxN :: Double)) + 1 :: Int
             serverPort = config ^. L.serverPort
 
 

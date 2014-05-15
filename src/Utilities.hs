@@ -319,4 +319,4 @@ seqM m = m >>= (return $!)
 --
 --   This function is total, and returns 0 for inputs smaller than zero.
 iSqrt :: Integral int => int -> int
-iSqrt n = round (sqrt (max 0 (fromIntegral n)))
+iSqrt n = round (sqrt (max 0 (fromIntegral n :: Double)))
