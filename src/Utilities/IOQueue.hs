@@ -7,7 +7,7 @@ module Utilities.IOQueue (
       , outputThread
 ) where
 
-import           Control.Concurrent
+import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Monad
 import           System.IO
@@ -31,14 +31,14 @@ data OutMsg = STDOUT String
 --
 --   Note: This does not change the buffering behaviour of STDERR, which is
 --         unbuffered by default.
-outputThread :: Int           -- ^ Thread size
+outputThread :: Int           -- ^ Number of actions that can be queued
              -> IO ( IOQueue  -- Channel
-                   , ThreadId -- Thread ID of the spawned printer thread
-                   )
+                   , Async () -- Thread ID of the spawned printer thread
+                   ) -- ^ See source for doc
 outputThread size = do
       checkOutputBuffers
       q <- newTBQueueIO size
-      thread <- forkIO (dispatchSignals q)
+      thread <- async (dispatchSignals q)
       return (IOQueue q, thread)
 
       where dispatchSignals q = forever $ atomically (readTBQueue q) >>= \case
@@ -52,11 +52,6 @@ outputThread size = do
 checkOutputBuffers :: IO ()
 checkOutputBuffers = do
 
-      let err buffer = hPutStr stderr (buffer ++ " unbuffered! You may want to\
-                                       \ change it to buffered for performance\
-                                       \ reasons (e.g. using \
-                                       \ Utilities.prepareOutputBuffers).")
-
       hGetBuffering stdout >>= \case
             NoBuffering -> err "STDOUT"
             _else       -> return ()
@@ -64,3 +59,10 @@ checkOutputBuffers = do
       hGetBuffering stderr >>= \case
             NoBuffering -> err "STDERR"
             _else       -> return ()
+
+      where
+
+      err buffer = hPutStr stderr (buffer ++ " unbuffered! You may want to\
+                                  \ change it to buffered for performance\
+                                  \ reasons (e.g. using \
+                                  \ Utilities.prepareOutputBuffers).")
