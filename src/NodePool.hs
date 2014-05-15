@@ -52,10 +52,10 @@ nodePool n config ldc output m'terminate =
       F.for_ [1..n] $ \portOffset -> do
              -- Give nodes in the pool consecutive numbers, starting with
              -- <config port> + 1
-             forkIO (janitor (config & L.serverPort +~ portOffset)
-                             ldc
-                             output
-                             m'terminate)
+             _ <- forkIO (janitor (config & L.serverPort +~ portOffset)
+                                  ldc
+                                  output
+                                  m'terminate)
              delay (config ^. L.mediumTickRate)
 
 

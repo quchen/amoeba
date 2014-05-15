@@ -364,7 +364,7 @@ edgeBounceH env origin (EdgeData dir (HardBounce n)) = do
 
       atomically $ do
 
-            P.send (env ^. L.st1c . L.pOutput)
+            _ <- P.send (env ^. L.st1c . L.pOutput)
                    (buildSignal (HardBounce (min (n - 1) nMax)))
                                           -- Cap the number of hard
                                           -- bounces with the current

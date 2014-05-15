@@ -82,15 +82,15 @@ ipv4P = (,,,) <$> ipv4NumberP <* dot
 
 
 
--- | Parse a literal \".\"
-dot :: Parser Char
-dot = char '.'
+-- | Discard a literal \".\"
+dot :: Parser ()
+dot = void (char '.')
 
 
 
--- | Parse a literal \":\"
-colon :: Parser Char
-colon = char ':'
+-- | Discard a literal \":\"
+colon :: Parser ()
+colon = void (char ':')
 
 
 

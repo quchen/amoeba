@@ -50,7 +50,7 @@ bootstrap :: NodeConfig
           -> To -- Own address so other nodes can connect
           -> IO ()
 bootstrap config self = do T.putStrLn "Starting bootstrap"
-                           mapConcurrently (const dispatch) [1..maxN]
+                           _ <- mapConcurrently (const dispatch) [1..maxN]
                            T.putStrLn "Bootstrap finished"
 
       where

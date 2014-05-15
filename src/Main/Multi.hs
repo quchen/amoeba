@@ -44,7 +44,7 @@ multiNodeMain = do
                                   output
                                   Nothing) -- No termination trigger
 
-      forever (delay (Microseconds 10e8))
+      void (forever (delay (Microseconds 10e8)))
 
       wait npThread -- Not really necessary since this is the end of 'main'
               -- and the thread would be killed automatically when the

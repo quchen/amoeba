@@ -80,15 +80,15 @@ drawingServer :: DrawingConfig
 drawingServer config ioq ldc = do
       -- Server to graph worker
       stg <- spawn (config ^. L.nodeConfig . L.maxChanSize . L.to P.Bounded)
-      forkIO (graphWorker config ioq stg)
+      _tid <- forkIO (graphWorker config ioq stg)
 
       let port = config ^. L.nodeConfig . L.serverPort
       N.listen (N.Host "127.0.0.1") (show port) $ \(socket, _addr) -> do
             let selfTo = To (Node "127.0.0.1" port)
-            forkIO (networkAsker config
-                                 (config ^. L.poolConfig . L.poolSize)
-                                 selfTo
-                                 ldc)
+            _tid <- forkIO (networkAsker config
+                                         (config ^. L.poolConfig . L.poolSize)
+                                         selfTo
+                                         ldc)
             incomingLoop ioq stg socket
 
 
@@ -125,7 +125,7 @@ graphWorker :: DrawingConfig
             -> IO ()
 graphWorker config ioq stg = do
       t'graph <- newTVarIO (Graph Map.empty)
-      forkIO (graphDrawer config ioq t'graph)
+      _tid <- forkIO (graphDrawer config ioq t'graph)
       forever $ makeTimestamp >>= \t -> atomically $ do
             Just (node, neighbours) <- P.recv (_pInput stg) -- TODO: Error handling on Nothing
             modifyTVar t'graph (insertNode t node neighbours)

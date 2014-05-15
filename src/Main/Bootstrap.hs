@@ -175,7 +175,7 @@ bssLoop config ioq counter' serverSock ldc restart = go counter' where
                       dispatchSignal nodeConfig node ldc
                       send socket OK
 
-            PN.acceptFork serverSock $ \(clientSock, _clientAddr) ->
+            _tid <- PN.acceptFork serverSock $ \(clientSock, _clientAddr) ->
                   receive clientSock >>= \case
                         Just (BootstrapRequest benefactor) -> do
                               toIO' ioq
