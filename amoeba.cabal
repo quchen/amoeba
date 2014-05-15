@@ -90,8 +90,12 @@ library
                    ,   Types.Misc
                    ,   Types.Signal
                    ,   Utilities
+                   ,   Utilities.Concurrency
                    ,   Utilities.Databases
                    ,   Utilities.Debug
+                   ,   Utilities.IOQueue
+                   ,   Utilities.Networking
+                   ,   Utilities.Unsafe
 
 
 
