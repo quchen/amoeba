@@ -62,7 +62,7 @@ node config = sequence_ [portRange, tickRates, poolTimeout, poolSize]
             -- Timeouts must be longer than the long tickrate (and should be so
             -- by a factor of about 3, nyquist etc.)
             poolTimeout = when (ltr > tout) (throwIO PoolTimeout)
-                  where ltr  = fromIntegral (config ^. L.longTickRate) / 10^6
+                  where ltr  = config ^. L.longTickRate
                         tout = config ^. L.poolTimeout
 
             -- minimum <= maximum neighbours

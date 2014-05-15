@@ -41,7 +41,7 @@ import qualified Data.Map as Map
 import           Data.Map (Map)
 import qualified Data.Set as Set
 import           Data.Set (Set)
-import           Data.Time.Clock.POSIX (getPOSIXTime)
+import           Data.Time.Clock.POSIX (getPOSIXTime, POSIXTime)
 
 import           Control.Lens.Operators
 import qualified Control.Lens as L
@@ -59,12 +59,22 @@ import qualified Types.Lens as L
 
 
 
--- | Create a timestamp, which is a Double representation of the Unix time.
+-- | Create a timestamp, internally represented as a unix timestamp of
+--   microseconds.
 makeTimestamp :: (MonadIO m) => m Timestamp
-makeTimestamp = liftIO (fmap (Timestamp . realToFrac) getPOSIXTime)
---   Since Haskell's Time library is borderline retarded, this seems to be the
---   cleanest way to get something that is easily an instance of Binary and
---   comparable to seconds.
+makeTimestamp = liftIO (fmap toTimestamp getPOSIXTime) where
+
+      toTimestamp :: POSIXTime -> Timestamp
+      toTimestamp = Timestamp . Microseconds . round . (* 1e6)
+
+--   This seems to be the cleanest way to get something that is easily an
+--   instance of Binary and comparable to seconds. Better suggestions heartily
+--   welcome.
+
+--   This will overflow in a decent amount of time if Int64 is used as an
+--   intermediate representation, since the maximum 64-bit
+--   Int is 9,223,372,036,854,775,807 (9e18), and microsecond timestamps are in
+--   the order of magnitude of 14,000,000,000,000,000 (1e16).
 
 
 

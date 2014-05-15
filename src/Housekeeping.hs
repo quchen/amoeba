@@ -24,6 +24,8 @@ import           Utilities
 
 
 
+
+
 -- | Housekeeping of the downstream node database. Makes sure other nodes know
 --   this node is still running and has them as its neighbour, removes dead
 --   DSNs.
@@ -47,7 +49,7 @@ removeTimedOutDsn env (Timestamp now) = do
       let dsnDB = env ^. L.downstream
       dsns <- atomically (readTVar dsnDB)
 
-      let (keep, kill) = Map.partition notTimedOut dsns
+      let (kill, keep) = Map.partition isTimedOut dsns
       F.for_ kill (^! L.clientAsync . L.act cancel)
       atomically (writeTVar dsnDB keep)
 
@@ -58,9 +60,9 @@ removeTimedOutDsn env (Timestamp now) = do
 
       where
 
-      notTimedOut client =
-            let tStamp' = client ^. L.clientTimestamp . L.from L.timestamp
-            in  (now - tStamp') < (env ^. L.config . L.poolTimeout)
+      isTimedOut client =
+            let Timestamp clientTimestamp = client ^. L.clientTimestamp
+            in  now - clientTimestamp > env ^. L.config . L.poolTimeout
 
 
 
@@ -118,7 +120,7 @@ sendKeepAlive env (Timestamp now) = do
 
       lastHeard client = let Timestamp t = client ^. L.clientTimestamp
                          in  now - t
-      threshold = env ^. L.config . L.poolTimeout . L.to (/4) -- TODO: make the factor an option
+      threshold = env ^. L.config . L.poolTimeout . L.to (`quot` 4) -- TODO: make the factor an option
       needsRefreshing client = lastHeard client >= threshold
       sendSignal node = atomically $ do
             P.send (node ^. L.stsc . L.pOutput)

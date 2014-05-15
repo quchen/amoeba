@@ -128,9 +128,9 @@ data NodeConfig = NodeConfig {
 
       , _longTickRate   :: !Microseconds -- ^ Tick interval for "long" loops.
 
-      , _poolTimeout    :: !Double     -- ^ Number of seconds before a
-                                       --   non-responding node is considered
-                                       --   gone
+      , _poolTimeout    :: !Microseconds -- ^ Number of seconds before a
+                                         --   non-responding node is considered
+                                         --   gone
 
       , _verbosity      :: !Verbosity  -- ^ Determines quantity of messages
                                        --   printed
@@ -204,9 +204,10 @@ data DrawingConfig = DrawingConfig {
 
       , _drawFilename :: FilePath -- ^ Filename for the .dot file
 
-      , _drawTimeout :: !Double -- ^ If no new information is received within
-                                --   this timeout, the node will be considered
-                                --   dead and removed from the graph.
+      , _drawTimeout :: !Microseconds -- ^ If no new information is received
+                                      --   within this timeout, the node will
+                                      --   be considered dead and removed from
+                                      --   the graph.
 
       } deriving (Show)
 
@@ -279,7 +280,7 @@ instance PrettyShow NodeConfig where
                , pretty (_longTickRate cfg)
                ]
 
-            ,  [ "Pool timeout/s: "
+            ,  [ "Pool timeout: "
                , pretty (_poolTimeout cfg)
                ]
 

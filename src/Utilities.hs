@@ -23,6 +23,7 @@ module Utilities (
       , toIO'
       , prepareOutputBuffers
       , delay
+      , timeout
       , newTerminationTrigger
 
       -- * Networking
@@ -49,7 +50,7 @@ import           Control.Concurrent.STM
 import           Control.Monad
 import qualified Data.ByteString as BS
 import           System.IO
-import           System.Timeout
+import qualified System.Timeout
 
 import           Pipes
 import qualified Network.Simple.TCP as N
@@ -130,10 +131,10 @@ sender s = encodeMany >-> toSocketTimeout 3e6 s -- TODO: Don't hardcode timeout
 
 
 
--- | Same as "PN.toSocketTimeout", but returns "Timeout" instead of throwing an
+-- | Same as 'PN.toSocketTimeout', but returns 'Timeout' instead of throwing an
 --   "IOError".
 toSocketTimeout :: (MonadIO io)
-                => Int
+                => Microseconds -- ^ Timeout
                 -> N.Socket
                 -> Consumer BS.ByteString io ServerResponse
 toSocketTimeout t socket = loop where
@@ -144,7 +145,7 @@ toSocketTimeout t socket = loop where
 
 
 
--- | Continuously receive and decode data from a "N.Socket".
+-- | Continuously receive and decode data from a 'N.Socket'.
 --
 --   Returns if the connection is closed, times out, or decoding fails.
 receiver :: (MonadIO io, Binary b)
@@ -160,12 +161,12 @@ receiver s = decoded where
 
 
 
--- | Same as "PN.fromSocketTimeout", but issues "ServerResponse" instead of
+-- | Same as 'PN.fromSocketTimeout', but issues 'ServerResponse' instead of
 --   throwing an "IOError".
 fromSocketTimeout :: (MonadIO io)
-                  => Int
+                  => Microseconds -- ^ Timeout
                   -> N.Socket
-                  -> Int
+                  -> Int -- ^ Number of bytes to read at once
                   -> Producer' BS.ByteString io ServerResponse
 fromSocketTimeout t socket nBytes = loop where
       loop = liftIO (timeout t (N.recv socket nBytes)) >>= \case
@@ -303,9 +304,27 @@ checkOutputBuffers = do
 
 
 
--- | "MonadIO" version of "threadDelay".
+-- | Convert 'Integer' to 'Int', truncating if the input it too large.
+maxBounded :: Integer -> Int
+maxBounded x | x > fromIntegral maxInt = maxInt
+             | otherwise               = fromIntegral x
+             where maxInt = maxBound
+
+
+
+-- | "MonadIO" version of "threadDelay". Waits for a maximum of
+--   @'maxBound' :: Int@ seconds, and truncates larger input.
 delay :: MonadIO io => Microseconds -> io ()
-delay = liftIO . threadDelay . L.view (L.from L.microseconds)
+delay (Microseconds us) = liftIO (threadDelay t)
+      where t = maxBounded us
+
+
+
+-- | 'System.IO.timeout' working with 'Microseconds'. Timeouts larger than
+--   @'maxBound' :: Int@ will be truncated.
+timeout :: Microseconds -> IO a -> IO (Maybe a)
+timeout (Microseconds us) action = System.Timeout.timeout t action
+      where t = maxBounded us
 
 
 

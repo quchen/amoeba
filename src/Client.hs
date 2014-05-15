@@ -17,7 +17,6 @@ import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
 import           Data.Monoid
-import           System.Timeout
 import           Text.Printf
 
 import           Pipes
@@ -25,7 +24,7 @@ import           Pipes.Network.TCP (Socket)
 import qualified Pipes.Concurrent as P
 
 import           Control.Lens.Operators
-import qualified Control.Lens as L
+-- import qualified Control.Lens as L
 import qualified Types.Lens as L
 
 import           Types
@@ -109,7 +108,7 @@ newClient env to socket = ifM allowed
       -- Remove the DSN from the DB, and notify it of the event before
       -- terminating the connection
       cleanup = do atomically (deleteDsn env to)
-                   timeout (env ^. L.config . L.mediumTickRate . L.from L.microseconds)
+                   timeout (env ^. L.config . L.mediumTickRate)
                            (send socket (Normal ShuttingDown))
 
 
@@ -140,7 +139,7 @@ clientLoop env socket to stsc = do
                                      (atomically (whenM (not <$> isDsn env to)
                                                         retry))
 
-            timeoutT = env ^. L.config . L.poolTimeout . L.to (round . (* 10^6))
+            timeoutT = env ^. L.config . L.poolTimeout
 
 
 

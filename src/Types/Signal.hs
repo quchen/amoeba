@@ -250,7 +250,7 @@ instance Binary Node
 
 
 
-newtype Timestamp = Timestamp Double
+newtype Timestamp = Timestamp Microseconds
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary Timestamp
@@ -276,7 +276,8 @@ data PChan a = PChan { _pOutput :: P.Output a
                      }
 
 
-newtype Microseconds = Microseconds Int
-      deriving (Eq, Ord, Num, Read, Integral, Real, Enum, Configured)
+newtype Microseconds = Microseconds Integer
+      deriving (Eq, Ord, Show, Num, Read, Integral
+               , Real, Enum, Configured, Generic)
 
 instance Binary Microseconds

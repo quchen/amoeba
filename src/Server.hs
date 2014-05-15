@@ -103,8 +103,7 @@ worker env from socket =
       withTimeout action = do
             timeoutThrowThread <- liftIO . async $ do
                   -- Convert Double of seconds to Integer of µs
-                  let us = Microseconds . round . (* 10e6)
-                  delay (env ^. L.config . L.poolTimeout . L.to us)
+                  delay (env ^. L.config . L.poolTimeout)
                   throwIO UsnTimeout
             result <- action
             liftIO (cancel timeoutThrowThread)
@@ -114,10 +113,10 @@ worker env from socket =
 
       release = atomically (deleteUsn env from)
 
-
-
+-- | Locally needed by 'worker'.
 data UsnTimeout = UsnTimeout deriving (Show, Typeable)
 instance Exception UsnTimeout
+
 
 
 -- | Handles "Signal"s coming in from the LDC (local direct connection).
@@ -217,7 +216,7 @@ keepAliveH :: Environment
            -> From
            -> IO ServerResponse
 keepAliveH env from = do
-      (atomically . toIO env Chatty . STDLOG )
+      (atomically . toIO env Chatty . STDLOG)
             (printf "KeepAlive signal received from %s"
                     (show from))
                   -- This is *very* chatty, probably too much so.

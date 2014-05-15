@@ -162,7 +162,7 @@ cleanup :: DrawingConfig
 cleanup config t'graph = do
       t <- makeTimestamp
       let timedOut (Timestamp now) (Timestamp lastInput, _) =
-                now - lastInput > _drawTimeout config
+                now - lastInput > config ^. L.drawTimeout
       atomically (modifyTVar t'graph (filterEdges (not . timedOut t)))
 
 
