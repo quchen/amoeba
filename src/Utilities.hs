@@ -72,6 +72,7 @@ import qualified Types.Lens as L
 import           Types
 import           Utilities.Debug
 import           Utilities.Databases
+import           Utilities.IOQueue
 
 
 
@@ -250,57 +251,12 @@ newTerminationTrigger = fmap TerminationTrigger newEmptyMVar
 
 
 
--- | Set up the decicated IO thread. Forks said thread, and returns a "TBQueue"
---   to it, along with the "ThreadId" of the thread (which may be useful for
---   killing it).
---
---   Sends messages tagged as STDOUT to stdout
---                            STDERR to stderr
---                            STDLOG to stderr
---
---   Note: This does not change the buffering behaviour of STDERR, which is
---         unbuffered by default.
-outputThread :: Int           -- ^ Thread size
-             -> IO ( IOQueue  -- Channel
-                   , ThreadId -- Thread ID of the spawned printer thread
-                   )
-outputThread size = do
-      checkOutputBuffers
-      q <- newTBQueueIO size
-      thread <- forkIO (dispatchSignals q)
-      return (IOQueue q, thread)
-
-      where dispatchSignals q = forever $ atomically (readTBQueue q) >>= \case
-                  STDOUT s -> hPutStrLn stdout s
-                  STDERR s -> hPutStrLn stderr s
-                  STDLOG s -> hPutStrLn stderr s
-
-
-
 -- | Prepares the output buffers for logging text by making them line-buffered.
 --
 -- (STDERR in particular is unbuffered by default.)
 prepareOutputBuffers :: IO ()
 prepareOutputBuffers = do hSetBuffering stdout LineBuffering
                           hSetBuffering stderr LineBuffering
-
-
-
-checkOutputBuffers :: IO ()
-checkOutputBuffers = do
-
-      let err buffer = hPutStr stderr (buffer ++ " unbuffered! You may want to\
-                                       \ change it to buffered for performance\
-                                       \ reasons (e.g. using \
-                                       \ Utilities.prepareOutputBuffers).")
-
-      hGetBuffering stdout >>= \case
-            NoBuffering -> err "STDOUT"
-            _else       -> return ()
-
-      hGetBuffering stderr >>= \case
-            NoBuffering -> err "STDERR"
-            _else       -> return ()
 
 
 

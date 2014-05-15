@@ -24,6 +24,7 @@ import qualified Types.Lens as L
 import           Housekeeping
 import           Types
 import           Utilities
+import           Utilities.IOQueue
 
 
 -- | Set up the client pool by forking the housekeeping thread, and then start

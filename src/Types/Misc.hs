@@ -38,14 +38,6 @@ data NodeRelationship = IsSelf
 
 
 
--- | Wrapper around the queue to the output thread
-newtype IOQueue = IOQueue { _ioQueue :: TBQueue OutMsg }
-
--- | Used to send a message to the terminal via 'IOQueue's.
-data OutMsg = STDOUT String
-            | STDERR String
-            | STDLOG String
-
 -- | Used by the client pool. When the MVar contained is filled, an arbitrary
 --   node will be terminated.
 newtype TerminationTrigger = TerminationTrigger (MVar ())

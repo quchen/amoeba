@@ -22,6 +22,7 @@ import           ClientPool
 import           Server
 import           Types
 import           Utilities
+import           Utilities.IOQueue
 
 
 -- | Node main function. Bootstraps, launches server loop, client pool,

@@ -32,6 +32,7 @@ import           Data.Word
 
 import           Types.Signal
 import           Types.Misc
+import           Utilities.IOQueue (IOQueue)
 
 
 

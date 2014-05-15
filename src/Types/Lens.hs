@@ -18,6 +18,7 @@ module Types.Lens where
 
 import Control.Lens
 import Types
+import Utilities.IOQueue
 
 
 
