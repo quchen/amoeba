@@ -236,7 +236,7 @@ instance PrettyShow Integer where
 
             where chunksOf n xs = case T.splitAt n xs of
                         (as, bs) | T.null bs -> [as]
-                                 | otherwise -> [as] ++ chunksOf n bs
+                                 | otherwise -> as : chunksOf n bs
 
 instance PrettyShow Double
 instance PrettyShow Verbosity

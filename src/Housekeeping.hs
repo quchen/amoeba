@@ -62,7 +62,8 @@ removeTimedOutDsn env (Timestamp now) = do
 
       isTimedOut client =
             let Timestamp clientTimestamp = client ^. L.clientTimestamp
-            in  now - clientTimestamp > env ^. L.config . L.poolTimeout
+                timeout = env ^. L.config . L.poolTimeout
+            in  now - clientTimestamp > timeout
 
 
 
@@ -98,8 +99,8 @@ prune env = atomically $ do
           excess = usnSize - minN
           prunes = iSqrt
       F.for_ [1..prunes excess]
-             (\_i -> (P.send (env ^. L.st1c . L.pOutput)
-                             Prune))
+             (\_i -> P.send (env ^. L.st1c . L.pOutput)
+                            Prune)
 
 
 
@@ -122,6 +123,5 @@ sendKeepAlive env (Timestamp now) = do
                          in  now - t
       threshold = env ^. L.config . L.poolTimeout . L.to (`quot` 4) -- TODO: make the factor an option
       needsRefreshing client = lastHeard client >= threshold
-      sendSignal node = atomically $ do
-            P.send (node ^. L.stsc . L.pOutput)
-                   KeepAlive
+      sendSignal node = atomically (P.send (node ^. L.stsc . L.pOutput)
+                                           KeepAlive)

@@ -101,7 +101,7 @@ deleteUsn env from = modifyUsnDB env (Set.delete from)
 -- | Modify the entire USN DB with a function. Used as a general interface for
 --   smaller functions.
 modifyUsnDB :: Environment -> (Set From -> Set From) -> STM ()
-modifyUsnDB env f = modifyTVar' db f
+modifyUsnDB env = modifyTVar' db
       where db = L.view L.upstream env
 
 
@@ -114,7 +114,7 @@ queryUsnDB env query = fmap query (readTVar db)
 
 -- | Retrieve the current USN DB size.
 usnDBSize :: Environment -> STM Int
-usnDBSize env = queryUsnDB env (Set.size)
+usnDBSize env = queryUsnDB env Set.size
 
 
 
@@ -127,7 +127,7 @@ isUsn env from = queryUsnDB env (Set.member from)
 -- | Check whether another USN can be added to the DB without exceeding the
 --   neighbour limit.
 isRoomForUsn :: Environment -> STM Bool
-isRoomForUsn env = fmap (maxSize > ) (usnDBSize env)
+isRoomForUsn env = fmap (maxSize >) (usnDBSize env)
       where maxSize = env ^. L.config . L.maxNeighbours . L.to fromIntegral
 
 
@@ -158,7 +158,7 @@ queryDsnDB env query = fmap query (readTVar db)
 
 -- | Determine the current size of a database
 dsnDBSize :: Environment -> STM Int
-dsnDBSize env = queryDsnDB env (Map.size)
+dsnDBSize env = queryDsnDB env Map.size
 
 
 
