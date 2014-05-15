@@ -44,35 +44,6 @@ portP = do p <- intP
 
 
 
--- TODO: This function is entirely untested.
-ipv6P :: Parser ([Int], [Int])
-ipv6P = do
-      ip@(l,r) <- (asum . map try)
-            [ ([],) <$> connectedPart -- Full address without omitted zeros
-            , ([],) <$>                 (doubleColon *> connectedPart) -- ::1
-            , (,[]) <$> connectedPart <* doubleColon                   -- 1::
-            , (,)   <$> connectedPart <* doubleColon <*> connectedPart -- 1::2
-            ]
-      if length (l ++ r) > 8
-            then parserFail "IPv6 too long"
-            else return ip
-
-      where
-            connectedPart :: Parser [Int]
-            connectedPart = (:) <$> ipv6NumberP <*> many (colon *> ipv6NumberP)
-
-            doubleColon :: Parser ()
-            doubleColon = (void . try) (colon *> colon)
-
-
-
-ipv6NumberP :: Parser Int
-ipv6NumberP = do p <- intP
-                 if | p < 0      -> parserFail "IPv6 part < 0"
-                    | p > 0xffff -> parserFail "IPv6 part > 0xffff"
-                    | otherwise  -> return p
-
-
 -- | Parser for an IPv4 address.
 ipv4P :: Parser (Int, Int, Int, Int)
 ipv4P = (,,,) <$> ipv4NumberP <* dot
