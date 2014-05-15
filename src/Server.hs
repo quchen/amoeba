@@ -1,7 +1,7 @@
 -- | The server is the main part of a node. It accepts incoming requests, and
 --   distributes the responses to the clients.
 --
---   The suffix \"H\" stands for 'Handler', which is a function that reacts
+--   The suffix \"H\" stands for "Handler", which is a function that reacts
 --   directly to an incoming signal's instructions.
 
 {-# LANGUAGE LambdaCase #-}
@@ -113,7 +113,7 @@ worker env from socket =
 
       release = atomically (deleteUsn env from)
 
--- | Locally needed by 'worker'.
+-- | Locally needed by @worker@.
 data UsnTimeout = UsnTimeout deriving (Show, Typeable)
 instance Exception UsnTimeout
 

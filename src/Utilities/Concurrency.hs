@@ -56,8 +56,8 @@ toIO' ioq msg = atomically (writeTBQueue (ioq ^. L.ioQueue) msg)
 
 
 
--- | Identical to "P.spawn'", but uses the typesfe "PChan" type instead of
---   "(,,)".
+-- | Identical to 'P.spawn'', but uses the typesfe 'PChan' type instead of
+--   @(,,)@.
 spawn :: P.Buffer a -> IO (PChan a)
 spawn buffer = toPChan <$> P.spawn' buffer
       where toPChan (output, input, seal) = PChan output input seal
@@ -71,7 +71,7 @@ newTerminationTrigger = fmap TerminationTrigger newEmptyMVar
 
 -- | Prepares the output buffers for logging text by making them line-buffered.
 --
--- (STDERR in particular is unbuffered by default.)
+--   (STDERR in particular is unbuffered by default.)
 prepareOutputBuffers :: IO ()
 prepareOutputBuffers = do hSetBuffering stdout LineBuffering
                           hSetBuffering stderr LineBuffering
@@ -86,7 +86,7 @@ maxBounded x | x > fromIntegral maxInt = maxInt
 
 
 
--- | "MonadIO" version of "threadDelay". Waits for a maximum of
+-- | 'MonadIO' version of 'threadDelay'. Wait for a maximum of
 --   @'maxBound' :: Int@ seconds, and truncates larger input.
 delay :: MonadIO io => Microseconds -> io ()
 delay (Microseconds us) = liftIO (threadDelay t)

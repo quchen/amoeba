@@ -1,7 +1,11 @@
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_HADDOCK show-extensions #-}
 
-module Utilities.IOQueue where
+module Utilities.IOQueue (
+        IOQueue(..)
+      , OutMsg(..)
+      , outputThread
+) where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM
@@ -21,9 +25,9 @@ data OutMsg = STDOUT String
 --   to it, along with the "ThreadId" of the thread (which may be useful for
 --   killing it).
 --
---   Sends messages tagged as STDOUT to stdout
---                            STDERR to stderr
---                            STDLOG to stderr
+--   Sends messages tagged as 'STDOUT' to stdout,
+--                            'STDERR' to stderr, and
+--                            'STDLOG' to stderr.
 --
 --   Note: This does not change the buffering behaviour of STDERR, which is
 --         unbuffered by default.

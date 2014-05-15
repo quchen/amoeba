@@ -16,7 +16,6 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Identity
 import Text.Printf
-import Data.Foldable (asum)
 
 import Types
 

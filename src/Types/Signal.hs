@@ -15,8 +15,7 @@ import Data.Set (Set)
 import Data.Binary
 import Pipes.Concurrent as P
 
--- For Microseconds instance
-import Data.Configurator ()
+import Data.Configurator () -- For Microseconds instance
 import Data.Configurator.Types (Configured)
 
 
@@ -42,7 +41,7 @@ data NormalSignal =
       -- | Query to add an edge to the network. The 'To' parameter is the
       --   issuing node's server address.
       --
-      --   The name has been chosen because when an EdgeRequest is complete,
+      --   The name has been chosen because when an edge request is complete,
       --   the graph of nodes will have a new edge.
         EdgeRequest To EdgeData
 
@@ -170,12 +169,6 @@ instance Binary SpecialSignal
 data EdgeData = EdgeData {
         _direction   :: Direction
       , _bounceParam :: BounceParameter
-            -- ^ Left n: Hard bounces left, i.e. how many times more the
-            --           request will definitely be relayed
-            --   Right (n, p): n: Counter how many times the signal was bounced
-            --                    in the soft phase; this can be used to swallow
-            --                    requests that bounce indefinitely.
-            --                 p: Acceptance probability
       }
       deriving (Eq, Ord, Generic)
 
@@ -204,7 +197,7 @@ instance Binary EdgeData
 --
 --   > HardBounce 10    -- Will bounce 10 times before entering soft bounce mode
 --   > SoftBounce 3 0.8 -- Will be accepted with probability 0.8. It was bounced
---                         3 times already without being accepted.
+--   >                  -- 3 times already without being accepted.
 data BounceParameter = HardBounce Word
                      | SoftBounce Word Double
                      deriving (Eq, Ord, Generic)
@@ -259,17 +252,22 @@ instance Binary Timestamp
 
 -- | Unifies everything the list of known nodes has to store
 data Client = Client {
-        _clientTimestamp :: Timestamp          -- ^ Last downstream contact
-      , _clientAsync     :: Async ()           -- ^ Client thread
+        _clientTimestamp :: Timestamp -- ^ Last downstream contact, used to
+                                      --   issue 'KeepAlive' signals so the DSN
+                                      --   doesn't consider its upstream
+                                      --   neighbour dead.
+      , _clientAsync     :: Async () -- ^ Client thread
       , _stsc            :: PChan NormalSignal -- ^ Direct channel, e.g. to send
-                                               --   "KeepAlive" signals
+                                               --   'KeepAlive' signals to a
+                                               --   specific client. (stsc =
+                                               --   server to single client)
       }
 
 
 
 -- | Pipe-based concurrent chan. Unifies read/write ends and sealing operation.
 --   Used as a better wrapper around them than the default @(,,)@ returned from
---   'P.spawn\''.
+--   'P.spawn''.
 data PChan a = PChan { _pOutput :: P.Output a
                      , _pInput  :: P.Input  a
                      , _pSeal   :: STM ()

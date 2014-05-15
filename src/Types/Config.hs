@@ -78,7 +78,7 @@ data Environment = Environment {
         -- | Own hostname/port
       , _self :: To
 
-        -- | Local direct connection (LDC) to a node. Used by NodePool.
+        -- | Local direct connection (LDC) to a node. Used by "NodePool".
       , _ldc :: Maybe (PChan NormalSignal)
 
         -- | Program start configuration
