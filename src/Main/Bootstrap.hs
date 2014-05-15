@@ -73,14 +73,14 @@ newtype Restarter = Restarter { runRestarter :: IO () }
 
 
 
--- | Restarts nodes in the own pool as more external nodes connect. This ensures
+-- | Restart nodes in the own pool as more external nodes connect. This ensures
 --   that the bootstrap server pool won't predominantly connect to itself, but
 --   open up to the general network over time.
 --
 --   Waits a certain amount of time, and then kills a random pool node when a
 --   new node is bootstrapped.
 --
---   Does not block.
+--   Blocks as much as 'tryPutMVar' does.
 restarter :: Microseconds         -- ^ Minimum amount of time between
                                   --   consecutive restarts
           -> TerminationTrigger   -- ^ Will make the pool kill a pool node when
@@ -89,28 +89,28 @@ restarter :: Microseconds         -- ^ Minimum amount of time between
           -> IO (Async (), Restarter) -- ^ Thread async, and restart trigger
                                       --   that when executed restarts a
                                       --   (semi-random) node.
-restarter minPeriod (TerminationTrigger outgoingTrigger) = do
+restarter minPeriod trigger = do
 
-      -- When the incoming trigger is filled, the outgoing trigger will be
-      -- attempted to be filled. This is only possible if the minimum amount
-      -- of time since the last restart has passed. If the trigger is already
-      -- filled, triggering it again does nothing.
-      incomingTrigger <- newEmptyMVar
-      restarterThread <- async (forever (do delay minPeriod
-                                            _ <- takeMVar incomingTrigger
-                                            yell 44 "Restart triggered!"
-                                            tryPutMVar outgoingTrigger ()))
+      -- When the below MVar is filled, the TerminationTrigger will be
+      -- triggered. However, allow this to happen only after a minimum period
+      -- of time has passed since the last restart.
+      restartMVar <- newEmptyMVar
+      thread <- async . forever $ do
+            delay minPeriod
+            _ <- takeMVar restartMVar
+            yell 44 "Restart triggered!"
+            runTrigger trigger
 
-      let restart = Restarter (void (tryPutMVar incomingTrigger ()))
+      let restartAction = Restarter (void (tryPutMVar restartMVar ()))
 
-      return (restarterThread, restart)
+      return (thread, restartAction)
 
 
 
 bootstrapServer :: BootstrapConfig
                 -> IOQueue
                 -> Chan NormalSignal
-                -> Restarter -- ^ Restarting action, see "restarter"
+                -> Restarter -- ^ Restarting action, see 'restarter'
                 -> IO ()
 bootstrapServer config ioq ldc restart =
       PN.listen (PN.Host "127.0.0.1")
@@ -130,7 +130,7 @@ bssLoop
       -> Int               -- ^ Number of total clients served
       -> Socket            -- ^ Socket to listen on for bootstrap requests
       -> Chan NormalSignal -- ^ LDC to the node pool
-      -> Restarter         -- ^ Restarting action, see "restarter"
+      -> Restarter         -- ^ Restarting action, see 'restarter'
       -> IO r
 bssLoop config ioq counter' serverSock ldc restart = go counter' where
 

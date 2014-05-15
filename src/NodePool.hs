@@ -13,7 +13,6 @@ module NodePool (nodePool) where
 import           Control.Concurrent (forkIO)
 import           Control.Concurrent.Async
 import           Control.Concurrent.Chan
-import           Control.Concurrent.MVar
 import           Control.Exception
 import           Control.Monad
 import qualified Data.Foldable as F
@@ -101,5 +100,5 @@ pipeTo input output = runEffect (fromChan input >-> P.toOutput toChan) where
 
 -- | Terminate a thread when the MVar is filled, and block until this happens.
 terminationWatch :: TerminationTrigger -> Async () -> IO ()
-terminationWatch (TerminationTrigger mVar) thread = do takeMVar mVar
-                                                       cancel thread
+terminationWatch trigger thread = do waitForTrigger trigger
+                                     cancel thread

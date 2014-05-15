@@ -8,7 +8,12 @@ module Utilities.Concurrency (
       , prepareOutputBuffers
       , delay
       , timeout
+
+      -- * Termination triggers
       , newTerminationTrigger
+      , waitForTrigger
+      , runTrigger
+      , TerminationTrigger
 
       -- * Pipe-based communication channels
       , spawn
@@ -64,8 +69,28 @@ spawn buffer = toPChan <$> P.spawn' buffer
 
 
 
+-- | Used by the client pool. When the 'MVar' contained is filled, an arbitrary
+--   node will be terminated.
+newtype TerminationTrigger = TerminationTrigger (MVar ())
+
+
+
+-- | Create a new termination trigger.
 newTerminationTrigger :: IO TerminationTrigger
 newTerminationTrigger = fmap TerminationTrigger newEmptyMVar
+
+
+
+-- | Blocks until the trigger is triggered.
+waitForTrigger :: TerminationTrigger -> IO ()
+waitForTrigger (TerminationTrigger mVar) = takeMVar mVar
+
+
+
+-- | Tries to trigger the termination trigger. Does nothing if it's currently
+--   already triggered.
+runTrigger :: TerminationTrigger -> IO ()
+runTrigger (TerminationTrigger mVar) = void (tryPutMVar mVar ())
 
 
 

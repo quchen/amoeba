@@ -2,8 +2,6 @@
 
 module Types.Misc where
 
-import Control.Concurrent
-
 
 
 -- | How many messages should be printed?
@@ -25,7 +23,7 @@ newtype From = From { getFrom :: Integer }
       deriving (Eq, Ord)
 
 instance Show From where
-      show (From i) = '#' : show i
+      show (From i) = "From #" ++ show i
 
 
 
@@ -34,9 +32,3 @@ data NodeRelationship = IsSelf
                       | IsDownstreamNeighbour
                       | IsUnrelated
                       deriving (Eq, Ord, Show)
-
-
-
--- | Used by the client pool. When the MVar contained is filled, an arbitrary
---   node will be terminated.
-newtype TerminationTrigger = TerminationTrigger (MVar ())
