@@ -34,7 +34,6 @@ import qualified Types.Lens as L
 import           NodePool
 import           Types
 import           Utilities
-import           Utilities.IOQueue
 import qualified Config.Getter as Config
 
 
