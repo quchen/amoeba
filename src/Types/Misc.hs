@@ -19,7 +19,7 @@ data Verbosity = Chatty  -- ^ Everything, e.g. passing bounces, keep-alive
 
 
 -- | Unique identifier for upstream nodes.
-newtype From = From { getFrom :: Integer }
+newtype From = From { getFrom :: !Integer }
       deriving (Eq, Ord)
 
 instance Show From where

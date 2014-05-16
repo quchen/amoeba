@@ -49,7 +49,7 @@ server env serverSocket = do
 
             from <- atomically $ do
                   c <- readTVar counter
-                  modifyTVar counter (+1)
+                  modifyTVar' counter (+1)
                   return (From c)
 
             PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
