@@ -3,17 +3,25 @@
 --   Launches a node pool without further services. In other words, it's like a
 --   bootstrap server without the bootstrapping part.
 
+{-# LANGUAGE NumDecimals #-}
+
 module Main.Multi (main) where
 
-import           Control.Monad
 import           Control.Concurrent
+import           Control.Concurrent.Async
+import           Control.Exception
+import           Control.Monad
+import qualified Data.Traversable as T
 import           Text.Printf
 
-import Utilities
+import           NodePool
+import           Utilities
 import qualified Config.Getter as Config
-import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
-import Types
-import NodePool
+
+import           Control.Lens.Operators
+import qualified Types.Lens as L
+
+import           Types (Microseconds(..))
 
 
 
@@ -26,17 +34,18 @@ multiNodeMain = do
       config <- Config.multi
 
       prepareOutputBuffers
-      (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
+      (output, oThread) <- outputThread (config ^. L.nodeConfig . L.maxChanSize)
+      (`finally` cancel oThread) $ do
 
-      printf "Starting pool with %d nodes"
-             (_poolSize (_poolConfig config))
+      let poolSize = config ^. L.poolConfig . L.poolSize
+      printf "Starting pool with %d nodes" poolSize
 
       ldc <- newChan
-      terminate <- newEmptyMVar -- TODO: Never actually used. Refactor node pool?
-      nodePool (_poolSize (_poolConfig config))
-               (_nodeConfig config)
-               ldc
-               output
-               terminate
+      npThread <- async (nodePool poolSize
+                                  (config ^. L.nodeConfig)
+                                  ldc
+                                  output
+                                  Nothing) -- No termination trigger
 
-      forever (threadDelay (10^7))
+      void (forever (delay (Microseconds 10e8)))
+            `finally` (wait npThread >>= T.traverse cancel)

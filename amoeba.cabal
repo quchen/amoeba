@@ -1,8 +1,8 @@
 name:                amoeba
-version:             0.0.0.201402221
-synopsis:            Decentralized network clsrc/ient and utilities to set it up and
+version:             0.0.0.201405061
+synopsis:            Distributed network client and utilities to set it up and
                      investigate its behaviour
-description:         Amœba is a program for setting up a decentralized network.
+description:         Amœba is a program for setting up a distributed network.
                      The name comes from the hope that eventually, the network
                      will be so robust that you can poke any of its parts
                      without endangering its overall integrity.
@@ -14,9 +14,9 @@ author:              David Luposchainsky <dluposchainsky(λ)gmail.com>
 maintainer:          David Luposchainsky <dluposchainsky(λ)gmail.com>
 category:            Cloud, Distributed Computing, Network
 build-type:          Simple
-cabal-version:       >=1.10
+cabal-version:       >=1.20
 Stability:           alpha
-Tested-With:         GHC == 7.6.3
+Tested-With:         GHC == 7.8.2
 extra-source-files:  BRANCHING.md
                      DIFFICULTIES.md
                      LICENCE.md
@@ -38,15 +38,18 @@ library
       hs-source-dirs:   src
       ghc-options:      -O2 -W
       default-language: Haskell2010
+      other-extensions: TemplateHaskell
+            -- TH requires explicit mentioning in some cases, see
+            -- https://ghc.haskell.org/trac/ghc/wiki/GHC-7.8-FAQ
 
       build-depends:   async                 == 2.0.*
-                   ,   base                  == 4.6.*
+                   ,   base                  == 4.7.*
                    ,   binary                == 0.7.*
                    ,   bytestring            == 0.10.*
                    ,   configurator          == 0.2.*
                    ,   containers            == 0.5.*
                    ,   exceptions            == 0.3.*
-                   ,   lens-family-core      == 1.0.*
+                   ,   lens                  == 4.1.*
                    ,   mtl                   == 2.1.*
                    ,   network               == 2.4.*
                    ,   network-simple        == 0.3.*
@@ -83,11 +86,16 @@ library
                    ,   Server
                    ,   Types
                    ,   Types.Config
+                   ,   Types.Lens
                    ,   Types.Misc
                    ,   Types.Signal
                    ,   Utilities
+                   ,   Utilities.Concurrency
                    ,   Utilities.Databases
                    ,   Utilities.Debug
+                   ,   Utilities.IOQueue
+                   ,   Utilities.Networking
+                   ,   Utilities.Unsafe
 
 
 

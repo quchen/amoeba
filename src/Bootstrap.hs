@@ -3,93 +3,116 @@
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Bootstrap (bootstrap) where
 
 
 
-import Control.Exception
-import Control.Concurrent.Async
-import GHC.IO.Exception (ioe_description)
-import Data.Typeable
-import Text.Printf
-import System.Random
-import Control.Monad
-import qualified Data.Set as Set
+import           Control.Concurrent.Async
+import           Control.Exception
+import           Control.Monad
+import           Data.Monoid
+import qualified Data.Set     as Set
+import           Data.Typeable
+import           GHC.IO.Exception (ioe_description)
+import           System.Random
 
-import Types
-import Utilities
+import qualified Data.Text    as T
+import qualified Data.Text.IO as T
+
+import           Control.Lens.Operators
+import qualified Control.Lens as L
+import qualified Types.Lens   as L
+
+import           Types
+import           Utilities
 
 
 
 data BootstrapError = BadResponse
                     | NoResponse
-      deriving (Show, Typeable)
+      deriving (Typeable)
+
+instance Show BootstrapError where
+      show BadResponse = "Bad response"
+      show NoResponse  = "No response"
 
 instance Exception BootstrapError
 
 
 
--- | Send out a 'BootstrapRequest' to a bootstrap server and handle the
---   response.
+-- | Send '_maxNeighbours' 'BootstrapRequest's to bootstrap servers, and repeat
+--   the process until each neighbour has issued one successful one.
 bootstrap :: NodeConfig
           -> To -- Own address so other nodes can connect
           -> IO ()
-bootstrap config self = do putStrLn "Starting bootstrap"
-                           mapConcurrently (const dispatch)
-                                           [1 .. _maxNeighbours config]
-                           putStrLn "Bootstrap finished"
+bootstrap config self = do T.putStrLn "Starting bootstrap"
+                           _ <- mapConcurrently (const dispatch) [1..maxN]
+                           T.putStrLn "Bootstrap finished"
 
       where
+
+      maxN = config ^. L.maxNeighbours
+
+      retryBootstrap = delay (config ^. L.longTickRate) >> dispatch
 
       dispatch = do
 
             bsServer <- getBootstrapServer config
 
-            let handleMulti action = catches action [ bootstrapErrorH
-                                                    , ioErrorH
-                                                    ]
-
-                retryBootstrap = delay (_longTickRate config) >> dispatch
+            let catchMulti action = catches action [ bootstrapErrorH
+                                                   , ioExceptionH
+                                                   ]
 
                 bootstrapErrorH = Handler $ \case
                       BadResponse -> do
-                            printf "Bad response from bootstrap server %s.\
-                                         \ This is a bug if the server is\
-                                         \ actually a bootstrap server.\n"
-                                   (showBss bsServer)
+                            T.putStrLn (T.unwords
+                                  [ "Bad response from bootstrap server"
+                                  , showBss <> "."
+                                  , "This is a bug This is a bug if the server"
+                                  , "is actually a bootstrap server."
+                                  ])
                             retryBootstrap
                       NoResponse -> do
-                            printf "No response from bootstrap server %s\
-                                         \ (altough it is online).\
-                                         \ This is a bug if the server is\
-                                         \ actually a bootstrap server.\n"
-                                   (showBss bsServer)
+                            T.putStrLn (T.unwords
+                                  [ "No response from bootstrap server"
+                                  , showBss
+                                  , "(although it is online)."
+                                  , "This is a bug if the server actually is"
+                                  , "a bootstrap server."
+                                  ])
                             retryBootstrap
 
-                ioErrorH = Handler $ \e -> do
-                      let _ = e :: IOException
-                      printf "Could not connect to bootstrap server %s\
-                                   \ (%s). Is it online?\n"
-                             (showBss bsServer)
-                             (ioe_description e)
+                ioExceptionH = Handler $ \(e :: IOException) -> do
+                      T.putStrLn (T.unwords
+                            [ "Could not connect to bootstrap server"
+                            , showBss
+                            , "(" <> T.pack (ioe_description e) <> ")."
+                            , "Is it online?"
+                            ])
                       retryBootstrap
 
-                showBss :: To -> String
-                showBss (To (Node h p)) = printf "%s:%d" h p
+                showBss :: T.Text
+                showBss = let To (Node h p) = bsServer
+                          in  T.pack h <> ":" <> showT p
 
-            handleMulti . connectToNode bsServer $ \(s, _) -> do
-                  request s (BootstrapRequest self) >>= \case
+                tout = config ^. L.poolTimeout
+
+            catchMulti (connectToNode bsServer (\(s, _) ->
+                  request tout s (BootstrapRequest self) >>= \case
                         Just OK -> return ()
                         Just _  -> throwIO BadResponse
-                        Nothing -> throwIO NoResponse
+                        Nothing -> throwIO NoResponse))
 
 
 
 -- | Find the address of a suitable bootstrap server.
 -- TODO: Make bootstrap server selection a little more complex :-)
 getBootstrapServer :: NodeConfig -> IO To
-getBootstrapServer config = randomSetElement (_bootstrapServers config)
+getBootstrapServer = L.view (L.bootstrapServers . L.to randomSetElement)
 -- Fallback entry: return (To (Node "127.0.0.1" 20000))
 
 
@@ -97,13 +120,5 @@ getBootstrapServer config = randomSetElement (_bootstrapServers config)
 randomSetElement :: Set.Set a -> IO a
 randomSetElement set = do
       when (Set.null set) (error "No bootstrap servers known")  -- TODO: This is beyond awful
-      let size = Set.size set
-      i <- randomRIO (0, size-1)
-      return (elemAt i set)
-
-
-
--- | Equivalent to "Set.elemAt", which is only present in later versions of
---   the containers package.
-elemAt :: Int -> Set.Set a -> a
-elemAt i set = Set.toList set !! i
+      fmap (\i -> Set.elemAt i set)
+           (randomRIO (0, Set.size set - 1))

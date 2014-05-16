@@ -2,9 +2,11 @@
 --   to avoid nonsense program behaviour because of human error.
 --
 --   This module is intended to be used qualified, e.g. as \"Verify\" to
---   make nice names such as \"Verify.nodeArgs\".
+--   make nice names such as \"Verify.'nodeArgs'\".
 
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Config.Verify (
         node
@@ -14,13 +16,15 @@ module Config.Verify (
 ) where
 
 
-import Data.List
 import Control.Exception
 import Data.Typeable
 import Control.Monad
 
+import qualified Control.Lens as L
+import Control.Lens.Operators
+import qualified Types.Lens as L
+
 import Types.Config
-import Config.OptionModifier
 
 
 
@@ -36,45 +40,63 @@ instance Exception ConfigError
 
 
 
+-- | Verify integrity of a 'NodeConfig'.
 node :: NodeConfig -> IO ()
 node config = sequence_ [portRange, tickRates, poolTimeout, poolSize]
 
-
       where
             -- Is the server port in range?
-            portRange = unless (p >= 0 && p < 2^16) (throwIO PortRange)
-                  where p = _serverPort config
+            portRange = unless (inRange minPort maxPort p) (throwIO PortRange)
+                  where p = config ^. L.serverPort
+                        minPort = 0
+                        maxPort = 2^(16 :: Int) - 1
+                        inRange a b x =
+                              let (lo,hi) = (min a b, max a b)
+                              in  x >= lo && x <= hi
 
             -- Are the tickrates in the right order?
             -- (small <= medium <= long)
-            tickRates = when (rates /= sort rates) (throwIO TickRates)
-                  where rates = [ _shortTickRate  config
-                                , _mediumTickRate config
-                                , _longTickRate   config
-                                ]
+            tickRates = unless (isSorted rates) (throwIO TickRates)
+                  where rates = map (config ^.) [ L.shortTickRate
+                                                , L.mediumTickRate
+                                                , L.longTickRate
+                                                ]
+                        isSorted xs = and (zipWith (<=) xs (tail xs))
+                        -- TODO: Test ^
 
             -- Timeouts must be longer than the long tickrate (and should be so
             -- by a factor of about 3, nyquist etc.)
             poolTimeout = when (ltr > tout) (throwIO PoolTimeout)
-                  where ltr  = fromIntegral (_longTickRate config) / 10^6
-                        tout = _poolTimeout config
+                  where ltr  = config ^. L.longTickRate
+                        tout = config ^. L.poolTimeout
 
             -- minimum <= maximum neighbours
             poolSize = when (minN > maxN) (throwIO PoolSize)
-                  where minN = _minNeighbours config
-                        maxN = _maxNeighbours config
+                  where minN = config ^. L.minNeighbours
+                        maxN = config ^. L.maxNeighbours
 
 
 
+-- | Verify integrity of a configuration that contains a 'NodeConfig'.
+containedNode :: L.HasNodeConfig nodeConfig NodeConfig
+              => nodeConfig
+              -> IO ()
+containedNode = node . L.view L.nodeConfig
+
+
+
+-- | Verify integrity of a 'MultiConfig'.
 multi :: MultiConfig -> IO ()
-multi config = node (_nodeConfig config)
+multi = containedNode
 
 
 
+-- | Verify integrity of a 'BootstrapConfig'.
 bootstrap :: BootstrapConfig -> IO ()
-bootstrap config = node (_nodeConfig config)
+bootstrap = containedNode
 
 
 
+-- | Verify integrity of a 'DrawingConfig'.
 drawing :: DrawingConfig -> IO ()
-drawing config = node (_nodeConfig config)
+drawing = containedNode

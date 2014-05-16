@@ -1,6 +1,9 @@
 -- | Default configurations, used by the command line arguments parser. This
 --   module is intended to be used qualified, e.g. as \"Default\" to make nice
---   names such as \"Default.nodeConfig\".
+--   names such as \"Default.'nodeConfig'\".
+
+{-# LANGUAGE NumDecimals #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Config.Default where
 
@@ -18,12 +21,12 @@ nodeConfig = NodeConfig {
       , _maxNeighbours     = 10
       , _minNeighbours     = 5
       , _maxChanSize       = 100
-      , _bounces           = 2
+      , _hardBounces       = 2
       , _acceptP           = 0.5
       , _maxSoftBounces    = 10
-      , _shortTickRate     = 1 * 10^5
-      , _mediumTickRate    = 3 * 10^5
-      , _longTickRate      = 10^6
+      , _shortTickRate     = 1e5
+      , _mediumTickRate    = 3e5
+      , _longTickRate      = 1e6
       , _poolTimeout       = 5
       , _verbosity         = Default
       , _bootstrapServers  = Set.empty
@@ -32,6 +35,7 @@ nodeConfig = NodeConfig {
 
 
 
+-- | Default node pool configuration
 poolConfig :: PoolConfig
 poolConfig = PoolConfig {
 
@@ -40,21 +44,24 @@ poolConfig = PoolConfig {
       }
 
 
+
+-- | Default multi-node client configuration
 multiConfig :: MultiConfig
 multiConfig = MultiConfig {
-        _multiNodeConfig = nodeConfig
-      , _multiPoolConfig = poolConfig
+        _multiconfigNodeConfig = nodeConfig
+      , _multiconfigPoolConfig = poolConfig
       }
 
 
 
+-- | Default drawing server configuration
 drawingConfig :: DrawingConfig
 drawingConfig = DrawingConfig {
-        _drawEvery         = 10^7
+        _drawEvery         = 1e7
       , _drawFilename      = "network_graph.dot"
       , _drawTimeout       = 33 -- 33 seconds = 3 drawing attempts before timeout
-      , _drawingNodeConfig = nodeConfig
-      , _drawingPoolConfig = poolConfig
+      , _drawingconfigNodeConfig = nodeConfig
+      , _drawingconfigPoolConfig = poolConfig
       }
 
 
@@ -63,7 +70,7 @@ drawingConfig = DrawingConfig {
 bootstrapConfig :: BootstrapConfig
 bootstrapConfig = BootstrapConfig {
         _restartEvery         = 5
-      , _restartMinimumPeriod = 10^6
-      , _bootstrapNodeConfig  = nodeConfig
-      , _bootstrapPoolConfig  = poolConfig
+      , _restartMinimumPeriod = 1e6
+      , _bootstrapconfigNodeConfig  = nodeConfig
+      , _bootstrapconfigPoolConfig  = poolConfig
       }

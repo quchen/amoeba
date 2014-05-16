@@ -1,6 +1,8 @@
 -- | Signal types, i.e. the protocol used.
 
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Types.Signal where
 
@@ -13,14 +15,16 @@ import Data.Set (Set)
 import Data.Binary
 import Pipes.Concurrent as P
 
+import Data.Configurator () -- For Microseconds instance
+import Data.Configurator.Types (Configured)
 
 
-
+-- | Top-level signal type. This is what is typically exchanged between nodes.
 data Signal =
 
         Normal NormalSignal
 
-      -- | Signals that are handled in a special way. For example 'IAddedYou'
+      -- | Signals that are handled in a special way. For example 'Handshake'
       --   signals have to be processed because when they are received the other
       --   node is by definition not an upstream neighbour yet.
       | Special SpecialSignal
@@ -30,14 +34,14 @@ data Signal =
 instance Binary Signal
 
 
--- | Stores a signal to be executed by a node, e.g. print a message, search for
---   new neighbours etc.
+-- | Signal to be executed by a node, e.g. print a message, search for new
+--   neighbours etc.
 data NormalSignal =
 
       -- | Query to add an edge to the network. The 'To' parameter is the
       --   issuing node's server address.
       --
-      --   The name has been chosen because when an EdgeRequest is complete,
+      --   The name has been chosen because when an edge request is complete,
       --   the graph of nodes will have a new edge.
         EdgeRequest To EdgeData
 
@@ -60,10 +64,10 @@ data NormalSignal =
       deriving (Eq, Ord, Generic)
 
 instance Show NormalSignal where
-      show KeepAlive = "KeepAlive"
-      show Prune = "Prune"
-      show ShuttingDown = "ShuttingDown"
-      show (Flood t s) = printf "Flood %s %s" (show t) (show s)
+      show KeepAlive           = "KeepAlive"
+      show Prune               = "Prune"
+      show ShuttingDown        = "ShuttingDown"
+      show (Flood t s)         = printf "Flood %s %s" (show t) (show s)
       show (EdgeRequest to ed) = printf "EdgeRequest { %s, %s }" (show to) (show ed)
 
 instance Binary NormalSignal
@@ -165,23 +169,21 @@ instance Binary SpecialSignal
 data EdgeData = EdgeData {
         _direction   :: Direction
       , _bounceParam :: BounceParameter
-            -- ^ Left n: Hard bounces left, i.e. how many times more the
-            --           request will definitely be relayed
-            --   Right (n, p): n: Counter how many times the signal was bounced
-            --                    in the soft phase; this can be used to swallow
-            --                    requests that bounce indefinitely.
-            --                 p: Acceptance probability
       }
       deriving (Eq, Ord, Generic)
 
 instance Show EdgeData where
-      show ed = printf "%s edge (%s)"(show $ _direction ed) bp
-            where bp :: String
-                  bp = case _bounceParam ed of
-                        HardBounce n -> printf "%d bounce%s left"
-                                        n
-                                        (if n /= 1 then "s" else "")
-                        SoftBounce n p -> printf "bounces: %d, accept: %.2f" n p
+      show EdgeData { _bounceParam = bp, _direction = dir } =
+            printf "%s edge (%s)" (show dir) showBp
+
+            where
+
+            showBp :: String
+            showBp = case bp of
+                  HardBounce n -> printf "%d bounce%s left"
+                                  n
+                                  (if n /= 1 then "s" else "")
+                  SoftBounce n p -> printf "bounces: %d, accept: %.2f" n p
 
 instance Binary EdgeData
 
@@ -195,7 +197,7 @@ instance Binary EdgeData
 --
 --   > HardBounce 10    -- Will bounce 10 times before entering soft bounce mode
 --   > SoftBounce 3 0.8 -- Will be accepted with probability 0.8. It was bounced
---                         3 times already without being accepted.
+--   >                  -- 3 times already without being accepted.
 data BounceParameter = HardBounce Word
                      | SoftBounce Word Double
                      deriving (Eq, Ord, Generic)
@@ -241,7 +243,7 @@ instance Binary Node
 
 
 
-newtype Timestamp = Timestamp Double
+newtype Timestamp = Timestamp Microseconds
       deriving (Eq, Ord, Show, Generic)
 
 instance Binary Timestamp
@@ -250,18 +252,30 @@ instance Binary Timestamp
 
 -- | Unifies everything the list of known nodes has to store
 data Client = Client {
-        _clientTimestamp :: Timestamp          -- ^ Last downstream contact
-      , _clientAsync     :: Async ()           -- ^ Client thread
+        _clientTimestamp :: Timestamp -- ^ Last downstream contact, used to
+                                      --   issue 'KeepAlive' signals so the DSN
+                                      --   doesn't consider its upstream
+                                      --   neighbour dead.
+      , _clientAsync     :: Async () -- ^ Client thread
       , _stsc            :: PChan NormalSignal -- ^ Direct channel, e.g. to send
-                                               --   "KeepAlive" signals
+                                               --   'KeepAlive' signals to a
+                                               --   specific client. (stsc =
+                                               --   server to single client)
       }
 
 
 
 -- | Pipe-based concurrent chan. Unifies read/write ends and sealing operation.
 --   Used as a better wrapper around them than the default @(,,)@ returned from
---   'P.spawn\''.
+--   'P.spawn''.
 data PChan a = PChan { _pOutput :: P.Output a
                      , _pInput  :: P.Input  a
                      , _pSeal   :: STM ()
                      }
+
+
+newtype Microseconds = Microseconds Integer
+      deriving (Eq, Ord, Show, Num, Read, Integral
+               , Real, Enum, Configured, Generic)
+
+instance Binary Microseconds

@@ -4,24 +4,25 @@ module Node (startNode) where
 
 
 
-import           Text.Printf
 import           Control.Applicative
-import           Control.Concurrent.STM
 import           Control.Concurrent.Async
+import           Control.Concurrent.STM
+import           Control.Exception (assert)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import           Control.Exception (assert)
+import           Text.Printf
 
 import qualified Pipes.Concurrent as P
 
-import qualified Pipes.Network.TCP as PN
 import qualified Network.Socket as NS
+import qualified Pipes.Network.TCP as PN
 
-import Bootstrap
-import ClientPool
-import Server
-import Types
-import Utilities
+import           Bootstrap
+import           ClientPool
+import           Server
+import           Types
+import           Utilities
+
 
 
 -- | Node main function. Bootstraps, launches server loop, client pool,
@@ -75,7 +76,7 @@ initEnvironment :: To                         -- ^ Own address
 initEnvironment node ldc output config = Environment
 
       <$> newTVarIO Map.empty -- Known nodes
-      <*> newTVarIO Map.empty -- Nodes known by
+      <*> newTVarIO Set.empty -- Nodes known by
       <*> spawn buffer        -- Channel read by all clients
       <*> pure output         -- Channel to the IO thread
       <*> newTVarIO Set.empty -- Previously handled queries

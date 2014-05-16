@@ -8,27 +8,37 @@
 --       STG = Server to graph.
 
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Main.Drawing (main) where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM
+import           Control.Concurrent.Async
+import           Control.Exception
 import           Control.Monad
 import           Data.List (intercalate)
+import qualified Data.Foldable as F
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Data.Set (Set)
+import qualified Data.Traversable as T
 import           Text.Printf
-import qualified Data.Foldable as F
 
-import qualified Pipes.Concurrent as P
 import qualified Network.Simple.TCP as N
+import qualified Pipes.Concurrent as P
 
-import Utilities
-import Types
-import NodePool
+import           Control.Lens.Operators
+import qualified Control.Lens as L
+import qualified Types.Lens as L
+
+import           NodePool
+import           Types
+import           Utilities
 import qualified Config.Getter as Config
-import Config.OptionModifier (HasNodeConfig(..), HasPoolConfig(..))
+
+
 
 
 
@@ -44,19 +54,20 @@ drawingServerMain = do
       config <- Config.drawing
 
       prepareOutputBuffers
-      (output, _) <- outputThread (_maxChanSize (_nodeConfig config))
+      (output, oThread) <- outputThread (config ^. L.nodeConfig . L.maxChanSize)
+      (`finally` cancel oThread) $ do
 
+      let poolSize = config ^. L.poolConfig . L.poolSize
       ldc <- newChan
-      terminate <- newEmptyMVar -- TODO: Never actually used. Refactor node pool?
-      nodePool (_poolSize (_poolConfig config))
-               (_nodeConfig config)
-               ldc
-               output
-               terminate
+      npThread <- async (nodePool poolSize
+                                  (config ^. L.nodeConfig)
+                                  ldc
+                                  output
+                                  Nothing) -- No termination trigger
 
-      printf "Starting drawing server with %d nodes\n"
-             (_poolSize (_poolConfig config))
+      printf "Starting drawing server with %d nodes\n"poolSize
       drawingServer config output ldc
+            `finally` (wait npThread >>= T.traverse cancel)
 
 
 
@@ -67,42 +78,47 @@ drawingServer :: DrawingConfig
               -> IO ()
 drawingServer config ioq ldc = do
       -- Server to graph worker
-      stg <- spawn (P.Bounded (_maxChanSize (_nodeConfig config)))
-      forkIO (graphWorker config ioq stg)
+      stg <- spawn (config ^. L.nodeConfig . L.maxChanSize . L.to P.Bounded)
+      wThread <- async (graphWorker config ioq stg)
+      (`finally` cancel wThread) $ do
 
-      let port = _serverPort (_nodeConfig config)
+      let port = config ^. L.nodeConfig . L.serverPort
       N.listen (N.Host "127.0.0.1") (show port) $ \(socket, _addr) -> do
             let selfTo = To (Node "127.0.0.1" port)
-            forkIO (networkAsker config
-                                 (_poolSize (_poolConfig config))
-                                 selfTo
-                                 ldc)
-            incomingLoop ioq stg socket
+                tout = config ^. L.nodeConfig . L.poolTimeout
+            aThread <- async (networkAsker config
+                                           (config ^. L.poolConfig . L.poolSize)
+                                           selfTo
+                                           ldc)
+            incomingLoop tout ioq stg socket
+                  `finally` cancel aThread
 
 
 
 -- | Drawing server loop; does the actual work after being set up by
 --   "drawingServer".
-incomingLoop :: IOQueue
+incomingLoop :: Microseconds -- ^ Connection timeout
+             -> IOQueue
              -> PChan (To, Set To) -- ^ (Node, DSNs of that node)
              -> N.Socket -- ^ Socket for incoming connections (used by nodes to
                          --   contact the drawing server upon request)
              -> IO ()
-incomingLoop _ioq stg serverSock = forever $
+incomingLoop tout _ioq stg serverSock = forever $
       N.acceptFork serverSock $ \(clientSock, _clientAddr) ->
-            receive clientSock >>= \case
+            receive tout clientSock >>= \case
 
                   -- Good answer
                   Just (NeighbourList node neighbours) -> do
                         -- toIO' ioq (putStrLn ("Received node data from" ++ show node))
-                        (atomically . void) (P.send (_pOutput stg)
+                        (atomically . void) (P.send (stg ^. L.pOutput)
                                                     (node, neighbours))
 
                   -- Invalid answer
-                  Just _ -> return () -- toIO' ioq (putStrLn "Invalid signal received")
+                  Just _invalid -> return () -- toIO' ioq (putStrLn "Invalid signal received")
 
                   -- No answer
-                  _ -> return () -- toIO' ioq (putStrLn "No signal received")
+                  Nothing -> return () -- toIO' ioq (putStrLn "No signal received")
+
 
 
 
@@ -113,7 +129,8 @@ graphWorker :: DrawingConfig
             -> IO ()
 graphWorker config ioq stg = do
       t'graph <- newTVarIO (Graph Map.empty)
-      forkIO (graphDrawer config ioq t'graph)
+      dThread <- async (graphDrawer config ioq t'graph)
+      (`finally` cancel dThread) $ do
       forever $ makeTimestamp >>= \t -> atomically $ do
             Just (node, neighbours) <- P.recv (_pInput stg) -- TODO: Error handling on Nothing
             modifyTVar t'graph (insertNode t node neighbours)
@@ -126,13 +143,13 @@ graphDrawer :: DrawingConfig
             -> TVar (Graph To)
             -> IO ()
 graphDrawer config ioq t'graph = (initialDelay >>) . forever $ do
-      delay (_drawEvery config)
+      delay (config ^. L.drawEvery)
       cleanup config t'graph
       graph <- atomically (readTVar t'graph)
       let graphSize (Graph g) = Map.size g
           s = graphSize graph
       (toIO' ioq . STDLOG) (printf "Drawing graph. Current network size: %d nodes\n" s)
-      writeFile (_drawFilename config)
+      writeFile (config ^. L.drawFilename)
                 (graphToDot graph)
 
       where
@@ -140,7 +157,7 @@ graphDrawer config ioq t'graph = (initialDelay >>) . forever $ do
             -- its job first. If this isn't done, the drawer might draw the old
             -- state, while pretty much at the same time the new network
             -- answers come in.
-            initialDelay = delay (_longTickRate (_nodeConfig config))
+            initialDelay = delay (config ^. L.nodeConfig . L.longTickRate)
 
 
 
@@ -151,7 +168,7 @@ cleanup :: DrawingConfig
 cleanup config t'graph = do
       t <- makeTimestamp
       let timedOut (Timestamp now) (Timestamp lastInput, _) =
-                now - lastInput > _drawTimeout config
+                now - lastInput > config ^. L.drawTimeout
       atomically (modifyTVar t'graph (filterEdges (not . timedOut t)))
 
 
@@ -166,8 +183,8 @@ networkAsker config poolSize toSelf ldc = forever $ do
       delay (_drawEvery config)
       t <- makeTimestamp
       let signal = Flood t (SendNeighbourList toSelf)
-      forM_ [1..poolSize]
-            (const (writeChan ldc signal))
+      F.for_ [1..poolSize]
+             (\_i -> writeChan ldc signal)
 
 
 
@@ -190,11 +207,8 @@ graphToDot (Graph g) =
       where stripTimestamp (a, (_t, b)) = (a,b)
 
 
-
 vertexToDot :: (To, Set To) -> String
 vertexToDot (start, ends) = F.foldMap (edgeToDot start) ends
-
-
 
 edgeToDot :: To -> To -> String
 edgeToDot from to =
@@ -213,9 +227,8 @@ dotBoilerplate str =
       "digraph G {\n\
       \      node [shape = box, color = gray, fontname = \"Courier\"];\n\
       \      edge [fontname = \"Courier\", len = 6];\n\
-      \      " ++ str ++ "\n\
+      \      " ++ str ++ "\
       \}\n"
-
 
 
 

@@ -1,75 +1,90 @@
 -- | Watch the databases and clean up dead or orphaned entries.
 
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
-module Housekeeping (dsnHousekeeping, workerWatcher) where
+module Housekeeping (dsnHousekeeping) where
 
-import Control.Concurrent
-import Control.Concurrent.STM hiding (check)
-import Control.Concurrent.Async
+import           Control.Concurrent.Async
+import           Control.Concurrent.STM hiding (check)
 import qualified Data.Foldable as F
-import qualified Data.Traversable as T
+import           Control.Monad
 import qualified Data.Map as Map
-import Data.Maybe
-import Control.Applicative
-import Control.Monad
-import Data.Monoid
+import           Data.Maybe
+import qualified Data.Traversable as T
 
 import qualified Pipes.Concurrent as P
 
-import Types
-import Utilities
+import           Control.Lens.Operators
+import qualified Control.Lens as L
+import qualified Types.Lens as L
+
+import           Types
+import           Utilities
 
 
 
--- | Makes sure other nodes know this node is still running and has them as its
---   neighbour, removes timed out upstream nodes and dead clients/downstream
---   nodes.
+
+
+-- | Housekeeping of the downstream node database. Makes sure other nodes know
+--   this node is still running and has them as its neighbour, removes dead
+--   DSNs.
 dsnHousekeeping :: Environment -> IO ()
 dsnHousekeeping env = forever $ do
       t <- makeTimestamp
-      cleanupDsn    env t
-      prune         env
-      sendKeepAlive env t
-      delay (_mediumTickRate (_config env))
+      removeTimedOutDsn   env t
+      removeTerminatedDsn env
+      prune               env
+      sendKeepAlive       env t
+      delay (env ^. L.config . L.mediumTickRate)
 
 
 
-cleanupDsn :: Environment -> Timestamp -> IO ()
-cleanupDsn env (Timestamp now) = do
+-- | Remove timed out nodes from the DSN DB.
+removeTimedOutDsn :: Environment
+                   -> Timestamp
+                   -> IO ()
+removeTimedOutDsn env (Timestamp now) = do
 
-      -- Nodes to kill because of timeout
-      (notTimedOut, killTimeout) <- atomically $ do
-            let notTimedOut (Client { _clientTimestamp = Timestamp t }) =
-                      now - t < (_poolTimeout._config) env
-                ds = _downstream env
-            (keep, kill) <- Map.partition notTimedOut <$> readTVar ds
+      let dsnDB = env ^. L.downstream
+      dsns <- atomically (readTVar dsnDB)
 
-            when (not (Map.null kill)) $ toIO env Debug $
-                       STDLOG "Downstream neighbour housekilled. This is\
-                               \ likely a bug, as clients should clean\
-                               \ themselves up after termination."
-                               -- TODO: Verify this claim
+      let (kill, keep) = Map.partition isTimedOut dsns
+      F.for_ kill (^! L.clientAsync . L.act cancel)
+      atomically (writeTVar dsnDB keep)
 
-            return (keep, kill)
+      unless (Map.null kill) $ atomically $ toIO env Debug $
+            STDLOG "Downstream neighbour housekilled. This is likely a bug, as\
+                   \ clients should clean themselves up after termination."
+                    -- TODO: Verify this claim
 
-      -- Cancel timed out client threads
-      void (T.traverse (cancel . _clientAsync) killTimeout)
+      where
+
+      isTimedOut client =
+            let Timestamp clientTimestamp = client ^. L.clientTimestamp
+                threshold = env ^. L.config . L.poolTimeout
+            in  now - clientTimestamp > threshold
 
 
-      -- Gather otherwise terminated nodes
-      polledClients <- T.traverse (poll . _clientAsync) notTimedOut
-      let deadNodes = Map.filter isJust polledClients
-      when (not (Map.null deadNodes)) $
+
+-- | Remove nodes whose threads have terminated from the DSB DB.
+removeTerminatedDsn :: Environment -> IO ()
+removeTerminatedDsn env = do
+
+      let dsnDB = env ^. L.downstream
+      dsns <- atomically (readTVar dsnDB)
+
+      polledClients <- T.traverse (poll . L.view L.clientAsync) dsns
+      let deadNodes = Map.filter isDead polledClients
+          isDead = isJust
+
+      atomically $ modifyTVar dsnDB (`Map.difference` deadNodes)
+
+      unless (Map.null deadNodes) $
             atomically . toIO env Debug $
                  STDLOG "Client housekilled. This may be a bug\
                         \ (client should cleanup itself)."
                         -- TODO: Verify this claim
-
-      -- Remove timed out or otherwise terminated nodes
-      let toKill = Map.keysSet killTimeout <> Map.keysSet deadNodes
-      atomically $ modifyTVar (_downstream env) $ \knownDsn ->
-            F.foldr Map.delete knownDsn toKill
 
 
 
@@ -79,12 +94,13 @@ cleanupDsn env (Timestamp now) = do
 --   (The amount of DSNs contacted is equivalent to the excess of connections.)
 prune :: Environment -> IO ()
 prune env = atomically $ do
-      usnSize <- dbSize env _upstream
-      let minN = _minNeighbours (_config env)
+      usnSize <- usnDBSize env
+      let minN = env ^. L.config . L.minNeighbours
           excess = usnSize - minN
-      forM_ [1..excess]
-            (\_i -> (P.send (_pOutput (_st1c env))
-                            Prune))
+          prunes = iSqrt
+      F.for_ [1..prunes excess]
+             (\_i -> P.send (env ^. L.st1c . L.pOutput)
+                            Prune)
 
 
 
@@ -94,52 +110,18 @@ sendKeepAlive :: Environment -> Timestamp -> IO ()
 sendKeepAlive env (Timestamp now) = do
 
       -- Get a map of all registered downstream clients
-      clients <- atomically (readTVar (_downstream env))
+      clients <- atomically (readTVar (env ^. L.downstream))
 
       -- Find out which ones haven't been contacted in a while
-      let lastHeard client = let Timestamp t = _clientTimestamp client
-                             in  now - t
-          threshold = (_poolTimeout._config) env / 5 -- TODO: make the factor an option
-          needsRefreshing client = lastHeard client >= threshold
-          needKeepAlive = Map.filter needsRefreshing clients
-          sendSignal node = atomically $ do
-                P.send (_pOutput (_stsc node)) KeepAlive
+      let needKeepAlive = Map.filter needsRefreshing clients
 
-      void (T.traverse sendSignal needKeepAlive)
+      F.for_ needKeepAlive sendSignal
 
+      where
 
-
--- | Periodically check whether the worker is allowed to be; if not, kill its
---   thread.
---
---   Starts by giving the worker a grace period after it is created. If it is
---   not entered as an upstream neighbour in this time, it is killed.
---   If it is in the DB, periodically check whether this hasn't changed.
-workerWatcher :: Environment -> From -> ThreadId -> IO ()
-workerWatcher env from tid =
-      race (delay tickrate) waitForEntry >>= \case
-            Left  _ -> kill
-            Right _ -> watch
-
-
-      where waitForEntry = atomically $ do
-                  known <- fmap (Map.member from) (readTVar usnDB)
-                  when (not known) retry
-
-            tickrate = _longTickRate (_config env)
-
-            timeout = _poolTimeout (_config env)
-
-            usnDB = _upstream env
-
-            isTimedOut (Timestamp now) =
-                  let check (Just (Timestamp past)) = now - past > timeout
-                      check _ = True -- Node not even present in DB
-                  in  atomically (check . Map.lookup from <$> readTVar usnDB)
-
-            watch = delay tickrate >> makeTimestamp >>= isTimedOut >>= \case
-                          True  -> kill
-                          False -> watch
-
-            kill = do atomically (modifyTVar usnDB (Map.delete from))
-                      killThread tid
+      lastHeard client = let Timestamp t = client ^. L.clientTimestamp
+                         in  now - t
+      threshold = env ^. L.config . L.poolTimeout . L.to (`quot` 4) -- TODO: make the factor an option
+      needsRefreshing client = lastHeard client >= threshold
+      sendSignal node = atomically (P.send (node ^. L.stsc . L.pOutput)
+                                           KeepAlive)

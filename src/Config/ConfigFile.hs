@@ -1,8 +1,12 @@
 -- | Read configuration settings from a configuration file.
+--
+--   The potential locations of these files are hardcoded here,
+--   in the (non-exposed) '@configFiles@ value.
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Config.ConfigFile (
         nodeModifier
@@ -12,7 +16,6 @@ module Config.ConfigFile (
 ) where
 
 import Data.Char (toLower)
-import Data.Word
 import Data.Monoid
 import Data.Functor
 import Control.Monad.Reader
@@ -22,6 +25,9 @@ import qualified Data.Configurator as C
 import qualified Data.Configurator.Types as C
 import qualified Data.Text as Text
 import qualified Data.Traversable as T
+
+import Control.Lens hiding (to)
+import qualified Types.Lens as L
 
 import qualified Types as Ty
 import Config.OptionModifier
@@ -72,7 +78,7 @@ nodeModifier' prefixes = (fmap mconcat . T.sequenceA) mods where
                   , minNeighbours
                   , maxNeighbours
                   , maxChanSize
-                  , bounces
+                  , hardBounces
                   , acceptP
                   , maxSoftBounces
                   , shortTickRate
@@ -93,19 +99,23 @@ poolModifier' prefixes = (fmap mconcat . T.sequenceA) mods where
 
 
 
+noPrefix :: [a]
+noPrefix = []
+
+
+
 -- | Read the general config, before overwriting it with values with the
 --   @bootstrap@ prefix, i.e. for the @foo@ setting first looks for @foo@ and
 --   then for @bootstrap.foo@.
 bootstrapModifier' :: ReaderT C.Config IO (OptionModifier Ty.BootstrapConfig)
 bootstrapModifier' = (fmap mconcat . T.sequenceA) mods where
-      mods = [ liftNodeModifier <$> nodeModifier' noPrefix
-             , liftPoolModifier <$> poolModifier' noPrefix
+      mods = [ liftModifier L.nodeConfig <$> nodeModifier' noPrefix
+             , liftModifier L.poolConfig <$> poolModifier' noPrefix
              , restartEvery prefix
              , restartMinimumPeriod prefix
-             , liftNodeModifier <$> nodeModifier' prefix
-             , liftPoolModifier <$> poolModifier' prefix
+             , liftModifier L.nodeConfig <$> nodeModifier' prefix
+             , liftModifier L.poolConfig <$> poolModifier' prefix
              ]
-      noPrefix = []
       prefix = ["bootstrap"]
 
 
@@ -114,15 +124,14 @@ bootstrapModifier' = (fmap mconcat . T.sequenceA) mods where
 --   @drawing@ prefix).
 drawingModifier' :: ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
 drawingModifier' = (fmap mconcat . T.sequenceA) mods where
-      mods = [ liftNodeModifier <$> nodeModifier' noPrefix
-             , liftPoolModifier <$> poolModifier' noPrefix
+      mods = [ liftModifier L.nodeConfig <$> nodeModifier' noPrefix
+             , liftModifier L.poolConfig <$> poolModifier' noPrefix
              , drawEvery prefix
              , drawFilename prefix
              , drawTimeout prefix
-             , liftNodeModifier <$> nodeModifier' prefix
-             , liftPoolModifier <$> poolModifier' prefix
+             , liftModifier L.nodeConfig <$> nodeModifier' prefix
+             , liftModifier L.poolConfig <$> poolModifier' prefix
              ]
-      noPrefix = []
       prefix = ["drawing"]
 
 
@@ -131,12 +140,11 @@ drawingModifier' = (fmap mconcat . T.sequenceA) mods where
 --   @multi@ prefix).
 multiModifier' :: ReaderT C.Config IO (OptionModifier Ty.MultiConfig)
 multiModifier' = (fmap mconcat . T.sequenceA) mods where
-      mods = [ liftNodeModifier <$> nodeModifier' noPrefix
-             , liftPoolModifier <$> poolModifier' noPrefix
-             , liftNodeModifier <$> nodeModifier' prefix
-             , liftPoolModifier <$> poolModifier' prefix
+      mods = [ liftModifier L.nodeConfig <$> nodeModifier' noPrefix
+             , liftModifier L.poolConfig <$> poolModifier' noPrefix
+             , liftModifier L.nodeConfig <$> nodeModifier' prefix
+             , liftModifier L.poolConfig <$> poolModifier' prefix
              ]
-      noPrefix = []
       prefix = ["multi"]
 
 
@@ -159,153 +167,76 @@ lookupC prefixes name = ask >>= \cfg -> liftIO (C.lookup cfg fullName) where
 
 
 
-serverPort' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-serverPort' prefixes = lookupC prefixes "serverPort"
-
-serverPort :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-serverPort prefixes = toModifier <$> serverPort' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._serverPort = x })
-      toModifier Nothing  = mempty
-
-
-
-minNeighbours' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-minNeighbours' prefixes = lookupC prefixes "minNeighbours"
-
-minNeighbours :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-minNeighbours prefixes = toModifier <$> minNeighbours' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._minNeighbours = x })
-      toModifier Nothing  = mempty
+-- | Convert a field and a value to an 'OptionModifier' to set that field to
+--   that value. 'mempty' if no value is given.
+toSetter :: ASetter a a c b  -- ^ Lens to a field
+         -> Maybe b          -- ^ New value of the field
+         -> OptionModifier a -- ^ 'OptionModifier' to apply the lens
+toSetter l (Just x) = OptionModifier (l .~ x)
+toSetter _ Nothing  = mempty
 
 
 
-maxNeighbours' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-maxNeighbours' prefixes = lookupC prefixes "maxNeighbours"
-
-maxNeighbours :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-maxNeighbours prefixes = toModifier <$> maxNeighbours' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._maxNeighbours = x })
-      toModifier Nothing  = mempty
-
-
-
-verbosity' :: Prefixes -> ReaderT C.Config IO (Maybe Ty.Verbosity)
-verbosity' prefixes = fmap (maybe Nothing parseVerbosity)
-                           (lookupC prefixes "verbosity")
-
-      where parseVerbosity :: String -> Maybe Ty.Verbosity
-            parseVerbosity (map toLower -> x)
-                  | x == "mute"    = Just Ty.Mute
-                  | x == "quiet"   = Just Ty.Quiet
-                  | x == "default" = Just Ty.Default
-                  | x == "debug"   = Just Ty.Debug
-                  | x == "chatty"  = Just Ty.Chatty
-                  | otherwise      = Nothing
+-- | Get an option that cannot have wrong values (besides type mismatches).
+--   For example, the verbosity option only supports a handful of words and not
+--   all strings, so it is not a simple option. The number of neighbours on the
+--   other hand can be any value.
+getSimpleOption :: C.Configured b
+                => ASetter a a c b
+                -> C.Name
+                -> Prefixes
+                -> ReaderT C.Config IO (OptionModifier a)
+getSimpleOption l name prefixes = fmap (toSetter l)
+                                       (lookupC prefixes name)
 
 
 
-verbosity :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-verbosity prefixes = toModifier <$> verbosity' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._verbosity = x })
-      toModifier Nothing  = mempty
+-- Node config specific
 
+serverPort, minNeighbours, maxNeighbours, maxChanSize, verbosity, hardBounces,
+      acceptP, maxSoftBounces, shortTickRate, mediumTickRate, longTickRate,
+      poolTimeout, floodMessageCache, bootstrapServers
+            :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
 
+serverPort        = getSimpleOption L.serverPort        "serverPort"
+minNeighbours     = getSimpleOption L.minNeighbours     "minNeighbours"
+maxNeighbours     = getSimpleOption L.maxNeighbours     "maxNeighbours"
+maxChanSize       = getSimpleOption L.maxChanSize       "maxChanSize"
+hardBounces       = getSimpleOption L.hardBounces       "hardBounces"
+acceptP           = getSimpleOption L.acceptP           "acceptP"
+maxSoftBounces    = getSimpleOption L.maxSoftBounces    "maxSoftBounces"
+shortTickRate     = getSimpleOption L.shortTickRate     "shortTickRate"
+mediumTickRate    = getSimpleOption L.mediumTickRate    "mediumTickRate"
+longTickRate      = getSimpleOption L.longTickRate      "longTickRate"
+poolTimeout       = getSimpleOption L.poolTimeout       "poolTimeout"
+floodMessageCache = getSimpleOption L.floodMessageCache "floodMessageCache"
 
-maxChanSize' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-maxChanSize' prefixes = lookupC prefixes "maxChanSize"
-
-maxChanSize :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-maxChanSize prefixes = toModifier <$> maxChanSize' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._maxChanSize = x })
-      toModifier Nothing  = mempty
-
-
-
-bounces' :: Prefixes -> ReaderT C.Config IO (Maybe Word)
-bounces' prefixes = lookupC prefixes "bounces"
-
-bounces :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-bounces prefixes = toModifier <$> bounces' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._bounces = x })
-      toModifier Nothing  = mempty
-
-
-
-acceptP' :: Prefixes -> ReaderT C.Config IO (Maybe Double)
-acceptP' prefixes = lookupC prefixes "acceptP"
-
-acceptP :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-acceptP prefixes = toModifier <$> acceptP' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._acceptP = x })
-      toModifier Nothing  = mempty
-
-
-
-maxSoftBounces' :: Prefixes -> ReaderT C.Config IO (Maybe Word)
-maxSoftBounces' prefixes = lookupC prefixes "maxSoftBounces"
-
-maxSoftBounces :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-maxSoftBounces prefixes = toModifier <$> maxSoftBounces' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._maxSoftBounces = x })
-      toModifier Nothing  = mempty
-
-
-
-shortTickRate' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-shortTickRate' prefixes = lookupC prefixes "shortTickRate"
-
-shortTickRate :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-shortTickRate prefixes = toModifier <$> shortTickRate' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._shortTickRate = x })
-      toModifier Nothing  = mempty
-
-
-
-mediumTickRate' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-mediumTickRate' prefixes = lookupC prefixes "mediumTickRate"
-
-mediumTickRate :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-mediumTickRate prefixes = toModifier <$> mediumTickRate' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._mediumTickRate = x })
-      toModifier Nothing  = mempty
-
-
-
-longTickRate' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-longTickRate' prefixes = lookupC prefixes "longTickRate"
-
-longTickRate :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-longTickRate prefixes = toModifier <$> longTickRate' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._longTickRate = x })
-      toModifier Nothing  = mempty
-
-
-
-poolTimeout' :: Prefixes -> ReaderT C.Config IO (Maybe Double)
-poolTimeout' prefixes = lookupC prefixes "poolTimeout"
-
-poolTimeout :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-poolTimeout prefixes = toModifier <$> poolTimeout' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._poolTimeout = x })
-      toModifier Nothing  = mempty
-
-
-
-floodMessageCache' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-floodMessageCache' prefixes = lookupC prefixes "floodMessageCache"
-
-floodMessageCache :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-floodMessageCache prefixes = toModifier <$> floodMessageCache' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._floodMessageCache = x })
-      toModifier Nothing  = mempty
-
-
-
-bootstrapServers' :: Prefixes -> ReaderT C.Config IO (Set.Set Ty.To)
-bootstrapServers' prefixes = fmap m'valueToTo
-                                  (lookupC prefixes "bootstrapServers")
+verbosity prefixes = fmap (toSetter L.verbosity) verbosity'
 
       where
+
+      verbosity' :: ReaderT C.Config IO (Maybe Ty.Verbosity)
+      verbosity' = fmap (maybe Nothing parseVerbosity)
+                        (lookupC prefixes "verbosity")
+
+      parseVerbosity :: String -> Maybe Ty.Verbosity
+      parseVerbosity (map toLower -> x)
+            | x == "mute"    = Just Ty.Mute
+            | x == "quiet"   = Just Ty.Quiet
+            | x == "default" = Just Ty.Default
+            | x == "debug"   = Just Ty.Debug
+            | x == "chatty"  = Just Ty.Chatty
+            | otherwise      = Nothing
+
+bootstrapServers prefixes = fmap appendBSS bootstrapServers'
+
+      where
+
+      appendBSS x = OptionModifier (L.bootstrapServers <>~ x)
+
+      bootstrapServers' :: ReaderT C.Config IO (Set.Set Ty.To)
+      bootstrapServers' = fmap m'valueToTo
+                               (lookupC prefixes "bootstrapServers")
 
       m'valueToTo :: Maybe C.Value -> Set.Set Ty.To
       m'valueToTo = maybe Set.empty valueToTo
@@ -322,69 +253,36 @@ bootstrapServers' prefixes = fmap m'valueToTo
                   Left  _r -> xs
             go _else xs = xs
       valueToTo _else = Set.empty
+
       parseAddrText = AP.parseAddress . Text.unpack
 
-bootstrapServers :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.NodeConfig)
-bootstrapServers prefixes = toModifier <$> bootstrapServers' prefixes where
-      toModifier x = OptionModifier (\c -> c { Ty._bootstrapServers = x <> Ty._bootstrapServers c })
 
 
-
-poolSize' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-poolSize' prefixes = lookupC prefixes "poolSize"
+-- Node pool specific
 
 poolSize :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.PoolConfig)
-poolSize prefixes = toModifier <$> poolSize' prefixes where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._poolSize = x })
-      toModifier Nothing  = mempty
+poolSize = getSimpleOption L.poolSize "poolSize"
 
 
 
-restartEvery' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-restartEvery' prefixes = lookupC prefixes "restartEvery"
+-- Bootstrap server specific
 
-restartEvery :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.BootstrapConfig)
-restartEvery _ = toModifier <$> restartEvery' ["bootstrap"] where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._restartEvery = x })
-      toModifier Nothing  = mempty
+restartEvery, restartMinimumPeriod
+      :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.BootstrapConfig)
 
-
-
-restartMinimumPeriod' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-restartMinimumPeriod' prefixes = lookupC prefixes "restartMinimumPeriod"
-
-restartMinimumPeriod :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.BootstrapConfig)
-restartMinimumPeriod _ = toModifier <$> restartMinimumPeriod' ["bootstrap"] where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._restartMinimumPeriod = x })
-      toModifier Nothing  = mempty
+restartEvery          = getSimpleOption L.restartEvery         "restartEvery"
+restartMinimumPeriod  = getSimpleOption L.restartMinimumPeriod "restartMinimumPeriod"
 
 
 
-drawEvery' :: Prefixes -> ReaderT C.Config IO (Maybe Int)
-drawEvery' prefixes = lookupC prefixes "drawEvery"
+-- Drawing server specific
 
-drawEvery :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
-drawEvery _ = toModifier <$> drawEvery' ["drawing"] where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._drawEvery = x })
-      toModifier Nothing  = mempty
+drawEvery, drawFilename, drawTimeout
+      :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
 
+drawEvery    = getSimpleOption L.drawEvery    "drawEvery"
+drawFilename = getSimpleOption L.drawFilename "drawFilename"
 
-
-drawFilename' :: Prefixes -> ReaderT C.Config IO (Maybe FilePath)
-drawFilename' prefixes = lookupC prefixes "drawFilename"
-
-drawFilename :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
-drawFilename _ = toModifier <$> drawFilename' ["drawing"] where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._drawFilename = x })
-      toModifier Nothing  = mempty
-
-
-
-drawTimeout' :: Prefixes -> ReaderT C.Config IO (Maybe Double)
-drawTimeout' prefixes = (fmap . fmap) (fromIntegral :: Int -> Double)
-                                      (lookupC prefixes "drawTimeout")
-
-drawTimeout :: Prefixes -> ReaderT C.Config IO (OptionModifier Ty.DrawingConfig)
-drawTimeout _ = toModifier <$> drawTimeout' ["drawing"] where
-      toModifier (Just x) = OptionModifier (\c -> c { Ty._drawTimeout = x })
-      toModifier Nothing  = mempty
+drawTimeout prefixes =
+      fmap (toSetter L.drawTimeout . fmap Ty.Microseconds)
+           (lookupC prefixes "drawTimeout")

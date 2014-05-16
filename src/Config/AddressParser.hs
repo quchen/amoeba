@@ -1,11 +1,12 @@
--- | Parses a string of the form @123.123.123.123:54321@ to a "To".
+-- | Parses a string of the form @123.123.123.123:54321@ to a 'To'.
 
 -- TODO: Allow arbitrary hostnames, in particular IPv6 and DNS
 
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE TupleSections #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
-module Config.AddressParser where
+module Config.AddressParser (parseAddress) where
 
 import Text.Parsec hiding (many, (<|>))
 import Text.Parsec.String
@@ -15,7 +16,6 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Identity
 import Text.Printf
-import Data.Foldable (asum)
 
 import Types
 
@@ -26,7 +26,7 @@ lexer :: P.GenTokenParser String u Identity
 lexer = P.makeTokenParser haskellDef
 
 
--- | General "Int" parser.
+-- | General 'Int' parser.
 intP :: Parser Int
 intP = fromIntegral <$> P.integer lexer
 
@@ -35,39 +35,12 @@ intP = fromIntegral <$> P.integer lexer
 -- | Parse an Int between 0 and 2^16-1 = 65536 (inclusive).
 portP :: Parser Int
 portP = do p <- intP
-           if | p < 0      -> parserFail "Port < 0"
-              | p > 2^16-1 -> parserFail "Port > 65535"
+           let minPort = 0
+               maxPort = 2^(16::Int)-1
+           if | p < minPort -> parserFail "Port < 0"
+              | p > maxPort -> parserFail "Port > 65535"
               | otherwise  -> return p
 
-
-
--- TODO: This function is entirely untested.
-ipv6P :: Parser ([Int], [Int])
-ipv6P = do
-      ip@(l,r) <- (asum . map try)
-            [ ([],) <$> connectedPart -- Full address without omitted zeros
-            , ([],) <$>                 (doubleColon *> connectedPart) -- ::1
-            , (,[]) <$> connectedPart <* doubleColon                   -- 1::
-            , (,)   <$> connectedPart <* doubleColon <*> connectedPart -- 1::2
-            ]
-      if length (l ++ r) > 8
-            then parserFail "IPv6 too long"
-            else return ip
-
-      where
-            connectedPart :: Parser [Int]
-            connectedPart = (:) <$> ipv6NumberP <*> many (colon *> ipv6NumberP)
-
-            doubleColon :: Parser ()
-            doubleColon = (void . try) (colon *> colon)
-
-
-
-ipv6NumberP :: Parser Int
-ipv6NumberP = do p <- intP
-                 if | p < 0      -> parserFail "IPv6 part < 0"
-                    | p > 0xffff -> parserFail "IPv6 part > 0xffff"
-                    | otherwise  -> return p
 
 
 -- | Parser for an IPv4 address.
@@ -79,15 +52,15 @@ ipv4P = (,,,) <$> ipv4NumberP <* dot
 
 
 
--- | Parse a literal \".\"
-dot :: Parser Char
-dot = char '.'
+-- | Discard a literal \".\"
+dot :: Parser ()
+dot = void (char '.')
 
 
 
--- | Parse a literal \":\"
-colon :: Parser Char
-colon = char ':'
+-- | Discard a literal \":\"
+colon :: Parser ()
+colon = void (char ':')
 
 
 

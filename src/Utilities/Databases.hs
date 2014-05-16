@@ -1,25 +1,28 @@
 -- | Functions to query the upstream/downstream databases
 
+-- TODO: The USN/DSN API could probably be refactored significantly by using
+--       optics.
+
 module Utilities.Databases (
 
-
       -- * General
-        isRoomIn
-      , dbSize
-      , makeTimestamp
+        makeTimestamp
 
 
       -- * USN DB
-      , isUsn
       , insertUsn
       , deleteUsn
-      , updateUsnTimestamp
+      , isUsn
+      , usnDBSize
+      , isRoomForUsn
 
 
       -- * DSN DB
-      , isDsn
       , insertDsn
       , deleteDsn
+      , isDsn
+      , dsnDBSize
+      , isRoomForDsn
       , dumpDsnDB
       , updateDsnTimestamp
       , nodeRelationship
@@ -28,18 +31,23 @@ module Utilities.Databases (
       -- * Flood signal DB
       , knownFlood
       , insertFlood
+
 ) where
 
 
-import Control.Concurrent.STM
-import Control.Monad.Trans
-import Control.Monad
-import Control.Applicative
+import           Control.Concurrent.STM
+import           Control.Monad.Trans
 import qualified Data.Map as Map
+import           Data.Map (Map)
 import qualified Data.Set as Set
-import Data.Time.Clock.POSIX (getPOSIXTime)
+import           Data.Set (Set)
+import           Data.Time.Clock.POSIX (getPOSIXTime, POSIXTime)
 
-import Types
+import           Control.Lens.Operators
+import qualified Control.Lens as L
+
+import           Types
+import qualified Types.Lens as L
 
 
 
@@ -51,35 +59,22 @@ import Types
 
 
 
--- | Projector of the upstream or downstream DB from the "Environment".
---   Unifies with "_upstream" and "_downstream".
-type DBProjector k a = Environment -> TVar (Map.Map k a)
-
-
-
--- | Check whether there is room to add another node to the pool.
-isRoomIn :: Environment
-         -> DBProjector k a -- ^ "_upstream" or "_downstream"
-         -> STM Bool
-isRoomIn env db = (maxSize >) <$> dbSize env db
-      where maxSize = (fromIntegral . _maxNeighbours . _config) env
-
-
-
--- | Determine the current size of a database
-dbSize :: Environment
-       -> DBProjector k a -- ^ "_upstream" or "_downstream"
-       -> STM Int
-dbSize env db = Map.size <$> readTVar (db env)
-
-
-
--- | Create a timestamp, which is a Double representation of the Unix time.
+-- | Create a timestamp, internally represented as a unix timestamp of
+--   microseconds.
 makeTimestamp :: (MonadIO m) => m Timestamp
-makeTimestamp = liftIO (Timestamp . realToFrac <$> getPOSIXTime)
---   Since Haskell's Time library is borderline retarded, this seems to be the
---   cleanest way to get something that is easily an instance of Binary and
---   comparable to seconds.
+makeTimestamp = liftIO (fmap toTimestamp getPOSIXTime) where
+
+      toTimestamp :: POSIXTime -> Timestamp
+      toTimestamp = Timestamp . Microseconds . round . (* 1e6)
+
+--   This seems to be the cleanest way to get something that is easily an
+--   instance of Binary and comparable to seconds. Better suggestions heartily
+--   welcome.
+
+--   This will overflow in a decent amount of time if Int64 is used as an
+--   intermediate representation, since the maximum 64-bit
+--   Int is 9,223,372,036,854,775,807 (9e18), and microsecond timestamps are in
+--   the order of magnitude of 14,000,000,000,000,000 (1e16).
 
 
 
@@ -91,50 +86,49 @@ makeTimestamp = liftIO (Timestamp . realToFrac <$> getPOSIXTime)
 
 
 
--- | Is the USN in the DB?
-isUsn :: Environment -> From -> STM Bool
-isUsn env from = Map.member from <$> readTVar (_upstream env)
+-- | Insert a USN into the DB.
+insertUsn :: Environment -> From -> STM ()
+insertUsn env from = modifyUsnDB env (Set.insert from)
 
 
 
--- | Add a USN to the DB if there is space and it's not already in there.
-insertUsn :: Environment
-          -> From -- ^ New USN
-          -> Timestamp
-          -> STM Bool -- ^ True if an insertion was made, False if the node is
-                      --   already present or a connection is not allowed.
-insertUsn env from t = do
-      isRoom <- isRoomIn env _upstream
-
-      -- Check for previous membership, just in case this method is called
-      -- twice concurrently for some odd reason TODO: can this happen?
-      -- This is an STM block after all
-      alreadyKnown <- isUsn env from
-
-      let p = isRoom && not alreadyKnown
-
-      -- Reserve slot. Cleanup happens when the worker shuts down because
-      -- of a non-OK signal.
-      when p (modifyTVar (_upstream env)
-                         (Map.insert from t))
-
-      return p
-
-
-
-
-
--- | Remove a USN from the DB.
+-- | Delete a USN from the DB.
 deleteUsn :: Environment -> From -> STM ()
-deleteUsn env from = modifyTVar (_upstream env)
-                                (Map.delete from)
+deleteUsn env from = modifyUsnDB env (Set.delete from)
 
 
 
--- | Update the "last heard of" timestmap in the database.
-updateUsnTimestamp :: Environment -> From -> Timestamp -> STM ()
-updateUsnTimestamp env from t = modifyTVar (_upstream env)
-                                           (Map.adjust (const t) from)
+-- | Modify the entire USN DB with a function. Used as a general interface for
+--   smaller functions.
+modifyUsnDB :: Environment -> (Set From -> Set From) -> STM ()
+modifyUsnDB env = modifyTVar' db
+      where db = L.view L.upstream env
+
+
+-- | Query the entire USN DB. Used as a general interface for smaller functions.
+queryUsnDB :: Environment -> (Set From -> a) -> STM a
+queryUsnDB env query = fmap query (readTVar db)
+      where db = env ^. L.upstream
+
+
+
+-- | Retrieve the current USN DB size.
+usnDBSize :: Environment -> STM Int
+usnDBSize env = queryUsnDB env Set.size
+
+
+
+-- | Check whether a USN is in the DB.
+isUsn :: Environment -> From -> STM Bool
+isUsn env from = queryUsnDB env (Set.member from)
+
+
+
+-- | Check whether another USN can be added to the DB without exceeding the
+--   neighbour limit.
+isRoomForUsn :: Environment -> STM Bool
+isRoomForUsn env = fmap (maxSize >) (usnDBSize env)
+      where maxSize = env ^. L.config . L.maxNeighbours . L.to fromIntegral
 
 
 
@@ -146,9 +140,33 @@ updateUsnTimestamp env from t = modifyTVar (_upstream env)
 
 
 
--- | "Set.Set" of all known DSN.
-dumpDsnDB :: Environment -> STM (Set.Set To)
-dumpDsnDB env = Map.keysSet <$> readTVar (_downstream env)
+-- | 'Set' of all known DSN.
+dumpDsnDB :: Environment -> STM (Set To)
+dumpDsnDB env = fmap Map.keysSet
+                     (readTVar (env ^. L.downstream))
+
+
+
+-- | Query the entire DSN DB. Used as a general interface for smaller functions.
+queryDsnDB :: Environment -> (Map To Client -> a) -> STM a
+queryDsnDB env query = fmap query (readTVar db)
+      where db = env ^. L.downstream
+
+
+
+
+
+-- | Determine the current size of a database
+dsnDBSize :: Environment -> STM Int
+dsnDBSize env = queryDsnDB env Map.size
+
+
+
+-- | Check whether there is room to add another node to the pool.
+isRoomForDsn :: Environment -> STM Bool
+isRoomForDsn env = fmap (maxSize >) (dsnDBSize env)
+      where maxSize = env ^. L.config . L.maxNeighbours . L.to fromIntegral
+
 
 
 
@@ -157,7 +175,8 @@ dumpDsnDB env = Map.keysSet <$> readTVar (_downstream env)
 --   (Defined in terms of "nodeRelationship", mainly to provide an analogon for
 --   "isUsn".)
 isDsn :: Environment -> To -> STM Bool
-isDsn env to = (== IsDownstreamNeighbour) <$> nodeRelationship env to
+isDsn env to = fmap (== IsDownstreamNeighbour)
+                    (nodeRelationship env to)
 
 
 
@@ -166,24 +185,23 @@ insertDsn :: Environment
           -> To     -- ^ DSN address
           -> Client -- ^ Local client connecting to this address
           -> STM ()
-insertDsn env to client = modifyTVar (_downstream env)
+insertDsn env to client = modifyTVar (env ^. L.downstream)
                                      (Map.insert to client)
 
 
 
 -- | Remove a DSN from the DB.
 deleteDsn :: Environment -> To -> STM ()
-deleteDsn env to = modifyTVar (_downstream env)
+deleteDsn env to = modifyTVar (env ^. L.downstream)
                               (Map.delete to)
 
 
 
 -- | Update the "last communicated with" timestmap in the DSN DB.
 updateDsnTimestamp :: Environment -> To -> Timestamp -> STM ()
-updateDsnTimestamp env to t = modifyTVar (_downstream env)
-                                         (Map.adjust updateTimestamp to)
-
-      where updateTimestamp client = client { _clientTimestamp = t }
+updateDsnTimestamp env to t = modifyTVar (env ^. L.downstream)
+                                         (Map.adjust (L.clientTimestamp .~ t)
+                                                     to)
 
 
 
@@ -198,10 +216,12 @@ nodeRelationship :: Environment
                  -> To
                  -> STM NodeRelationship
 nodeRelationship env to
-      | to == _self env = return IsSelf
-      | otherwise = do isDS <- Map.member to <$> readTVar (_downstream env)
-                       return (if isDS then IsDownstreamNeighbour
-                                       else IsUnrelated)
+      | to == env ^. L.self = return IsSelf
+      | otherwise = do isDSN <- fmap (Map.member to)
+                                     (readTVar (env ^. L.downstream))
+                       return (if isDSN then IsDownstreamNeighbour
+                                        else IsUnrelated)
+
 
 
 
@@ -215,19 +235,19 @@ nodeRelationship env to
 -- | Check whether a flood signal is already in the DB.
 knownFlood :: Environment -> (Timestamp, FloodSignal) -> STM Bool
 knownFlood env tfSignal = fmap (Set.member tfSignal)
-                               (readTVar (_handledFloods env))
+                               (env ^. L.handledFloods . L.to readTVar)
 
 
 
 -- | Insert a new flood signal into the DB. Deletes an old one if the DB is
 --   full.
 insertFlood :: Environment -> (Timestamp, FloodSignal) -> STM ()
-insertFlood env tfSignal = modifyTVar (_handledFloods env)
+insertFlood env tfSignal = modifyTVar (env ^. L.handledFloods)
                                       (prune . Set.insert tfSignal)
 
       where -- Delete the oldest entry if the DB is full
-            prune :: Set.Set a -> Set.Set a
+            prune :: Set a -> Set a
             prune db | Set.size db > dbMaxSize = Set.deleteMin db
                      | otherwise               = db
 
-            dbMaxSize = _floodMessageCache (_config env)
+            dbMaxSize = env ^. L.config . L.floodMessageCache

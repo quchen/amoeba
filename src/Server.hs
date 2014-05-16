@@ -1,35 +1,38 @@
 -- | The server is the main part of a node. It accepts incoming requests, and
 --   distributes the responses to the clients.
 --
---   The suffix 'H' stands for 'Handler', which is a function that reacts
+--   The suffix \"H\" stands for "Handler", which is a function that reacts
 --   directly to an incoming signal's instructions.
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 module Server (server) where
 
+import           Control.Applicative
 import           Control.Concurrent.Async
-import           Control.Concurrent (forkIO)
 import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
-import           Control.Applicative
+import qualified Data.Foldable as F
 import           System.Random
 import           Text.Printf
-import qualified Data.Foldable as F
 
 import           Pipes
-import qualified Pipes.Prelude as P
-import qualified Pipes.Concurrent as P
 import           Pipes.Network.TCP (Socket)
+import qualified Pipes.Concurrent as P
 import qualified Pipes.Network.TCP as PN
+import qualified Pipes.Prelude as P
 
-import Types
-import Utilities
-import Client
-import Housekeeping
+import           Control.Lens.Operators
+import qualified Control.Lens as L
+import qualified Types.Lens as L
+
+import           Client
+import           Types
+import           Utilities
 
 
 
@@ -45,10 +48,10 @@ server env serverSocket = do
 
             from <- atomically $ do
                   c <- readTVar counter
-                  modifyTVar counter (+1)
+                  modifyTVar' counter (+1)
                   return (From c)
 
-            pid <- PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
+            PN.acceptFork serverSocket $ \(clientSocket, addr) -> do
                   (atomically . toIO env Debug . STDLOG)
                         (printf "New worker %s from %s"
                                 (show from)
@@ -60,8 +63,6 @@ server env serverSocket = do
                                 (show addr)
                                 (show terminationReason))
 
-            forkIO (workerWatcher env from pid)
-
 
 
 -- | Handles 'Signal's coming in from the network and sends back the server's
@@ -72,49 +73,58 @@ worker :: Environment
        -> IO ServerResponse
 worker env from socket =
 
-      (`finally` release) . runEffect $
-            receiver socket >-> dispatch >-> terminator >-> sender socket
+      (`finally` release) . runEffect $ receiver tout socket
+                                    >-> dispatch
+                                    >-> terminator
+                                    >-> sender tout socket
 
-      where dispatch :: Pipe Signal ServerResponse IO r
-            dispatch = P.mapM $ \case
-                  Normal  normal  -> normalH  env from        normal
-                  Special special -> specialH env from socket special
+      where
 
-            -- Pipes incoming signals on, but terminates afterwards if the last
-            -- one was an error. In other words it's similar P.takeWhile, but
-            -- passes on the first failing element before returning it.
-            terminator :: Pipe ServerResponse ServerResponse IO ServerResponse
-            terminator = do
-                  signal <- await
-                  yield signal
-                  case signal of
-                        OK  -> terminator
-                        err -> return err
+      tout = env ^. L.config . L.poolTimeout
 
-            release = atomically (deleteUsn env from)
+      dispatch :: Pipe Signal ServerResponse IO r
+      dispatch = P.mapM $ \case
+            Normal  normal  -> normalH  env from        normal
+            Special special -> specialH env from socket special
+
+      -- Pipes incoming signals on, but terminates afterwards if the last
+      -- one was an error. In other words it's similar P.takeWhile, but
+      -- passes on the first failing element before returning it.
+      terminator :: Pipe ServerResponse ServerResponse IO ServerResponse
+      terminator = do
+            signal <- await
+            yield signal
+            case signal of
+                  OK  -> terminator
+                  err -> return err
+
+      release = atomically (deleteUsn env from)
+
 
 
 -- | Handles "Signal"s coming in from the LDC (local direct connection).
 --   Used by node pools; only accepts a handful of signals.
 workerLdc :: Environment
           -> IO ()
-workerLdc env@(_ldc -> Just pChan) =
+workerLdc env@(L.view L.ldc -> Just ldc) =
 
       runEffect (input >-> dispatch >-> P.drain)
-                                        -- ^ Since there is no USN to send the
-                                        --   ServerResponse back to, discard
-                                        --   the answers to LDC signals.
+                                        -- Since there is no USN to send the
+                                        -- ServerResponse back to, discard
+                                        -- the answers to LDC signals.
 
-      where input :: Producer NormalSignal IO ()
-            input = P.fromInput (_pInput pChan)
+      where
 
-            dispatch :: Pipe NormalSignal ServerResponse IO r
-            dispatch = P.mapM $ \case
-                  EdgeRequest to edge  -> edgeBounceH env to edge
-                  Flood tStamp fSignal -> floodSignalH env (tStamp, fSignal)
-                  _else                -> return (Error "Bad LDC signal")
+      input :: Producer NormalSignal IO ()
+      input = P.fromInput (ldc ^. L.pInput)
 
-workerLdc _ = return ()
+      dispatch :: Pipe NormalSignal ServerResponse IO r
+      dispatch = P.mapM $ \case
+            EdgeRequest to edge  -> edgeBounceH env to edge
+            Flood tStamp fSignal -> floodSignalH env (tStamp, fSignal)
+            _else                -> return (Error "Bad LDC signal")
+
+workerLdc _noLdc = return ()
 
 
 
@@ -128,22 +138,19 @@ normalH env from signal =
       atomically (isUsn env from) >>= \case True  -> continue
                                             False -> deny
 
-      where continue = do
-                  result <- case signal of
-                        EdgeRequest to edge  -> edgeBounceH   env to edge
-                        Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
-                        KeepAlive            -> keepAliveH    env from
-                        ShuttingDown         -> shuttingDownH env from
-                        Prune                -> pruneH        env
-                  when (result == OK)
-                       (do t <- makeTimestamp
-                           atomically (updateUsnTimestamp env from t))
-                  return result
+      where
 
-            deny = do
-                  atomically . toIO env Debug . STDLOG $
-                        "Illegally contacted by " ++ show from ++ "; ignoring"
-                  return Ignore
+      continue = case signal of
+            EdgeRequest to edge  -> edgeBounceH   env to edge
+            Flood tStamp fSignal -> floodSignalH  env (tStamp, fSignal)
+            KeepAlive            -> keepAliveH    env from
+            ShuttingDown         -> shuttingDownH env from
+            Prune                -> pruneH        env
+
+      deny = do
+            atomically . toIO env Debug . STDLOG $
+                  "Illegally contacted by " ++ show from ++ "; ignoring"
+            return Ignore
 
 
 
@@ -157,10 +164,12 @@ specialH env from socket signal = case signal of
       BootstrapRequest {} -> illegalBootstrapSignalH env
       NeighbourList {}    -> illegalNeighbourListSignalH env
       Handshake           -> incomingHandshakeH      env from socket
-      HandshakeRequest to -> Client.startHandshakeH  env to >> return OK
-                                                               -- ^ Sender doesn't handle
-                                                               -- this response anyway,
-                                                               -- see sendHandshakeRequest
+      HandshakeRequest to -> do void (async (Client.startHandshakeH  env to))
+                                return OK
+                                -- NB: The above async terminates when the
+                                --     worker created by it does, or is not
+                                --     created at all. See
+                                --     'Client.startHandshakeH'.
 
 
 
@@ -194,7 +203,7 @@ keepAliveH :: Environment
            -> From
            -> IO ServerResponse
 keepAliveH env from = do
-      (atomically . toIO env Chatty . STDLOG )
+      (atomically . toIO env Chatty . STDLOG)
             (printf "KeepAlive signal received from %s"
                     (show from))
                   -- This is *very* chatty, probably too much so.
@@ -232,7 +241,7 @@ floodSignalH env tfSignal@(timestamp, fSignal) = do
 broadcastOutput :: Environment
                 -> STM (P.Output NormalSignal)
 broadcastOutput env =
-      F.foldMap (_pOutput . _stsc) <$> readTVar (_downstream env)
+      F.foldMap (^. L.stsc . L.pOutput) <$> (env ^. L.downstream . L.to readTVar)
 
 
 
@@ -251,11 +260,12 @@ neighbourListH :: Environment
                -> To
                -> IO ServerResponse
 neighbourListH env painter = do
+      let tout = env ^. L.config . L.poolTimeout
       connectToNode painter $ \(socket, _) -> do
             atomically (toIO env Chatty (STDLOG "Processing painter request"))
-            let self = _self env
+            let self = env ^. L.self
             dsns <- atomically (dumpDsnDB env)
-            send socket (NeighbourList self dsns)
+            send tout socket (NeighbourList self dsns)
       return OK
 
 
@@ -278,8 +288,8 @@ shuttingDownH env from = atomically $ do
 pruneH :: Environment
        -> IO ServerResponse
 pruneH env = atomically $ do
-      usnSize <- dbSize env _upstream
-      let minN = _minNeighbours (_config env)
+      usnSize <- usnDBSize env
+      let minN = env ^. L.config . L.minNeighbours
       if usnSize > minN
             then
                   -- Send back a special "OK" signal that terminates the
@@ -331,23 +341,23 @@ edgeBounceH env origin (EdgeData dir (HardBounce 0)) =
                   origin
                   (EdgeData dir
                             (SoftBounce 0
-                                        ((_acceptP . _config) env)))
+                                        (env ^. L.config . L.acceptP)))
 
 -- Phase 1: Hard bounce, bounce on.
 edgeBounceH env origin (EdgeData dir (HardBounce n)) = do
 
       let buildSignal = EdgeRequest origin . EdgeData dir
-          nMax = _bounces (_config env)
+          nMax = env ^. L.config . L.hardBounces
 
       atomically $ do
 
-            P.send (_pOutput (_st1c env))
+            _ <- P.send (env ^. L.st1c . L.pOutput)
                    (buildSignal (HardBounce (min (n - 1) nMax)))
-                                          -- ^ Cap the number of hard
-                                          -- | bounces with the current
-                                          -- | node's configuration to
-                                          -- | prevent "maxBound bounces
-                                          -- | left" attacks
+                                          -- Cap the number of hard
+                                          -- bounces with the current
+                                          -- node's configuration to
+                                          -- prevent "maxBound bounces
+                                          -- left" attacks
             (toIO env Chatty . STDLOG)
                   (printf "Hardbounced %s request from %s (%d left)"
                           (show dir)
@@ -372,8 +382,8 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
             -- an Incoming request will construct a downstream neighbour from
             -- this node, so the database lookups are flipped.
             room <- case dir of
-                  Incoming -> isRoomIn env _downstream
-                  Outgoing -> isRoomIn env _upstream
+                  Incoming -> isRoomForDsn env
+                  Outgoing -> isRoomForUsn env
 
             return (room, rel)
 
@@ -438,32 +448,34 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
       return OK -- The upstream neighbour that relayed the EdgeRequest has
                 -- nothing to do with whether the handshake fails etc.
 
+
       where
 
-            buildSignal = EdgeRequest origin . EdgeData dir
+
+      buildSignal = EdgeRequest origin . EdgeData dir
 
 
-            -- Build "bounce on" action to relay signal if necessary
-            bounceOn | n >= _maxSoftBounces (_config env) =
-                             toIO env Chatty . STDLOG $
-                                   "Too many bounces, swallowing"
-                     | otherwise =
-                           let p' = max p (_acceptP (_config env))
-                               -- ^ The relayed acceptance probability is at
-                               --   least as high as the one the relaying node
-                               --   uses. This prevents "small p" attacks that
-                               --   bounce indefinitely.
-                           in  void (P.send (_pOutput (_st1c env))
-                                            (buildSignal (SoftBounce (n+1) p')))
+      -- Build "bounce on" action to relay signal if necessary
+      bounceOn | n >= env ^. L.config . L.maxSoftBounces =
+                       toIO env Chatty . STDLOG $
+                             "Too many bounces, swallowing"
+               | otherwise =
+                     let p' = max p (env ^. L.config . L.acceptP)
+                         -- ^^ The relayed acceptance probability is at least as
+                         --    high as the one the relaying node uses. This
+                         --    prevents "small p" attacks that bounce
+                         --    indefinitely.
+                     in  void (P.send (env ^. L.st1c . L.pOutput)
+                                      (buildSignal (SoftBounce (n+1) p')))
 
-            -- Build "bounce again from the beginning" signal. This is invoked
-            -- if an EdgeRequest reaches the issuing node again.
-            bounceReset = let b = _bounces (_config env)
-                          in  void (P.send (_pOutput (_st1c env))
-                                           (buildSignal (HardBounce b)))
-            -- TODO: Maybe swallowing the request in this case makes more sense.
-            --       The node is spamming the network with requests anyway after
-            --       all.
+      -- Build "bounce again from the beginning" signal. This is invoked
+      -- if an EdgeRequest reaches the issuing node again.
+      bounceReset = let b = env ^. L.config . L.hardBounces
+                    in  void (P.send (env ^. L.st1c . L.pOutput)
+                                     (buildSignal (HardBounce b)))
+      -- TODO: Maybe swallowing the request in this case makes more sense.
+      --       The node is spamming the network with requests anyway after
+      --       all.
 
 
 
@@ -472,15 +484,16 @@ edgeBounceH env origin (EdgeData dir (SoftBounce n p)) = do
 sendHandshakeRequest :: Environment
                      -> To
                      -> IO ()
-sendHandshakeRequest env to =
+sendHandshakeRequest env to = do
       connectToNode to $ \(socket, _addr) -> do
-            request socket signal >>= \case
+            request tout socket signal >>= \case
                   Just OK -> return ()
                   _else   -> return ()
                   -- Nothing to do here, the handshake is a one-way command,
                   -- waiting for response is just a courtesy
 
-      where signal = (Special . HandshakeRequest) (_self env)
+      where signal = env ^. L.self . L.to (Special . HandshakeRequest)
+            tout   = env ^. L.config . L.poolTimeout
 
 
 
@@ -504,12 +517,13 @@ incomingHandshakeH :: Environment
                    -> Socket
                    -> IO ServerResponse
 incomingHandshakeH env from socket = do
-      timestamp <- makeTimestamp
-
-      inserted <- atomically (insertUsn env from timestamp)
+      inserted <- atomically $ do
+            ifM (isRoomForUsn env)
+                (insertUsn env from >> return True)
+                (return False)
 
       if inserted
-            then send socket OK >> receive socket >>= \case
+            then send tout socket OK >> receive tout socket >>= \case
                   Just OK -> return OK
                   x -> (return . Error) (errMsg x)
             else (return . Error) errNoRoom
@@ -517,3 +531,4 @@ incomingHandshakeH env from socket = do
       where errMsg x = "Incoming handshake denied:\
                        \ server response <" ++ show x ++ ">"
             errNoRoom = "No room for another USN"
+            tout = env ^. L.config . L.poolTimeout

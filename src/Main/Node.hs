@@ -2,10 +2,13 @@
 
 module Main.Node (main) where
 
+import           Control.Concurrent.Async
+import           Control.Exception
+
+import           Node
+import           Types
+import           Utilities
 import qualified Config.Getter as Config
-import Node
-import Types
-import Utilities
 
 -- | Start a single node.
 main :: IO ()
@@ -14,5 +17,6 @@ main = do
       config <- Config.node
 
       prepareOutputBuffers
-      (output, _) <- outputThread (_maxChanSize config)
+      (output, oThread) <- outputThread (_maxChanSize config)
       startNode Nothing output config
+            `finally` cancel oThread

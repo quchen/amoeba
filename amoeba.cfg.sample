@@ -60,7 +60,7 @@ maxChanSize = 100
 #
 # Ideally, this, combined with the expected travel length given by acceptP
 # below, should be around the expected network diameter.
-bounces = 3
+hardBounces = 3
 
 
 # Chance an edge request is accepted, given that it is in probabilistic
@@ -71,16 +71,16 @@ maxSoftBounces = 10
 
 
 # Period length of various internal loops.
-# Unit: int of milliseconds.
-shortTickRate  = 100000
-mediumTickRate = 300000
-longTickRate   = 1000000
+# Unit: Int of microseconds
+shortTickRate  =  1e5
+mediumTickRate =  3e5
+longTickRate   = 10e5
 
 
 # Time after which an Amoeba network connection is regarded as timed out, and
 # its worker/client is terminated.
-# Unit: Int of seconds.
-poolTimeout = 5
+# Unit: Int of microseconds
+poolTimeout = 5e6
 
 
 # Number of past flood messages to store in order to avoid processing
@@ -114,15 +114,16 @@ bootstrap {
 
       serverPort = 20000
 
-      # Restart a node in the node pool once every 5 bootstrap requests. This
+      # Restart a node in the node pool once every N bootstrap requests. This
       # is supposed to break up high interconnectedness in the bootstrap pool.
-      # (One node sends out maxNeighbours bootstrap requests.)
+      # (One new node sends out maxNeighbours bootstrap requests, so pick
+      # this quantity on the order of maxNeighbours*10.)
       restartEvery = 50
 
       # Minimum amount of time to wait for a node restart. (To avoid restarting
       # the entire pool if a lot of nodes connect all of a sudden.)
-      # Unit: int of milliseconds
-      restartMinimumPeriod = 1000000
+      # Unit: Int of microseconds
+      restartMinimumPeriod = 1e6
 
 }
 
@@ -134,14 +135,14 @@ drawing {
       poolSize = 10
 
       # Send out requests and draw the currently known network periodically
-      # Unit: Int of ms
-      drawEvery = 10000000
+      # Unit: Int of microseconds
+      drawEvery = 10e6
 
       # Time after which a node times out after not sending new data to the
       # drawing server. Should be at least twice as large as the drawEvery
       # setting.
-      # Unit: Int of seconds
-      drawTimeout = 33
+      # Unit: Int of microseconds
+      drawTimeout = 33e6
 
       # Filename to save the network state under
       drawFilename = "network_graph.dot"

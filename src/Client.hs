@@ -1,6 +1,7 @@
 -- | A client represents one connection to a downstream node.
 
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_HADDOCK show-extensions #-}
 
 
 module Client  (
@@ -10,24 +11,23 @@ module Client  (
 
 
 
+import           Control.Applicative
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
-import           Control.Concurrent (forkIO)
-import           Data.Monoid
-import           System.Timeout
-import           Control.Monad
 import           Control.Exception
+import           Control.Monad
+import           Data.Monoid
 import           Text.Printf
-import           Control.Applicative
 
 import           Pipes
-import qualified Pipes.Concurrent as P
 import           Pipes.Network.TCP (Socket)
+import qualified Pipes.Concurrent as P
 
-
+import           Control.Lens.Operators
+-- import qualified Control.Lens as L
+import qualified Types.Lens as L
 
 import           Types
-import           ClientPool
 import           Utilities
 
 
@@ -47,17 +47,17 @@ import           Utilities
 --      but will only done so if this node has room for it, and the downstream
 --      neighbour is not yet known.
 --   4. Spawn a new client with the connection just opened.
-startHandshakeH :: MonadIO io
-                => Environment
+startHandshakeH :: Environment
                 -> To -- ^ Node to add
-                -> io ()
-startHandshakeH env to = liftIO . void . forkIO $
-      connectToNode to $ \(socket, _addr) ->
-            (request socket (Special Handshake) >>= \case
+                -> IO ()
+startHandshakeH env to =
+      let tout = env ^. L.config . L.poolTimeout
+      in connectToNode to $ \(socket, _addr) ->
+            (request tout socket (Special Handshake) >>= \case
                   Just OK -> newClient env to socket -- OK will be sent back by
                                                      -- newClient after checking
                                                      -- for permission
-                  x -> do send socket (Error "Bad handshake")
+                  x -> do send tout socket (Error "Bad handshake")
                           errorPrint env (printf "Handshake signal response: %s"
                                          (show x)))
 
@@ -70,14 +70,16 @@ newClient :: Environment
           -> Socket -- ^ Connection
           -> IO ()
 newClient env to socket = ifM allowed
-                              (send socket OK >> goClient)
-                              (send socket Ignore)
+                              (send tout socket OK >> goClient)
+                              (send tout socket Ignore)
 
       where
 
+      tout = env ^. L.config . L.poolTimeout
+
       goClient = (`finally` cleanup) $ do
             time <- makeTimestamp
-            stsc <- (spawn . P.Bounded . _maxChanSize . _config) env
+            stsc <- spawn (P.Bounded (env ^. L.config . L.maxChanSize))
             withAsync (clientLoop env socket to stsc) $ \thread -> do
                   -- (Client waits until its entry is in the DB
                   -- before it starts working.)
@@ -100,17 +102,15 @@ newClient env to socket = ifM allowed
                   toIO env Debug (STDERR "Tried to launch client to already known node")
                   return False
             IsUnrelated -> do
-                  isRoom <- isRoomIn env _downstream
+                  isRoom <- isRoomForDsn env
                   if not isRoom
                         then do toIO env Debug (STDERR "No room for new client")
                                 return False
                         else return True
 
-      -- Remove the DSN from the DB, and notify it of the event before
-      -- terminating the connection
+      -- Remove the DSN from the DB and tell it about that
       cleanup = do atomically (deleteDsn env to)
-                   timeout (_mediumTickRate (_config env))
-                           (send socket (Normal ShuttingDown))
+                   send tout socket (Normal ShuttingDown)
 
 
 
@@ -127,8 +127,8 @@ clientLoop env socket to stsc = do
             Nothing -> return () -- Timeout before DB entry appears
             Just () -> runEffect (P.fromInput input >-> signalH env socket to)
 
-      where input = mconcat [ _pInput (_st1c env)
-                            , _pInput stsc
+      where input = mconcat [ env  ^. L.st1c . L.pInput
+                            , stsc ^. L.pInput
                             ]
 
             -- Retry until the client is inserted into the DB.
@@ -140,7 +140,7 @@ clientLoop env socket to stsc = do
                                      (atomically (whenM (not <$> isDsn env to)
                                                         retry))
 
-            timeoutT = (round . (* 10^6) . _poolTimeout . _config) env
+            timeoutT = env ^. L.config . L.poolTimeout
 
 
 
@@ -152,17 +152,19 @@ signalH :: (MonadIO io)
         -> Consumer NormalSignal io ()
 signalH env socket to = go where
       terminate = return ()
-      go = await >>= request socket . Normal >>= \case
-            Just OK              -> ok           env to >> go
-            Just PruneOK         -> pruneOK      env    >> terminate
-            Just (Error e)       -> genericError env e  >> terminate
-            Just Ignore          -> ignore       env    >> terminate
-            Just Denied          -> denied       env    >> terminate
-            Just Illegal         -> illegal      env    >> terminate
-            Just DecodeError     -> decodeError  env    >> terminate
-            Just Timeout         -> timeoutError env    >> terminate
-            Just ConnectionClosed -> cClosed     env    >> terminate
-            Nothing              -> noResponse   env    >> terminate
+      go = await >>= request tout socket . Normal >>= \case
+            Just OK               -> ok           env to >> go
+            Just PruneOK          -> pruneOK      env    >> terminate
+            Just (Error e)        -> genericError env e  >> terminate
+            Just Ignore           -> ignore       env    >> terminate
+            Just Denied           -> denied       env    >> terminate
+            Just Illegal          -> illegal      env    >> terminate
+            Just DecodeError      -> decodeError  env    >> terminate
+            Just Timeout          -> timeoutError env    >> terminate
+            Just ConnectionClosed -> cClosed      env    >> terminate
+            Nothing               -> noResponse   env    >> terminate
+
+      tout = env ^. L.config . L.poolTimeout
 
 
 

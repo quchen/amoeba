@@ -1,7 +1,7 @@
 Amœba
 ======
 
-Amœba is a program for setting up a decentralized network. The name comes from
+Amœba is a program for setting up a distributed network. The name comes from
 the hope that eventually, the network will be so robust that you can poke any of
 its parts without endangering its overall integrity.
 
@@ -18,7 +18,7 @@ Click for higher resolution.
 
 
 
-The current development stage is Alpha.
+The current development stage is unstable alpha.
 
 Branch  | Status
 :-----: | :-----:
@@ -172,6 +172,11 @@ used by special network services.
   passing it on to one of their own downstream neighbours, until eventually one
   of them accepts the request, and establishes the desired connection with the
   initially issuing node.
+
+  The number of edge requests depending on the deficit is currently a simple
+  square root:
+
+  ![(Picture missing, uh oh)](doc/request_per_deficit_function.png)
 
 - Nodes will attempt to minimize the number of connections above the minimum by
   *pruning*. They will do so by telling downstream neighbours of their wish to
@@ -362,7 +367,7 @@ These may help reading the source comments:
 
         Name | Meaning
 -----------: | -----------------------------------------------------------------
-          _* | Accessor functions that don't do any computation otherwise.
+          _* | Accessor functions that don't do any computation otherwise. When dependencies permit, the lenses generated from these are used.
           *H | Handler. Signals or commands are delegated to these for processing.
          BSS | Bootstrap server
          DSN | Downstream node, i.e. a neighbouring node the current sends commands do. (S, T, U in the picture above.)
