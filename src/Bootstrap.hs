@@ -99,8 +99,10 @@ bootstrap config self = do T.putStrLn "Starting bootstrap"
                 showBss = let To (Node h p) = bsServer
                           in  T.pack h <> ":" <> showT p
 
+                tout = config ^. L.poolTimeout
+
             catchMulti (connectToNode bsServer (\(s, _) ->
-                  request s (BootstrapRequest self) >>= \case
+                  request tout s (BootstrapRequest self) >>= \case
                         Just OK -> return ()
                         Just _  -> throwIO BadResponse
                         Nothing -> throwIO NoResponse))

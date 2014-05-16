@@ -51,12 +51,13 @@ startHandshakeH :: Environment
                 -> To -- ^ Node to add
                 -> IO ()
 startHandshakeH env to =
-      connectToNode to $ \(socket, _addr) ->
-            (request socket (Special Handshake) >>= \case
+      let tout = env ^. L.config . L.poolTimeout
+      in connectToNode to $ \(socket, _addr) ->
+            (request tout socket (Special Handshake) >>= \case
                   Just OK -> newClient env to socket -- OK will be sent back by
                                                      -- newClient after checking
                                                      -- for permission
-                  x -> do send socket (Error "Bad handshake")
+                  x -> do send tout socket (Error "Bad handshake")
                           errorPrint env (printf "Handshake signal response: %s"
                                          (show x)))
 
@@ -69,10 +70,12 @@ newClient :: Environment
           -> Socket -- ^ Connection
           -> IO ()
 newClient env to socket = ifM allowed
-                              (send socket OK >> goClient)
-                              (send socket Ignore)
+                              (send tout socket OK >> goClient)
+                              (send tout socket Ignore)
 
       where
+
+      tout = env ^. L.config . L.poolTimeout
 
       goClient = (`finally` cleanup) $ do
             time <- makeTimestamp
@@ -105,11 +108,9 @@ newClient env to socket = ifM allowed
                                 return False
                         else return True
 
-      -- Remove the DSN from the DB, and notify it of the event before
-      -- terminating the connection
+      -- Remove the DSN from the DB and tell it about that
       cleanup = do atomically (deleteDsn env to)
-                   timeout (env ^. L.config . L.mediumTickRate)
-                           (send socket (Normal ShuttingDown))
+                   send tout socket (Normal ShuttingDown)
 
 
 
@@ -151,7 +152,7 @@ signalH :: (MonadIO io)
         -> Consumer NormalSignal io ()
 signalH env socket to = go where
       terminate = return ()
-      go = await >>= request socket . Normal >>= \case
+      go = await >>= request tout socket . Normal >>= \case
             Just OK               -> ok           env to >> go
             Just PruneOK          -> pruneOK      env    >> terminate
             Just (Error e)        -> genericError env e  >> terminate
@@ -162,6 +163,8 @@ signalH env socket to = go where
             Just Timeout          -> timeoutError env    >> terminate
             Just ConnectionClosed -> cClosed      env    >> terminate
             Nothing               -> noResponse   env    >> terminate
+
+      tout = env ^. L.config . L.poolTimeout
 
 
 

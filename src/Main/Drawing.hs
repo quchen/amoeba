@@ -84,24 +84,26 @@ drawingServer config ioq ldc = do
       let port = config ^. L.nodeConfig . L.serverPort
       N.listen (N.Host "127.0.0.1") (show port) $ \(socket, _addr) -> do
             let selfTo = To (Node "127.0.0.1" port)
+                tout = config ^. L.nodeConfig . L.poolTimeout
             _tid <- forkIO (networkAsker config
                                          (config ^. L.poolConfig . L.poolSize)
                                          selfTo
                                          ldc)
-            incomingLoop ioq stg socket
+            incomingLoop tout ioq stg socket
 
 
 
 -- | Drawing server loop; does the actual work after being set up by
 --   "drawingServer".
-incomingLoop :: IOQueue
+incomingLoop :: Microseconds -- ^ Connection timeout
+             -> IOQueue
              -> PChan (To, Set To) -- ^ (Node, DSNs of that node)
              -> N.Socket -- ^ Socket for incoming connections (used by nodes to
                          --   contact the drawing server upon request)
              -> IO ()
-incomingLoop _ioq stg serverSock = forever $
+incomingLoop tout _ioq stg serverSock = forever $
       N.acceptFork serverSock $ \(clientSock, _clientAddr) ->
-            receive clientSock >>= \case
+            receive tout clientSock >>= \case
 
                   -- Good answer
                   Just (NeighbourList node neighbours) -> do
@@ -114,6 +116,7 @@ incomingLoop _ioq stg serverSock = forever $
 
                   -- No answer
                   Nothing -> return () -- toIO' ioq (putStrLn "No signal received")
+
 
 
 

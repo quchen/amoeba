@@ -70,9 +70,10 @@ listenOnNode node = N.listen (node ^. L.host . L.to N.Host)
 
 -- | Continuously encode and send data to a 'N.Socket'.
 sender :: (MonadIO io, Binary b)
-       => N.Socket
+       => Microseconds
+       -> N.Socket
        -> Consumer b io ServerResponse
-sender s = encodeMany >-> toSocketTimeout 3e6 s -- TODO: Don't hardcode timeout
+sender t s = encodeMany >-> toSocketTimeout t s
 
 
 
@@ -106,11 +107,12 @@ toSocketTimeout t socket = loop where
 --
 --   Returns if the connection is closed, times out, or decoding fails.
 receiver :: (MonadIO io, Binary b)
-         => N.Socket
+         => Microseconds
+         -> N.Socket
          -> Producer b io ServerResponse
-receiver s = decoded where
+receiver t s = decoded where
 
-      input = fromSocketTimeout 3e6 s 4096 -- TODO: Don't hardcode timeout
+      input = fromSocketTimeout t s 4096
 
       decoded = P.evalStateT (L.zoom P.decoded P.draw) input >>= \case
             Nothing -> return DecodeError
@@ -139,24 +141,28 @@ fromSocketTimeout t socket nBytes = loop where
 
 -- | Receives a single piece of "Binary" data from a "N.Socket".
 receive :: (MonadIO io, Binary b)
-        => N.Socket
+        => Microseconds -- ^ Timeout
+        -> N.Socket
         -> io (Maybe b)
-receive s = runEffect ((P.head . void . receiver) s)
+receive t s = runEffect ((P.head . void . receiver t) s)
 
 
 
 -- | Sends a single piece of data to a "N.Socket".
 send :: (MonadIO io, Binary b)
-     => N.Socket
+     => Microseconds
+     -> N.Socket
      -> b
      -> io ()
-send s x = runEffect (yield x >-> void (sender s))
+send t s x = runEffect (yield x >-> void (sender t s))
 
 
 
 -- | Sends a single piece of data to a "N.Socket", and waits for a response.
+--   The timeout applies to both the sending and receiving stages independently.
 request :: (MonadIO io, Binary a, Binary b)
-        => N.Socket
+        => Microseconds -- ^ Timeout
+        -> N.Socket
         -> a
         -> io (Maybe b)
-request s x = send s x >> receive s
+request t s x = send t s x >> receive t s

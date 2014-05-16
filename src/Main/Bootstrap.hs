@@ -172,10 +172,12 @@ bssLoop config ioq counter' serverSock ldc restart = go counter' where
 
                 bootstrapRequestH socket node = do
                       dispatchSignal nodeConfig node ldc
-                      send socket OK
+                      send tout socket OK
+
+                tout = config ^. L.nodeConfig . L.poolTimeout
 
             _tid <- PN.acceptFork serverSock $ \(clientSock, _clientAddr) ->
-                  receive clientSock >>= \case
+                  receive tout clientSock >>= \case
                         Just (BootstrapRequest benefactor) -> do
                               toIO' ioq
                                     (STDLOG (printf "Sending requests on behalf\

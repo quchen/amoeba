@@ -7,7 +7,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# OPTIONS_HADDOCK show-extensions #-}
 
 module Server (server) where
@@ -20,7 +19,6 @@ import           Control.Exception
 import           Control.Monad
 import qualified Data.Foldable as F
 import           System.Random
-import           Data.Typeable
 import           Text.Printf
 
 import           Pipes
@@ -76,10 +74,14 @@ worker :: Environment
        -> IO ServerResponse
 worker env from socket =
 
-      catchUsnTimeout . (`finally` release) . runEffect $
-            receiver socket >-> dispatch >-> terminator >-> sender socket
+      (`finally` release) . runEffect $ receiver tout socket
+                                    >-> dispatch
+                                    >-> terminator
+                                    >-> sender tout socket
 
       where
+
+      tout = env ^. L.config . L.poolTimeout
 
       dispatch :: Pipe Signal ServerResponse IO r
       dispatch = P.mapM $ \case
@@ -91,31 +93,13 @@ worker env from socket =
       -- passes on the first failing element before returning it.
       terminator :: Pipe ServerResponse ServerResponse IO ServerResponse
       terminator = do
-            signal <- withTimeout await
+            signal <- await
             yield signal
             case signal of
                   OK  -> terminator
                   err -> return err
 
-      -- Run a pipes action with a timeout. A bit hacky since it's hard to
-      -- use 'timeout' directly on a pipe.
-      withTimeout :: MonadIO io => io a -> io a
-      withTimeout action = do
-            timeoutThrowThread <- liftIO . async $ do
-                  -- Convert Double of seconds to Integer of µs
-                  delay (env ^. L.config . L.poolTimeout)
-                  throwIO UsnTimeout
-            result <- action
-            liftIO (cancel timeoutThrowThread)
-            return result
-
-      catchUsnTimeout = handle (\UsnTimeout -> return Timeout)
-
       release = atomically (deleteUsn env from)
-
--- | Locally needed by @worker@.
-data UsnTimeout = UsnTimeout deriving (Show, Typeable)
-instance Exception UsnTimeout
 
 
 
@@ -273,11 +257,12 @@ neighbourListH :: Environment
                -> To
                -> IO ServerResponse
 neighbourListH env painter = do
+      let tout = env ^. L.config . L.poolTimeout
       connectToNode painter $ \(socket, _) -> do
             atomically (toIO env Chatty (STDLOG "Processing painter request"))
             let self = env ^. L.self
             dsns <- atomically (dumpDsnDB env)
-            send socket (NeighbourList self dsns)
+            send tout socket (NeighbourList self dsns)
       return OK
 
 
@@ -498,13 +483,14 @@ sendHandshakeRequest :: Environment
                      -> IO ()
 sendHandshakeRequest env to = do
       connectToNode to $ \(socket, _addr) -> do
-            request socket signal >>= \case
+            request tout socket signal >>= \case
                   Just OK -> return ()
                   _else   -> return ()
                   -- Nothing to do here, the handshake is a one-way command,
                   -- waiting for response is just a courtesy
 
       where signal = env ^. L.self . L.to (Special . HandshakeRequest)
+            tout   = env ^. L.config . L.poolTimeout
 
 
 
@@ -534,7 +520,7 @@ incomingHandshakeH env from socket = do
                 (return False)
 
       if inserted
-            then send socket OK >> receive socket >>= \case
+            then send tout socket OK >> receive tout socket >>= \case
                   Just OK -> return OK
                   x -> (return . Error) (errMsg x)
             else (return . Error) errNoRoom
@@ -542,3 +528,4 @@ incomingHandshakeH env from socket = do
       where errMsg x = "Incoming handshake denied:\
                        \ server response <" ++ show x ++ ">"
             errNoRoom = "No room for another USN"
+            tout = env ^. L.config . L.poolTimeout
