@@ -12,7 +12,6 @@
 module Server (server) where
 
 import           Control.Applicative
-import           Control.Concurrent (forkIO)
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Exception
@@ -165,8 +164,12 @@ specialH env from socket signal = case signal of
       BootstrapRequest {} -> illegalBootstrapSignalH env
       NeighbourList {}    -> illegalNeighbourListSignalH env
       Handshake           -> incomingHandshakeH      env from socket
-      HandshakeRequest to -> do void (forkIO (Client.startHandshakeH  env to))
+      HandshakeRequest to -> do void (async (Client.startHandshakeH  env to))
                                 return OK
+                                -- NB: The above async terminates when the
+                                --     worker created by it does, or is not
+                                --     created at all. See
+                                --     'Client.startHandshakeH'.
 
 
 

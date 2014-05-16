@@ -10,12 +10,11 @@ module NodePool (nodePool) where
 
 
 
-import           Control.Concurrent (forkIO)
 import           Control.Concurrent.Async
 import           Control.Concurrent.Chan
 import           Control.Exception
 import           Control.Monad
-import qualified Data.Foldable as F
+import qualified Data.Traversable as T
 
 import           Pipes
 import qualified Pipes.Concurrent as P
@@ -31,7 +30,8 @@ import           Utilities
 
 
 -- | Start a node pool of a certain size, and provide a channel to
---   communitcate with (random nodes in) it.
+--   communitcate with (random nodes in) it. Forks multiple nodes with
+--   intermediate delays, and returns their threads.
 nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
          -> NodeConfig  -- ^ Configuration for a single node. Of particular
                     --   importance is the port (nodes will be spawned
@@ -45,16 +45,18 @@ nodePool :: Int     -- ^ Number of nodes in the pool (also the port range)
                     -- ^ If the 'MVar' contained in the 'TerminationTrigger' is
                     --   filled, a node is killed (and a new one is started by
                     --   its janitor).
-         -> IO ()
+         -> IO [Async ()] -- ^ Janitor threads (for cancellation when
+                          --   encapsulated in larger programs)
 nodePool n config ldc output m'terminate =
-      F.for_ [1..n] $ \portOffset -> do
+      T.for [1..n] $ \portOffset -> do
              -- Give nodes in the pool consecutive numbers, starting with
              -- <config port> + 1
-             _ <- forkIO (janitor (config & L.serverPort +~ portOffset)
-                                  ldc
-                                  output
-                                  m'terminate)
+             jThread <- async (janitor (config & L.serverPort +~ portOffset)
+                                       ldc
+                                       output
+                                       m'terminate)
              delay (config ^. L.mediumTickRate)
+             return jThread
 
 
 

@@ -15,7 +15,9 @@ module Main.Bootstrap (main) where
 
 import           Control.Concurrent hiding (yield)
 import           Control.Concurrent.Async
+import           Control.Exception
 import           Control.Monad
+import qualified Data.Traversable as T
 import           Text.Printf
 
 import           Pipes.Network.TCP (Socket)
@@ -44,26 +46,26 @@ bootstrapServerMain = do
 
 
       prepareOutputBuffers
-      (output, _) <- outputThread (config ^. L.nodeConfig . L.maxChanSize)
+      (output, oThread) <- outputThread (config ^. L.nodeConfig . L.maxChanSize)
+      (`finally` cancel oThread) $ do
 
       let poolSize = config ^. L.poolConfig . L.poolSize
       ldc <- newChan
       terminationTrigger <- newTerminationTrigger
-      nodePool poolSize
-               (config ^. L.nodeConfig)
-               ldc
-               output
-               (Just terminationTrigger)
+      npThread <- async (nodePool poolSize
+                                  (config ^. L.nodeConfig)
+                                  ldc
+                                  output
+                                  (Just terminationTrigger))
 
       toIO' output (STDLOG (printf "Starting bootstrap server with %d nodes"
                                    poolSize))
-      (rThread, restart) <- restarter (config ^. L.restartMinimumPeriod)
+      (restart, rThread) <- restarter (config ^. L.restartMinimumPeriod)
                                       terminationTrigger
+      (`finally` cancel rThread) $ do
+
       bootstrapServer config output ldc restart
-      cancel rThread -- Not really necessary since this is the end of 'main'
-                     -- and the thread would be killed automatically when the
-                     -- program finishes, but might be useful just to be safe
-                     -- in all possible futures.
+            `finally` (wait npThread >>= T.traverse cancel)
 
 
 
@@ -86,7 +88,7 @@ restarter :: Microseconds         -- ^ Minimum amount of time between
           -> TerminationTrigger   -- ^ Will make the pool kill a pool node when
                                   --   filled. Written to by the restarter,
                                   --   read by the node pool.
-          -> IO (Async (), Restarter) -- ^ Thread async, and restart trigger
+          -> IO (Restarter, Async ()) -- ^ Thread async, and restart trigger
                                       --   that when executed restarts a
                                       --   (semi-random) node.
 restarter minPeriod trigger = do
@@ -103,7 +105,7 @@ restarter minPeriod trigger = do
 
       let restartAction = Restarter (void (tryPutMVar restartMVar ()))
 
-      return (thread, restartAction)
+      return (restartAction, thread)
 
 
 

@@ -9,7 +9,9 @@ module Main.Multi (main) where
 
 import           Control.Concurrent
 import           Control.Concurrent.Async
+import           Control.Exception
 import           Control.Monad
+import qualified Data.Traversable as T
 import           Text.Printf
 
 import           NodePool
@@ -32,7 +34,8 @@ multiNodeMain = do
       config <- Config.multi
 
       prepareOutputBuffers
-      (output, _) <- outputThread (config ^. L.nodeConfig . L.maxChanSize)
+      (output, oThread) <- outputThread (config ^. L.nodeConfig . L.maxChanSize)
+      (`finally` cancel oThread) $ do
 
       let poolSize = config ^. L.poolConfig . L.poolSize
       printf "Starting pool with %d nodes" poolSize
@@ -45,8 +48,4 @@ multiNodeMain = do
                                   Nothing) -- No termination trigger
 
       void (forever (delay (Microseconds 10e8)))
-
-      wait npThread -- Not really necessary since this is the end of 'main'
-              -- and the thread would be killed automatically when the
-              -- program finishes, but might be useful just to be safe
-              -- in all possible futures.
+            `finally` (wait npThread >>= T.traverse cancel)

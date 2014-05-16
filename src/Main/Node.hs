@@ -2,6 +2,9 @@
 
 module Main.Node (main) where
 
+import           Control.Concurrent.Async
+import           Control.Exception
+
 import           Node
 import           Types
 import           Utilities
@@ -14,5 +17,6 @@ main = do
       config <- Config.node
 
       prepareOutputBuffers
-      (output, _) <- outputThread (_maxChanSize config)
+      (output, oThread) <- outputThread (_maxChanSize config)
       startNode Nothing output config
+            `finally` cancel oThread

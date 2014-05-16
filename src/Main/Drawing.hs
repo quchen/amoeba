@@ -16,12 +16,14 @@ module Main.Drawing (main) where
 import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Concurrent.Async
+import           Control.Exception
 import           Control.Monad
 import           Data.List (intercalate)
 import qualified Data.Foldable as F
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Data.Set (Set)
+import qualified Data.Traversable as T
 import           Text.Printf
 
 import qualified Network.Simple.TCP as N
@@ -52,7 +54,8 @@ drawingServerMain = do
       config <- Config.drawing
 
       prepareOutputBuffers
-      (output, _) <- outputThread (config ^. L.nodeConfig . L.maxChanSize)
+      (output, oThread) <- outputThread (config ^. L.nodeConfig . L.maxChanSize)
+      (`finally` cancel oThread) $ do
 
       let poolSize = config ^. L.poolConfig . L.poolSize
       ldc <- newChan
@@ -64,10 +67,7 @@ drawingServerMain = do
 
       printf "Starting drawing server with %d nodes\n"poolSize
       drawingServer config output ldc
-      wait npThread -- Not really necessary since this is the end of 'main'
-                    -- and the thread would be killed automatically when the
-                    -- program finishes, but might be useful just to be safe
-                    -- in all possible futures.
+            `finally` (wait npThread >>= T.traverse cancel)
 
 
 
@@ -79,17 +79,19 @@ drawingServer :: DrawingConfig
 drawingServer config ioq ldc = do
       -- Server to graph worker
       stg <- spawn (config ^. L.nodeConfig . L.maxChanSize . L.to P.Bounded)
-      _tid <- forkIO (graphWorker config ioq stg)
+      wThread <- async (graphWorker config ioq stg)
+      (`finally` cancel wThread) $ do
 
       let port = config ^. L.nodeConfig . L.serverPort
       N.listen (N.Host "127.0.0.1") (show port) $ \(socket, _addr) -> do
             let selfTo = To (Node "127.0.0.1" port)
                 tout = config ^. L.nodeConfig . L.poolTimeout
-            _tid <- forkIO (networkAsker config
-                                         (config ^. L.poolConfig . L.poolSize)
-                                         selfTo
-                                         ldc)
+            aThread <- async (networkAsker config
+                                           (config ^. L.poolConfig . L.poolSize)
+                                           selfTo
+                                           ldc)
             incomingLoop tout ioq stg socket
+                  `finally` cancel aThread
 
 
 
@@ -127,7 +129,8 @@ graphWorker :: DrawingConfig
             -> IO ()
 graphWorker config ioq stg = do
       t'graph <- newTVarIO (Graph Map.empty)
-      _tid <- forkIO (graphDrawer config ioq t'graph)
+      dThread <- async (graphDrawer config ioq t'graph)
+      (`finally` cancel dThread) $ do
       forever $ makeTimestamp >>= \t -> atomically $ do
             Just (node, neighbours) <- P.recv (_pInput stg) -- TODO: Error handling on Nothing
             modifyTVar t'graph (insertNode t node neighbours)
